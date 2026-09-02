@@ -7,7 +7,7 @@ For **WoW Classic Era & Hardcore** (patch 1.15.x).
 A self-contained, dependency-free (no Ace3/LibDBIcon) addon built for the
 hardcore-first hunter. Every action is a deliberate click; nothing is automated.
 
-Current version: **0.5.0** — see [`CHANGELOG.md`](CHANGELOG.md).
+Current version: **0.6.0** — see [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Features
 
@@ -79,9 +79,33 @@ The pet unit frame is used **even when you've hidden it in Edit Mode** (a hidden
 frame keeps its layout), so the marker doesn't vanish for players following the
 UIParent advice below.
 
+**4. Otherwise the UI fallback is yours to place.** `/htk unlock`, drag the
+marker wherever you read it best, lock again — the spot is saved per character
+(`/htk reset` returns it above the pet frame).
+
 Anchor modes: **`auto`** (default) = head when a plate exists, else the pet
 frame · **`plate`** = head only, hidden while there's no plate · **`petframe`** =
 always the UI widget.
+
+### What 1.15.9 actually offers (measured, not assumed)
+
+`/htk mend` on a live 1.15.9 hunter reports:
+
+```
+screen-pos APIs: GetUnitNamePosition=absent  GetUnitScreenPosition=absent
+pet plate via:   GetNamePlateForUnit=none  NAME_PLATE_UNIT_ADDED=none  GetNamePlates=none  NamePlateN scan=none
+plates visible:  0
+UnitPosition(pet)=refused  GetPlayerFacing=0.89
+nameplate cvars: nameplateShowAll=1  nameplateShowEnemies=1  nameplateMaxDistance=41
+```
+
+So on that client there is **no** pet plate, **no** screen-position API, **no** pet
+world position, and the friendly/pet nameplate CVars no longer exist at all —
+which means over-the-head anchoring is genuinely unavailable there and *Force pet
+name plate* cannot help (the addon says so instead of suggesting it). On such a
+client the marker is a draggable UI widget; on a client that does publish a pet
+plate it floats over the pet's head with no further setup. Run `/htk mend` to see
+which one you have.
 
 `/htk mend` prints which one is live **and a capability report for your client**:
 which screen-position APIs exist and what they return, which of the four plate
@@ -116,13 +140,14 @@ than described here, that output says exactly why.
 **"The mark says IN RANGE but my shot fails!"** — Walls. Classic has no line-of-sight API;
 `IsSpellInRange` is distance-only. No addon can do better.
 
-**"The mend marker isn't floating over my pet's head."** — You have no pet name
-plate, and without one the client publishes no position to hang it from. Tick
-**Force pet name plate** in Options → Pet Mend Marker: HunterKit enables the
-minimum nameplate setting for you (and restores it afterwards), which is what
-makes head anchoring work with your own nameplates off. `/htk mend` confirms it —
-`mode=plate` means it's over the pet's head, `mode=petframe` means it's on the
-UI fallback, and the `*` marks show which CVars it had to change.
+**"The mend marker isn't floating over my pet's head."** — Run `/htk mend` and
+read the `anchor would be:` line. `plate` = it's over the pet's head. `petframe` =
+the client publishes no position for your pet, so it's on the UI fallback — on
+**1.15.9 that is the expected result** (see the measured output above): no pet
+plate, no screen-position API, and the nameplate CVars that used to create one are
+gone. In that case `/htk unlock` and drag it where you want it. On a client that
+does have those CVars, **Force pet name plate** makes head anchoring work with
+your own nameplates off, and restores them afterwards.
 
 **"How do I know what my client actually supports?"** — Run `/htk mend`. Alongside
 the marker's state it prints a capability report: every screen-position API it

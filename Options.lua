@@ -428,7 +428,7 @@ function BuildWindow()
   y = y - ROW
   MakeSlider(content, y, "Height above head", -20, 80, 1, function() return db.mend.offsetY end,
     function(v) db.mend.offsetY = v; RefreshMend() end,
-    "Extra gap above the anchor (the pet's name plate, or the pet unit frame when no plate exists).")
+    "Extra gap above the anchor (the pet's name plate, or the pet unit frame when no plate exists). Ignored once you have dragged the marker with /htk unlock.")
   y = y - ROW
   MakeSlider(content, y, "Urgent below % HP", 5, 100, 5, function() return db.mend.hpThreshold end,
     function(v) db.mend.hpThreshold = v; RefreshMend() end,
@@ -457,7 +457,7 @@ function BuildWindow()
   y = y - ROW
   MakeCheckbox(content, y, "Force pet name plate", function() return db.mend.forcePlate end,
     function(v) db.mend.forcePlate = v; RefreshMend() end,
-    "Makes the game publish a name plate for your pet so the marker can float over its head even though YOU have nameplates turned off. HunterKit enables the least it can (pet plates first, friendly plates only if the client needs that), saves your previous values and restores them when you untick this or log out. /htk mend lists exactly what it changed.")
+    "Makes the game publish a name plate for your pet so the marker can float over its head even though YOU have nameplates turned off. HunterKit enables the least it can, saves your previous values and restores them when you untick this or log out. NOTE: some clients (1.15.9) no longer have the nameplate CVars this needs - /htk mend says whether yours does, and lists every nameplate CVar it can find.")
   y = y - CHK
   MakeCheckbox(content, y, "Nameplate style bar", function() return db.mend.plateStyle end,
     function(v) db.mend.plateStyle = v; RefreshMend() end,
@@ -795,10 +795,10 @@ function Positions.Reset()
   force("feed",  { "offsetX", "offsetY", "parent", "size" })
   force("range", { "offsetX", "offsetY", "parent", "size" })
   force("pulse", { "offsetX", "offsetY", "size" })
-  force("mend",  { "offsetX", "offsetY", "size" })
+  force("mend",  { "offsetX", "offsetY", "size", "pinX", "pinY" })
   -- Clear the "user dragged this" flag so each frame returns to its default
   -- anchor-frame position (rather than staying pinned to the absolute spot).
-  for _, sec in ipairs({ "feed", "range", "pulse" }) do
+  for _, sec in ipairs({ "feed", "range", "pulse", "mend" }) do
     if HK.db[sec] then HK.db[sec].moved = false end
   end
   -- refresh positions

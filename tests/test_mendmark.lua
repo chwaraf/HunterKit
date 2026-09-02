@@ -498,6 +498,68 @@ check("capability report covers plate discovery", caps:find("GetNamePlateForUnit
 check("capability report covers UnitPosition(pet)", caps:find("UnitPosition%(pet%)=") ~= nil)
 
 -- ---------------------------------------------------------------------------
+-- 5e) The 1.15.9 case: no plate, no screen API, no usable CVar
+-- ---------------------------------------------------------------------------
+local fullCVars = HKTest.state.cvars
+HKTest.state.cvars = { nameplateShowAll = "1", nameplateShowEnemies = "1", nameplateMaxDistance = "41" }
+HKTest.state.plate = nil
+HKTest.state.playerCombat, HKTest.state.petCombat = false, false
+HKTest.state.petHP = 1000
+HK.MendMark.Update()
+check("hidden out of combat with a healthy pet", not HK.MendMark.IsShown())
+check("hidden reason explains it",
+  (HK.MendMark.HiddenReason() or ""):find("out of combat") ~= nil,
+  tostring(HK.MendMark.HiddenReason()))
+do
+  HKTest.prints = {}
+  pcall(SlashCmdList["HUNTERKIT"], "mend")
+  local all = table.concat(HKTest.prints, "\n")
+  check("report resolves the anchor while hidden",
+    all:find("anchor would be: petframe") ~= nil, all)
+  check("report prints the hidden reason", all:find("hidden because:") ~= nil)
+  check("report says head anchoring is unavailable on this client",
+    all:find("not%s+available here") ~= nil or all:find("not available here") ~= nil, all)
+  check("report lists every nameplate cvar the client has",
+    all:find("nameplateMaxDistance=41") ~= nil, all)
+  check("report does not suggest force-plate when it cannot help",
+    all:find("Force pet name plate' %(1 CVar") == nil and all:find("Tick Options") == nil, all)
+end
+check("no ladder rung is usable on that client", HK.MendMark.LadderCVarsUsable() == 0,
+  tostring(HK.MendMark.LadderCVarsUsable()))
+
+-- with a usable rung available, it does suggest the option
+HKTest.state.cvars.nameplateShowFriends = "0"
+check("a usable rung is counted", HK.MendMark.LadderCVarsUsable() == 1)
+HKTest.prints = {}
+pcall(SlashCmdList["HUNTERKIT"], "mend")
+check("report suggests force-plate when a rung exists",
+  table.concat(HKTest.prints, "\n"):find("Tick Options") ~= nil)
+HKTest.state.cvars = fullCVars
+
+-- ---------------------------------------------------------------------------
+-- 5f) Dragging the UI fallback somewhere useful
+-- ---------------------------------------------------------------------------
+HKTest.state.playerCombat = true
+HK.db.mend.moved = true
+HK.db.mend.pinX, HK.db.mend.pinY = -200, 60
+HK.MendMark.Update()
+do
+  local p = marker.points[1]
+  check("dragged marker pins to an absolute screen spot",
+    p and p[1] == "CENTER" and p[2] == UIParent and p[3] == "CENTER"
+      and p[4] == -200 and p[5] == 60,
+    p and (tostring(p[1]) .. " " .. tostring(p[4]) .. "," .. tostring(p[5])))
+end
+check("registered as draggable", HK.draggables["mend"] ~= nil)
+HK.db.mend.moved = false
+HK.MendMark.Update()
+do
+  local p = marker.points[1]
+  check("undragged marker returns to the pet frame",
+    p and p[1] == "BOTTOM" and p[2] == _G["PetFrame"], p and tostring(p[1]))
+end
+
+-- ---------------------------------------------------------------------------
 -- 6) Diagnostics + slash command must not error
 -- ---------------------------------------------------------------------------
 HKTest.prints = {}

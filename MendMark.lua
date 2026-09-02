@@ -346,6 +346,24 @@ local function BuildFrame()
 
   frame:SetScript("OnUpdate", OnUpdateAnchor)
   frame:SetShown(false)
+
+  -- Over-the-head anchoring is impossible on clients that publish neither a pet
+  -- plate nor a screen position, so the UI fallback must at least go where the
+  -- player wants it. Drag it with /htk unlock; the drop point is stored in
+  -- pinX/pinY (kept apart from offsetX/offsetY, which is the gap above the
+  -- anchor's top edge and is still used in plate mode).
+  HK.RegisterDraggable("mend", frame, function() Update() end, function(x, y)
+    db.pinX, db.pinY = x, y
+  end, {
+    restore = function() Update() end,
+    -- Re-bind the pulse loop; the drag handlers blank the frame's OnUpdate.
+    onUpdate = function() frame:SetScript("OnUpdate", OnUpdateAnchor) end,
+    saveFromScreen = function()
+      local tmp = {}
+      HK.SaveDragged(frame, tmp)      -- measures in UIParent space, Y-up
+      db.pinX, db.pinY, db.moved = tmp.offsetX, tmp.offsetY, true
+    end,
+  })
 end
 
 -- The nameplate-style widget drawn under the icon when we're NOT anchored to a
@@ -394,57 +412,85 @@ end
 -- ---------------------------------------------------------------------------
 -- Anchor
 -- ---------------------------------------------------------------------------
--- Returns the mode actually used ("plate" / "petframe" / "none"). Re-resolved
--- every tick: the pet moves, and plate frames come and go.
-local function ApplyAnchor()
+-- Decide where the marker belongs WITHOUT touching it, so /htk mend can report
+-- the answer even while the marker is hidden (it used to print mode=nil and then
+-- advise about a fallback it had never resolved).
+-- Returns: mode ("plate"|"screen"|"petframe"|"none"), then the target:
+--   plate    -> the plate frame
+--   screen   -> x, y, apiName
+--   petframe -> the pet unit frame
+local function ResolveAnchor()
   local mode = db.anchor or "auto"
-  local ox, oy = db.offsetX or 0, db.offsetY or 0
-  lastAnchorSource = nil     -- only set by the screen-position path
 
-  if mode ~= "petframe" then
-    local p = PetPlate()
-    if p then
-      -- Anchoring to a forbidden (instance) plate can throw; fall through to the
-      -- pet frame instead of erroring out.
-      local ok = pcall(function()
-        frame:ClearAllPoints()
-        frame:SetPoint("BOTTOM", p, "TOP", ox, oy)
-      end)
-      if ok then
-        lastAnchorMode = "plate"
-        return lastAnchorMode
-      end
-    elseif mode == "plate" then
-      -- "Plate only" was asked for and the client exposes none: stay hidden
-      -- rather than silently moving the marker somewhere else.
-      lastAnchorMode = "none"
-      return lastAnchorMode
-    end
+  if mode == "petframe" then
+    local pf = _G["PetFrame"]
+    if pf then return "petframe", pf end
+    return "none"
   end
 
-  -- A direct screen-position API beats any UI fallback: this is true world
-  -- anchoring with nameplates off. The returned Y is assumed to be measured from
-  -- the TOP-left in pixels (the usual convention); `/htk mend` prints the raw
-  -- pair so it can be verified on screen.
+  local p = PetPlate()
+  if p then return "plate", p end
+  if mode == "plate" then return "none" end
+
+  -- A direct screen-position API beats any UI fallback: true world anchoring with
+  -- nameplates off. Y is assumed to be pixels measured from the TOP-left; /htk
+  -- mend prints the raw pair so it can be checked against what's on screen.
   local wx, wy, src = WorldScreenPos()
-  if wx and UIParent then
-    local scale = (UIParent.GetEffectiveScale and UIParent:GetEffectiveScale()) or 1
-    local sh = (GetScreenHeight and GetScreenHeight()) or UIParent:GetHeight() or 0
-    frame:ClearAllPoints()
-    frame:SetPoint("BOTTOM", UIParent, "BOTTOMLEFT", wx / scale, sh - (wy / scale) + oy)
-    lastAnchorMode = "screen"
-    lastAnchorSource = src
+  if wx then return "screen", wx, wy, src end
+
+  local pf = _G["PetFrame"]
+  if pf then return "petframe", pf end
+  return "none"
+end
+
+-- Re-resolved every tick: the pet moves, and plate frames come and go. Returns
+-- the mode actually applied.
+local function ApplyAnchor()
+  local ox, oy = db.offsetX or 0, db.offsetY or 0
+  local mode, a, b, c = ResolveAnchor()
+  lastAnchorSource = nil     -- only set by the screen-position path
+
+  if mode == "plate" then
+    -- Anchoring to a forbidden (instance) plate can throw; fall through to the
+    -- pet frame instead of erroring out.
+    local ok = pcall(function()
+      frame:ClearAllPoints()
+      frame:SetPoint("BOTTOM", a, "TOP", ox, oy)
+    end)
+    if ok then
+      lastAnchorMode = "plate"
+      return lastAnchorMode
+    end
+    local pf = _G["PetFrame"]
+    if pf then
+      frame:ClearAllPoints()
+      frame:SetPoint("BOTTOM", pf, "TOP", ox, oy)
+      lastAnchorMode = "petframe"
+      return lastAnchorMode
+    end
+    lastAnchorMode = "none"
     return lastAnchorMode
   end
 
-  -- UI fallback: the pet unit frame. Deliberately used even when the player has
-  -- hidden it in Edit Mode (a hidden frame keeps its layout, so the anchor still
-  -- resolves) — otherwise the marker would disappear for exactly the players the
-  -- README tells to hide their pet frame.
-  local pf = _G["PetFrame"]
-  if pf then
+  if mode == "screen" then
+    local scale = (UIParent.GetEffectiveScale and UIParent:GetEffectiveScale()) or 1
+    local sh = (GetScreenHeight and GetScreenHeight()) or (UIParent and UIParent:GetHeight()) or 0
     frame:ClearAllPoints()
-    frame:SetPoint("BOTTOM", pf, "TOP", ox, oy)
+    frame:SetPoint("BOTTOM", UIParent, "BOTTOMLEFT", a / scale, sh - (b / scale) + oy)
+    lastAnchorMode = "screen"
+    lastAnchorSource = c
+    return lastAnchorMode
+  end
+
+  if mode == "petframe" then
+    frame:ClearAllPoints()
+    if HK.IsPinned(db) then
+      -- Dragged: stay exactly where the player dropped it (absolute UIParent
+      -- CENTRE offset, the same scheme the feed button and sniper mark use).
+      frame:SetPoint("CENTER", UIParent, "CENTER", db.pinX or 0, db.pinY or 0)
+    else
+      frame:SetPoint("BOTTOM", a, "TOP", ox, oy)
+    end
     lastAnchorMode = "petframe"
     return lastAnchorMode
   end
@@ -713,18 +759,99 @@ function MendMark.Capabilities()
   return table.concat(out, "\n")
 end
 
+-- Every nameplate CVar this client actually has, so "which setting would give my
+-- pet a plate?" is answerable instead of guessed.
+function MendMark.NameplateCVarDump()
+  local names = {}
+  if C_Console and C_Console.GetAllCommands then
+    local ok, list = pcall(C_Console.GetAllCommands)
+    if ok and type(list) == "table" then
+      for _, e in ipairs(list) do
+        local n
+        if type(e) == "string" then n = e
+        elseif type(e) == "table" then n = e.command or e.name or e.cvar end
+        if type(n) == "string" then
+          n = (n:gsub("^/", ""))
+          if n:lower():find("nameplate", 1, true) then names[#names + 1] = n end
+        end
+      end
+    end
+  end
+  if #names == 0 then return "(C_Console.GetAllCommands unavailable)" end
+  table.sort(names)
+  local out = {}
+  for _, n in ipairs(names) do
+    local ok, v = pcall(GetCVar, n)
+    out[#out + 1] = n .. "=" .. tostring(ok and v or "?")
+  end
+  return table.concat(out, "  ")
+end
+
+-- How many rungs of the force-plate ladder could still change something: the CVar
+-- exists on this client AND is currently off. Zero means ticking "Force pet name
+-- plate" cannot help (1.15.9 is like this: the friendly-plate CVars are gone and
+-- nameplateShowAll is already 1), and we must say that instead of suggesting it.
+function MendMark.LadderCVarsUsable()
+  if not GetCVar then return 0 end
+  local n = 0
+  for _, name in ipairs(PLATE_CVAR_LADDER) do
+    local ok, v = pcall(GetCVar, name)
+    if ok and v ~= nil and v ~= "1" and v ~= 1 then n = n + 1 end
+  end
+  return n
+end
+
+-- Why the marker is not on screen right now (nil when it should be showing).
+function MendMark.HiddenReason()
+  if not frame then return "not initialised" end
+  if HK.db.enabled == false then return "HunterKit master switch is off" end
+  if not db.enabled then return "the mend marker is disabled" end
+  if not HK.isHunter then return "not a hunter" end
+  if not PetIsOut() then return "no pet out" end
+  if MendInRange() == nil then return "Mend Pet is not learned" end
+  local hp = PetHPPercent()
+  local urgent = (hp ~= nil) and (hp <= (db.hpThreshold or 30))
+  if db.combatOnly and not InFight() and not urgent then
+    return "out of combat and the pet is above the threshold (Only in combat is on)"
+  end
+  return nil
+end
+
 function MendMark.PrintDiag()
   print("|cff39ff14HunterKit — Pet Mend Marker|r")
   print("  " .. MendMark.Diagnostic())
+  local reason = MendMark.HiddenReason()
+  if reason then print("  hidden because: " .. reason) end
+  -- Report the anchor even while hidden: resolve it without moving anything.
+  local rm = ResolveAnchor()
+  print("  anchor would be: " .. tostring(rm)
+    .. (lastAnchorMode and ("  (applied: " .. lastAnchorMode .. ")") or "  (not applied yet)"))
   print("  cvars (* = changed by HunterKit, restored on disable/logout): " .. MendMark.PlateCVars())
   print(MendMark.Capabilities())
-  if lastAnchorMode == "plate" then
+  print("  nameplate cvars: " .. MendMark.NameplateCVarDump())
+  if rm == "plate" then
     print("  Anchored over the pet's head via its name plate.")
+  elseif rm == "screen" then
+    print("  Anchored to the client's own screen position for the pet (no plate needed).")
   else
-    print("  No pet name plate from the client, so the marker is anchored to the pet unit frame.")
-    print("  For true over-the-head anchoring either enable friendly nameplates,")
-    print("  or tick Options → Pet Mend Marker → 'Force pet name plate' (HunterKit turns on the")
-    print("  minimum nameplate CVars and puts them back when you untick it).")
+    if db.forcePlate then
+      local changed = 0
+      for _ in pairs(db.plateCVars or {}) do changed = changed + 1 end
+      print("  'Force pet name plate' is ON and changed " .. changed ..
+            " CVar(s), but the client still publishes no pet plate.")
+      print("  There is nothing else to turn on here — the marker stays on the UI fallback:")
+      print("  /htk unlock and drag it wherever you want it (the spot is saved).")
+    elseif MendMark.LadderCVarsUsable() == 0 then
+      print("  This client publishes no pet plate, no screen position for the pet, and has no")
+      print("  nameplate CVar left that would create one — so over-the-head anchoring is not")
+      print("  available here. The marker uses the UI fallback instead:")
+      print("  /htk unlock and drag it wherever you want it (the spot is saved).")
+    else
+      print("  No pet name plate from the client, so the marker is on the UI fallback.")
+      print("  Tick Options → Pet Mend Marker → 'Force pet name plate' (" ..
+            MendMark.LadderCVarsUsable() .. " CVar(s) here could create one);")
+      print("  HunterKit restores them on untick/logout. Or /htk unlock and drag the marker.")
+    end
   end
 end
 

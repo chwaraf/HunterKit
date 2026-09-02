@@ -246,6 +246,17 @@ C_NamePlate = {
   end,
 }
 
+-- Models C_Console.GetAllCommands(): one entry per CVar the client has.
+C_Console = {
+  GetAllCommands = function()
+    local out = {}
+    for n in pairs(HKTest.state.cvars) do
+      out[#out + 1] = { command = n, help = "" }
+    end
+    return out
+  end,
+}
+
 C_Timer = {
   NewTicker = function(interval, fn)
     local t = { interval = interval, fn = fn, cancelled = false }

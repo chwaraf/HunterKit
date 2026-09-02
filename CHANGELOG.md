@@ -3,6 +3,47 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.6.0] - 2026-09-02
+### Measured on a live 1.15.9 client (via the 0.5.0 probe)
+```
+screen-pos APIs: GetUnitNamePosition=absent  GetUnitScreenPosition=absent
+pet plate via:   GetNamePlateForUnit=none  NAME_PLATE_UNIT_ADDED=none  GetNamePlates=none  NamePlateN scan=none
+plates visible:  0        UnitPosition(pet)=refused   GetPlayerFacing=0.89
+nameplate cvars: nameplateShowAll=1  nameplateShowEnemies=1  nameplateMaxDistance=41
+```
+No pet plate, no screen-position API, no pet world position, and the friendly/pet
+nameplate CVars no longer exist — so **over-the-head anchoring is not available on
+1.15.9** and *Force pet name plate* cannot help there (rungs 1-2 are gone, rung 3
+`nameplateShowAll` is already 1). Recorded in the README so nobody re-litigates it.
+
+### Fixed
+- **`/htk mend` printed misleading advice.** Out of combat with a healthy pet the
+  marker is hidden *before* it resolves an anchor, so the report showed `mode=nil`
+  and then claimed it "is anchored to the pet unit frame". Anchor resolution is now
+  split from anchor application (`ResolveAnchor`), so the report always prints
+  `anchor would be: <mode>` plus why the marker is hidden.
+
+### Added
+- **`hidden because:` line** — the exact gate that's keeping the marker off screen
+  (master switch, no pet, Mend Pet untrained, out of combat + healthy, ...).
+- **Full nameplate CVar dump** from `C_Console.GetAllCommands()` — this is what
+  proved the friendly-plate CVars are gone on 1.15.9, and it answers "which setting
+  would give my pet a plate?" on any client instead of guessing.
+- **`LadderCVarsUsable()`** — counts ladder rungs that exist *and* are still off, so
+  the addon only suggests Force pet name plate when it could actually work, and says
+  plainly "nothing else to turn on here" when it can't.
+- **The UI fallback is now draggable** (`/htk unlock` → drag → lock), registered like
+  the feed button and sniper mark, with the drop point stored in `mend.pinX`/`pinY`
+  (kept separate from `offsetY`, which is still the gap above the anchor's top edge in
+  plate mode). `/htk reset` returns it above the pet frame. On a client where the head
+  anchor is impossible, placement is the only lever left, so it's in the player's hands.
+
+### Notes
+- Test suite: 105 -> **118** behaviour checks, including a stub of the exact 1.15.9
+  CVar set asserting the report resolves the anchor while hidden, names the hidden
+  reason, dumps the CVars, and does NOT suggest force-plate when it cannot help.
+
+
 ## [0.5.0] - 2026-09-02
 ### Added (world anchoring paths that don't depend on C_NamePlate)
 - **Direct screen-position probing.** Some TBC-lineage builds are reported to expose a

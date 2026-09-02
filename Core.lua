@@ -6,7 +6,7 @@
 
 local ADDON_NAME, HK = ...
 
-HK.version = "0.5.0"
+HK.version = "0.6.0"
 
 -- ---------------------------------------------------------------------------
 -- Defaults (schema). This is the source of truth for the options window and
@@ -88,6 +88,9 @@ HK.defaults = {
     size        = 34,
     offsetX     = 0,
     offsetY     = 4,       -- gap above the anchor (name plate / pet frame) top edge
+    pinX        = 0,       -- dragged position (absolute UIParent CENTRE offset)
+    pinY        = 0,
+    moved       = false,   -- true once dragged; then the UI fallback is pinned
     hpThreshold = 30,      -- % of max HP at or below which the marker goes urgent
     urgentPulse = true,    -- grow + pulse + expanding ring while urgent
     urgentCycle = 0.55,    -- seconds per urgent pulse
