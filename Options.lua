@@ -698,11 +698,22 @@ function Positions.SetLock(locked)
     local dd = d
     local name = key
     local f = dd.frame
-    -- Skip frames that aren't the player's to move right now (the mend marker
-    -- while it's floating over the pet's head). Touching their drag state is both
-    -- meaningless and, on restricted anchors, an error.
-    if f and not HK.DraggableActive(dd) then
+    -- A frame that isn't the player's to move right now (the mend marker while
+    -- it floats over the pet's head) must not have its drag state touched: on a
+    -- restricted anchor the client throws and taints.
+    --
+    -- But that state FLIPS within a session: the marker is the draggable UI
+    -- fallback while unlocked and is back on the protected name plate the moment
+    -- you lock. So "not movable now" may only skip the SETUP -- a frame we
+    -- already made draggable still has to be cleaned up, or it keeps its drag
+    -- handlers, its mouse-enabled state and its faded edit-mode alpha forever.
+    local active = f ~= nil and HK.DraggableActive(dd)
+    if f and not active and not dd.dragSetup then
       HK.Dbg("SetLock skip (not draggable now)", key)
+      f = nil
+    end
+    if f and unlock and not active then
+      HK.Dbg("SetLock: nothing to make movable now", key)
       f = nil
     end
     if f then
@@ -711,8 +722,10 @@ function Positions.SetLock(locked)
       f:SetMovable(unlock)
       f:EnableMouse(mouse)
       -- pcall-guarded: a frame anchored to a name plate refuses to be clamped
-      -- ("Can't clamp restricted regions") and would taint the whole loop.
-      HK.SafeClamp(f, true)
+      -- ("Can't clamp restricted regions") and would taint the whole loop. On
+      -- lock, only clamp what is draggable now -- the mend marker sets its own
+      -- clamp to match the anchor it just took.
+      if unlock or active then HK.SafeClamp(f, true) end
       if unlock then
         -- blank secure click for clickable frames (avoid feeding while dragging).
         -- The feed button now uses a spell + target-item combo (not a macro), so
@@ -763,6 +776,7 @@ function Positions.SetLock(locked)
               (nx / s) - grabX, (ny / s) - grabY)
           end)
         end)
+        dd.dragSetup = true
         f:SetScript("OnDragStop", function(self)
           draggingFrame = nil
           -- Re-bind the feature's own persistent OnUpdate loop (e.g. the passive
@@ -814,6 +828,7 @@ function Positions.SetLock(locked)
             tostring(HK.db[key] and HK.db[key].offsetY),
             tostring(HK.db[key] and HK.db[key].moved),
             tostring(HK.db[key] and HK.IsPinned(HK.db[key]))))
+        dd.dragSetup = nil
       end
     end
   end

@@ -386,9 +386,15 @@ local function BuildFrame()
     -- the pet's head (plate/screen anchor) it must keep following the pet — and
     -- a frame anchored to a name plate is a restricted region, so lock/unlock
     -- must leave it alone entirely.
+    --
+    -- Update() first, on purpose: Positions.SetLock acts on this answer in the
+    -- same instant, and the frame must already be off the protected plate by
+    -- then. Otherwise unlock would clamp/drag a plate-anchored frame for the
+    -- ~100ms until the ticker re-anchors it — which is the client error this
+    -- guard exists to prevent.
     draggableIf = function()
-      local mode = ResolveAnchor()
-      return mode == "petframe"
+      Update()
+      return ResolveAnchor() == "petframe"
     end,
     restore = function() Update() end,
     -- Re-bind the pulse loop; the drag handlers blank the frame's OnUpdate.
@@ -456,6 +462,22 @@ end
 --   petframe -> the pet unit frame
 ResolveAnchor = function()
   local mode = db.anchor or "auto"
+
+  -- Edit mode (/htk unlock) always uses the draggable UI fallback.
+  --
+  -- The over-the-head marker hangs off the pet's name plate, which is a
+  -- protected frame: the client refuses drag/clamp state on anything anchored to
+  -- it ("Can't clamp restricted regions", plus taint), and this module re-applies
+  -- the plate anchor every tick anyway — so a drag there could neither be started
+  -- nor kept. Showing the immovable head marker during edit mode would leave the
+  -- player dragging nothing, so while unlocked we resolve to the fallback, which
+  -- IS the player's to move. Head anchoring resumes the moment frames are locked.
+  if HK.Editing() then
+    local pf = _G["PetFrame"]
+    if pf then return "petframe", pf end
+    -- No pet frame at all (an addon removed it): fall through rather than hiding
+    -- the marker, so unlocking still shows something.
+  end
 
   if mode == "petframe" then
     local pf = _G["PetFrame"]
@@ -627,6 +649,9 @@ local function Hide()
   frame:SetShown(false)
 end
 
+-- Which anchor mode the frame's clamp state was last set for (see Update).
+local clampedFor = nil
+
 Update = function()
   if not frame then return end
   db = HK.db.mend
@@ -667,6 +692,15 @@ Update = function()
 
   ApplyLook(inRange, urgentNow)
   local mode = ApplyAnchor()
+  -- Keep the clamp in step with what the frame is anchored to: never clamped
+  -- while it hangs off a name plate (the client refuses the call, and it has to
+  -- follow the pet off-screen anyway), clamped while it is the draggable
+  -- fallback in edit mode so it cannot be dropped off-screen. Only on a mode
+  -- change — not ten times a second.
+  if mode ~= clampedFor then
+    HK.SafeClamp(frame, mode ~= "plate" and editing or false)
+    clampedFor = mode
+  end
   if mode == "none" then
     Hide()
     return

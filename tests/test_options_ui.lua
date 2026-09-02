@@ -267,6 +267,84 @@ check("tooltip text is a readable length", body ~= nil and #body >= 10,
   tostring(body and #body))
 
 -- ---------------------------------------------------------------------------
+-- 5) /htk unlock — you get the MOVABLE fallback, and locking cleans up after it
+-- ---------------------------------------------------------------------------
+local marker = _G["HunterKitMendMarker"]
+local widget = _G["HunterKitMendPlate"]
+check("the mend marker was built", marker ~= nil)
+
+-- The client refuses drag/clamp state on a frame anchored to a name plate, so
+-- model exactly that: the marker is restricted while it hangs off the plate.
+local clampCalls = {}
+marker.SetClampedToScreen = function(self, on)
+  clampCalls[#clampCalls + 1] = { on = on, mode = HK.MendMark.AnchorMode() }
+  if HK.MendMark.AnchorMode() == "plate" then
+    error("SetClampedToScreen(): Can't clamp restricted regions")
+  end
+end
+
+-- With frames locked and a real pet plate present, the marker belongs over the
+-- pet's head — and that one is not the player's to move.
+HKTest.state.plate = CreateFrame("Frame", "OptTestPetPlate", UIParent)
+HK.MendMark.Update()
+check("locked + plate: anchored over the head",
+  HK.MendMark.AnchorMode() == "plate", HK.MendMark.AnchorMode())
+check("locked + plate: not the player's to move",
+  HK.DraggableActive(HK.draggables["mend"]) == false)
+
+local okUnlock, errUnlock = pcall(HK.Positions.ToggleLock)
+HK.MendMark.Update()
+check("/htk unlock runs without error", okUnlock, errUnlock)
+check("unlocked: shows the movable fallback instead of the head marker",
+  HK.MendMark.AnchorMode() == "petframe", HK.MendMark.AnchorMode())
+check("unlocked: the marker is draggable",
+  HK.DraggableActive(HK.draggables["mend"]) == true)
+check("unlocked: the frame was made movable", marker.movable == true,
+  tostring(marker.movable))
+check("unlocked: drag handlers are bound", marker.scripts["OnDragStart"] ~= nil)
+check("unlocked: the fallback widget is what you see", widget:IsShown() == true)
+check("unlocked: the head marker is not left on the plate",
+  marker.points[1] and marker.points[1][2] ~= HKTest.state.plate,
+  tostring(marker.points[1] and marker.points[1][2]))
+
+local okLock, errLock = pcall(HK.Positions.ToggleLock)
+HK.MendMark.Update()
+check("/htk lock runs without error", okLock, errLock)
+check("relocked: back over the pet's head",
+  HK.MendMark.AnchorMode() == "plate", HK.MendMark.AnchorMode())
+check("relocked: no longer the player's to move",
+  HK.DraggableActive(HK.draggables["mend"]) == false)
+check("relocked: drag handlers removed", marker.scripts["OnDragStart"] == nil)
+check("relocked: no longer movable", marker.movable == false, tostring(marker.movable))
+check("relocked: edit-mode fade removed", marker.alpha == 1, tostring(marker.alpha))
+check("relocked: marker still on screen", marker:IsShown() == true)
+
+local badClamp = 0
+for _, c in ipairs(clampCalls) do
+  if c.on == true and c.mode == "plate" then badClamp = badClamp + 1 end
+end
+check("never clamped while anchored to the name plate", badClamp == 0, tostring(badClamp))
+
+-- The head marker can only exist while the pet is out (a plate needs a live
+-- pet), so edit mode must not go looking for one.
+HKTest.state.plate = nil
+HKTest.state.pet = false
+local okNoPet, errNoPet = pcall(function()
+  HK.Positions.ToggleLock()
+  HK.MendMark.Update()
+end)
+check("edit mode with no pet: no error", okNoPet, errNoPet)
+check("edit mode with no pet: on the UI fallback",
+  HK.MendMark.AnchorMode() == "petframe", HK.MendMark.AnchorMode())
+check("edit mode with no pet: shown so it can be placed", marker:IsShown() == true)
+pcall(HK.Positions.ToggleLock)      -- lock again
+HK.MendMark.Update()
+check("locked with no pet: hidden", HK.MendMark.IsShown() == false)
+HKTest.state.pet = true
+HK.MendMark.Update()
+check("pet back and locked: on screen again", HK.MendMark.IsShown() == true)
+
+-- ---------------------------------------------------------------------------
 say(string.format("\n%d passed, %d failed", passes, #failures))
 if #failures > 0 then
   for _, f in ipairs(failures) do say("  - " .. f) end

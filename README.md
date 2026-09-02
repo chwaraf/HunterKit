@@ -7,7 +7,7 @@ For **WoW Classic Era & Hardcore** (patch 1.15.x).
 A self-contained, dependency-free (no Ace3/LibDBIcon) addon built for the
 hardcore-first hunter. Every action is a deliberate click; nothing is automated.
 
-Current version: **0.7.0** — see [`CHANGELOG.md`](CHANGELOG.md).
+Current version: **0.7.1** — see [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Features
 
@@ -87,10 +87,17 @@ UIParent advice below.
 
 **4. Otherwise the UI fallback is yours to place.** `/htk unlock`, drag the
 marker wherever you read it best, lock again — the spot is saved per character
-(`/htk reset` returns it above the pet frame). Only the fallback is draggable:
-while the marker floats over the pet's head it keeps following the pet, and
-lock/unlock leaves it alone (a frame anchored to a name plate is a *restricted
-region* — touching its clamp/drag state throws and taints).
+(`/htk reset` returns it above the pet frame).
+
+**In edit mode you always drag the fallback — even when the head anchor is live.**
+`/htk unlock` switches the marker to the UI fallback widget while frames are
+unlocked, so the thing on screen is the thing you can move; `/htk lock` sends it
+back over the pet's head. It has to be that way: a frame anchored to a name plate
+is a *restricted region*, so the client throws and taints if anything touches its
+drag or clamp state, and the addon re-applies the plate anchor every 100 ms — a
+drag there could neither be started nor kept. That is also why edit mode shows
+**one** marker, not two: there is no second, movable copy of the head marker to
+show, and showing the immovable one would leave you dragging nothing.
 
 Anchor modes: **`auto`** (default) = head when a plate exists, else the pet
 frame · **`plate`** = head only, hidden while there's no plate · **`petframe`** =
@@ -240,12 +247,12 @@ test suite enforces part of it:
 `python3 tests/run_tests.py` runs the Lua tests: it loads the real addon files
 against a stub client (`tests/wow_stub.lua`) — no logic is re-implemented — and
 needs a Lua interpreter on `PATH` (`lua`/`lua5.1`/`luajit`) or `pip install lupa`.
-Add `--verbose` to echo the addon's chat output. **201 checks**, in three files:
+Add `--verbose` to echo the addon's chat output. **224 checks**, in three files:
 
 | File | Covers |
 |---|---|
 | `test_mendmark.lua` (132) | marker visibility, range/urgency styling, all four plate-discovery paths, the anchor modes, the force-plate CVar ladder, drag/lock, restricted-region safety |
-| `test_options_ui.lua` (29) | **builds the real settings window** and checks the layout: window/content size, one divider per section, slider values visible before interaction, no clipped or overlapping text, wrapped tooltips, no stray globals, no module `Init` that throws |
+| `test_options_ui.lua` (52) | **builds the real settings window** and checks the layout: window/content size, one divider per section, slider values visible before interaction, no clipped or overlapping text, wrapped tooltips, no stray globals, no module `Init` that throws — plus the **real** `Positions.ToggleLock` round trip (edit mode hands you the movable marker, locking cleans up, a plate-anchored marker is never clamped) |
 | `test_docs.lua` (40) | every file parses, the `.toc` matches disk, `.toc` version == `HK.version` == newest `CHANGELOG` entry, every `/htk` subcommand documented here |
 
 ## License

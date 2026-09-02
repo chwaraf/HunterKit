@@ -3,6 +3,49 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.7.1] - 2026-09-02
+### Changed
+- **`/htk unlock` shows the movable fallback, not the over-the-head marker.**
+  While frames are unlocked, `ResolveAnchor()` returns the pet-frame anchor even
+  when a pet plate exists — and even when *Anchor* is set to `plate` — so what you
+  see is what you can drag. `/htk lock` sends it back over the pet's head. It has
+  to work that way: a frame anchored to a name plate is a **restricted region**
+  (the client throws and taints if anything touches its drag or clamp state) and
+  the addon re-applies the plate anchor every 100 ms, so the head marker can be
+  neither moved nor held. Edit mode therefore shows **one** marker, not two —
+  there is no second, movable copy of the head marker to show.
+- **The clamp follows the anchor.** Never clamped while the marker hangs off a
+  name plate (it must follow the pet off-screen, and the client refuses the call
+  anyway); clamped while it is the draggable fallback in edit mode, so it can't be
+  dropped off-screen. Applied only when the anchor mode changes, not 10×/second.
+
+### Fixed
+- **A frame that stopped being draggable was never cleaned up.** `Positions.SetLock`
+  skipped every frame whose `draggableIf` reported "not movable now". That was
+  right while the state was static, but the marker's state now flips, so locking
+  left it with its drag handlers, its mouse-enabled state and its faded edit-mode
+  alpha. "Not movable now" now only skips the *setup*; anything we made draggable
+  is still torn down (tracked as `dd.dragSetup`).
+- **Unlock clamped a plate-anchored frame for up to 100 ms.** `draggableIf`
+  answered "petframe" while the frame was still anchored to the plate (the ticker
+  had not re-anchored yet), so `SetLock` ran `SetClampedToScreen(true)` on a
+  restricted region — the exact client error fixed in 0.6.2, absorbed by
+  `HK.SafeClamp` but still thrown. `draggableIf` now calls `Update()` first, so the
+  frame is off the plate before `SetLock` acts on the answer.
+
+### Added (tests)
+- `test_options_ui.lua` now drives the **real** `HK.Positions.ToggleLock()` with a
+  live pet plate: unlock → fallback anchor, frame movable, drag handlers bound,
+  fallback widget shown, head marker off the plate; lock → back on the plate,
+  handlers removed, not movable, alpha restored, still on screen. A stub that
+  throws `Can't clamp restricted regions` whenever the marker is plate-anchored
+  proves it is never clamped in that state. Edit mode with no pet stays on the UI
+  fallback and never goes looking for a plate.
+- Each of the three fixes proven by reverting it: the edit-mode anchor branch → 7
+  failures, the `Update()` inside `draggableIf` → the clamp failure, the
+  `dragSetup` teardown guard → 2 "left draggable" failures.
+- Suite: **132 behaviour + 52 UI + 40 docs = 224 checks**.
+
 ## [0.7.0] - 2026-09-02
 ### Changed (Options window layout — 7 reported UI problems)
 - **The window is bigger:** 392×520 → **474×604**, content column 360 → **436 px**,
