@@ -1,20 +1,30 @@
 --[[==============================================================================
  HunterKit — Pet Mend Marker (F6)
- A Mend Pet icon that floats above your pet's head. It is a readout, not a
- button: it lights up green and solid when the pet is inside Mend Pet range, so
- you know at a glance — without reading a bar — whether a Mend will land. When
- the pet drops to the low-HP threshold (30% by default) it grows, pulses and
- throws an expanding red ring, because that is the moment you actually need it.
- The box colour always carries the range answer (green = in range, red = not) so
- the two signals never fight.
+ A Mend Pet icon that floats above your pet's head, nameplate style. It is a
+ readout, not a button: it lights up green and solid when the pet is inside Mend
+ Pet range, so you know at a glance — without reading a bar — whether a Mend will
+ land. When the pet drops to the low-HP threshold (30% by default) it grows,
+ pulses and throws an expanding red ring, because that is the moment you actually
+ need it. The box colour always carries the range answer (green = in range, red =
+ not) so the two signals never fight.
 
  It never casts anything. Like every other HunterKit module this is display only.
 
- Anchoring (see README → "Pet Mend Marker"): the client only exposes a unit's
- world position while that unit has a name plate, so we anchor to the pet's plate
- when one exists and fall back to the pet unit frame otherwise. There is no
- world-to-screen API in Classic Era — no addon can place a frame at a world
- position the client doesn't publish.
+ ANCHORING — read this before changing it.
+ The client publishes a unit's on-screen position ONLY through its name plate
+ (C_NamePlate.GetNamePlateForUnit). There is no world-to-screen API, and
+ UnitPosition() explicitly does not work on pets, so an addon cannot project the
+ pet into screen space by itself. So:
+   * if a pet plate exists -> anchor over the pet's head (true world anchoring).
+     We try three ways to find one: the direct API, the plate the client handed
+     us in NAME_PLATE_UNIT_ADDED, and a scan of C_NamePlate.GetNamePlates().
+   * if the player has nameplates off, no plate exists. `forcePlate` (opt-in)
+     turns on the minimum nameplate CVars this client still has, ladder-style,
+     and checks after each step whether a pet plate actually appeared — then
+     restores the old values when switched off or at logout, so nothing is
+     written to the player's config permanently.
+   * otherwise we fall back to the pet unit frame and draw a nameplate-style
+     widget (icon + pet name + HP bar) so it still reads like a plate.
 ==============================================================================]]
 local _, HK = ...
 
@@ -23,10 +33,12 @@ HK.MendMark = MendMark
 
 local db
 local frame, icon, border, ring, label
+local plate, plateBg, plateName, plateBar, plateBarTex
 local ticker
 local phase = 0
 local urgentNow = false
 local lastAnchorMode = nil
+local eventPlate = nil
 
 -- Mend Pet (136) resolves to the localized name of the rank you actually know.
 local MEND_PET_SPELL_ID = 136
@@ -37,12 +49,24 @@ local RING_TEX = "Interface\\Cooldown\\star4"
 local C_INRANGE = { 0.2, 1, 0.2 }
 local C_FAR     = { 1, 0.15, 0.15 }
 
+-- The nameplate CVars, least invasive first. `forcePlate` walks this ladder one
+-- step at a time and only escalates if the previous step produced no pet plate.
+-- GetCVar returns nil for a CVar the client doesn't have (Midnight dropped the
+-- friendly ones), so a missing entry is skipped instead of erroring.
+local PLATE_CVAR_LADDER = {
+  "nameplateShowFriendlyPets",
+  "nameplateShowFriends",
+  "nameplateShowAll",
+}
+local plateStep = 0          -- how many ladder rungs we've enabled
+local plateWait = 0          -- ticks since the last step (give the client a beat)
+
 -- Cached spell name. Cleared on SPELLS_CHANGED so learning Mend Pet later is
 -- picked up without a /reload.
 local mendSpell = nil
 
--- Forward declaration: BuildFrame wires this up as the frame's OnUpdate, but its
--- body is defined further down this chunk.
+-- Forward declarations: BuildFrame wires up OnUpdateAnchor, and the anchor code
+-- is defined further down this chunk.
 local OnUpdateAnchor
 
 -- ---------------------------------------------------------------------------
@@ -115,16 +139,117 @@ local function InFight()
   return a == true or b == true
 end
 
--- The pet's name plate, if the client currently has one for it. `true` asks for
--- friendly plates that are otherwise "forbidden" (instances). Plate frames are
--- recycled between units, so only a SHOWN plate is really our pet's.
-local function PetPlate()
+-- ---------------------------------------------------------------------------
+-- Finding the pet's name plate (three independent ways, first hit wins)
+-- ---------------------------------------------------------------------------
+local function PlateUsable(p)
+  if type(p) ~= "table" then return false end
+  -- Plate frames are recycled between units, so only a SHOWN plate is really on
+  -- screen for our pet right now.
+  local okShown, shown = pcall(p.IsShown, p)
+  if okShown and shown == false then return false end
+  return true
+end
+
+-- 1) the direct API. `true` asks for friendly plates that are otherwise
+--    "forbidden" (instances).
+local function PlateForUnit()
   if not (C_NamePlate and C_NamePlate.GetNamePlateForUnit) then return nil end
-  local ok, plate = pcall(C_NamePlate.GetNamePlateForUnit, "pet", true)
-  if not ok or type(plate) ~= "table" then return nil end
-  local okShown, shown = pcall(plate.IsShown, plate)
-  if okShown and shown == false then return nil end
-  return plate
+  local ok, p = pcall(C_NamePlate.GetNamePlateForUnit, "pet", true)
+  if ok and PlateUsable(p) then return p end
+  return nil
+end
+
+-- 2) the plate the client handed us in NAME_PLATE_UNIT_ADDED. Some clients only
+--    report the unit token through that event, not through the query.
+local function PlateFromEvent()
+  if PlateUsable(eventPlate) then return eventPlate end
+  return nil
+end
+
+-- 3) scan the visible plates for one whose unit is the pet.
+local function PlateFromScan()
+  if not (C_NamePlate and C_NamePlate.GetNamePlates) then return nil end
+  local ok, plates = pcall(C_NamePlate.GetNamePlates)
+  if not ok or type(plates) ~= "table" then return nil end
+  for _, p in ipairs(plates) do
+    if type(p) == "table" then
+      local tok = p.namePlateUnitToken
+      if tok == nil and type(p.UnitFrame) == "table" then tok = p.UnitFrame.unit end
+      if tok == "pet" and PlateUsable(p) then return p end
+    end
+  end
+  return nil
+end
+
+local function PetPlate()
+  return PlateForUnit() or PlateFromEvent() or PlateFromScan()
+end
+
+-- ---------------------------------------------------------------------------
+-- forcePlate — opt-in CVar ladder that makes a pet plate exist
+-- ---------------------------------------------------------------------------
+-- CVars are locked while in combat, so callers must retry after
+-- PLAYER_REGEN_ENABLED.
+local function PlateCVarsLocked()
+  return InCombatLockdown and InCombatLockdown() == true
+end
+
+local function SaveCVar(name)
+  local cur = GetCVar(name)
+  if cur == nil then return false end                 -- not on this client
+  if cur == "1" or cur == 1 then return false end     -- already on
+  if db.plateCVars[name] == nil then db.plateCVars[name] = cur end
+  return true
+end
+
+-- Enable one more rung of the ladder. Returns true if it changed something.
+local function ApplyPlateStep()
+  if not db.forcePlate then return false end
+  if not (SetCVar and GetCVar) then return false end
+  if PlateCVarsLocked() then return false end
+  local name = PLATE_CVAR_LADDER[plateStep + 1]
+  if not name then return false end
+  local had = SaveCVar(name)
+  pcall(SetCVar, name, "1")
+  plateStep = plateStep + 1
+  plateWait = 0
+  HK.Dbg("mend forcePlate step", tostring(plateStep), name, "saved=" .. tostring(had))
+  return true
+end
+
+-- Put the CVars back the way we found them. Values are persisted in the db so a
+-- /reload with the option off can still undo them.
+local function RestorePlateCVars()
+  if not (SetCVar and GetCVar) then return end
+  if type(db) ~= "table" or type(db.plateCVars) ~= "table" then return end
+  if PlateCVarsLocked() then return end
+  local n = 0
+  for name, val in pairs(db.plateCVars or {}) do
+    -- Only forget a saved value once it's actually back; a blocked SetCVar keeps
+    -- the original around for the next attempt.
+    if pcall(SetCVar, name, val) then
+      db.plateCVars[name] = nil
+      n = n + 1
+    end
+  end
+  plateStep = 0
+  if n > 0 then HK.Dbg("mend forcePlate restored", tostring(n), "cvars") end
+end
+
+-- Called every tick: escalate the ladder while no pet plate has shown up.
+local function MaintainPlateCVars()
+  if not db.forcePlate then
+    if next(db.plateCVars or {}) then RestorePlateCVars() end
+    plateStep = 0
+    return
+  end
+  if PlateCVarsLocked() then return end
+  if plateStep >= #PLATE_CVAR_LADDER then return end
+  if PetPlate() then return end          -- already have one: stop escalating
+  if not PetIsOut() then return end      -- no pet out: no plate to wait for
+  plateWait = plateWait + 1
+  if plateWait >= 10 then ApplyPlateStep() end   -- ~1s per rung at a 0.10s tick
 end
 
 -- ---------------------------------------------------------------------------
@@ -171,8 +296,53 @@ local function BuildFrame()
   label:SetShadowOffset(1, -1)
   label:Hide()
 
+  BuildMendPlate()
+
   frame:SetScript("OnUpdate", OnUpdateAnchor)
   frame:SetShown(false)
+end
+
+-- The nameplate-style widget drawn under the icon when we're NOT anchored to a
+-- real plate: pet name + a thin HP bar, so the fallback reads like a plate
+-- instead of a bare icon. Hidden whenever a real pet plate is carrying us,
+-- because that plate already shows the name and health.
+function BuildMendPlate()
+  plate = CreateFrame("Frame", "HunterKitMendPlate", frame)
+  plate:SetPoint("TOP", frame, "BOTTOM", 0, -3)
+  plate:SetSize(96, 22)
+  plate:EnableMouse(false)
+
+  plateBg = plate:CreateTexture(nil, "BACKGROUND")
+  plateBg:SetAllPoints(plate)
+  plateBg:SetTexture("Interface\\Buttons\\WHITE8x8")
+  plateBg:SetVertexColor(0, 0, 0, 0.55)
+
+  plateName = plate:CreateFontString(nil, "OVERLAY")
+  plateName:SetPoint("TOP", plate, "TOP", 0, -2)
+  if STANDARD_TEXT_FONT then
+    plateName:SetFont(STANDARD_TEXT_FONT, 11, "OUTLINE")
+  else
+    plateName:SetFontObject(GameFontNormalSmall)
+  end
+  plateName:SetJustifyH("CENTER")
+  plateName:SetTextColor(0.85, 0.95, 1)
+  plateName:SetText("")
+
+  plateBar = plate:CreateTexture(nil, "ARTWORK")
+  plateBar:SetPoint("BOTTOMLEFT", plate, "BOTTOMLEFT", 3, 3)
+  plateBar:SetHeight(5)
+  plateBar:SetWidth(90)
+  plateBar:SetTexture("Interface\\Buttons\\WHITE8x8")
+  plateBar:SetVertexColor(0.15, 0.15, 0.15, 0.9)
+
+  plateBarTex = plate:CreateTexture(nil, "OVERLAY")
+  plateBarTex:SetPoint("LEFT", plateBar, "LEFT", 0, 0)
+  plateBarTex:SetHeight(5)
+  plateBarTex:SetWidth(90)
+  plateBarTex:SetTexture("Interface\\Buttons\\WHITE8x8")
+  plateBarTex:SetVertexColor(0.2, 1, 0.2, 1)
+
+  plate:Hide()
 end
 
 -- ---------------------------------------------------------------------------
@@ -185,13 +355,13 @@ local function ApplyAnchor()
   local ox, oy = db.offsetX or 0, db.offsetY or 0
 
   if mode ~= "petframe" then
-    local plate = PetPlate()
-    if plate then
+    local p = PetPlate()
+    if p then
       -- Anchoring to a forbidden (instance) plate can throw; fall through to the
       -- pet frame instead of erroring out.
       local ok = pcall(function()
         frame:ClearAllPoints()
-        frame:SetPoint("BOTTOM", plate, "TOP", ox, oy)
+        frame:SetPoint("BOTTOM", p, "TOP", ox, oy)
       end)
       if ok then
         lastAnchorMode = "plate"
@@ -279,6 +449,27 @@ local function ApplyLook(inRange, urgent)
   end
 end
 
+-- Nameplate-style widget: name + HP bar, only while we're not on a real plate.
+local function ApplyPlate(hp)
+  if not plate then return end
+  if lastAnchorMode == "plate" or not db.plateStyle then
+    plate:Hide()
+    return
+  end
+  local w = math.max(72, (db.size or 34) * 2.6)
+  plate:SetSize(w, 22)
+  plateBar:SetWidth(w - 6)
+  plateBarTex:SetWidth(math.max(0, (w - 6) * ((hp or 100) / 100)))
+  -- green -> yellow -> red as the pet loses health
+  local frac = math.max(0, math.min(1, (hp or 100) / 100))
+  local r = frac < 0.5 and 1 or (1 - frac) * 2
+  local g = frac < 0.5 and frac * 2 or 1
+  plateBarTex:SetVertexColor(r, g, 0.15, 1)
+  plateName:SetText(UnitName and UnitName("pet") or "Pet")
+  plate:SetAlpha(frame:GetAlpha() or 1)
+  plate:SetShown(true)
+end
+
 -- ---------------------------------------------------------------------------
 -- Driver
 -- ---------------------------------------------------------------------------
@@ -289,6 +480,7 @@ local function Hide()
   phase = 0
   frame:SetScale(1)
   if ring then ring:Hide() end
+  if plate then plate:Hide() end
   frame:SetShown(false)
 end
 
@@ -296,6 +488,7 @@ local function Update()
   if not frame then return end
   db = HK.db.mend
   if HK.db.enabled == false or not db.enabled or not HK.isHunter then
+    RestorePlateCVars()
     Hide()
     return
   end
@@ -335,6 +528,7 @@ local function Update()
     Hide()
     return
   end
+  ApplyPlate(hp)
   frame:SetShown(true)
 end
 
@@ -345,6 +539,7 @@ end
 -- Called by the ticker: cheap, and keeps the marker glued to a moving pet.
 local function Tick()
   if not frame then return end
+  MaintainPlateCVars()
   Update()
 end
 
@@ -352,6 +547,9 @@ function MendMark.RescanSettings()
   db = HK.db.mend
   if not frame then return end
   icon:SetTexture(MendIconTexture())
+  if not db.forcePlate then RestorePlateCVars() end
+  plateStep = 0
+  plateWait = 0
   Update()
 end
 
@@ -367,26 +565,31 @@ end
 function MendMark.Diagnostic()
   local hp = PetHPPercent()
   return string.format(
-    "enabled=%s pet=%s spell=%s inRange=%s hp=%s%% threshold=%s%% anchor=%s(mode=%s) shown=%s",
+    "enabled=%s pet=%s spell=%s inRange=%s hp=%s%% threshold=%s%% anchor=%s(mode=%s) plate=%s shown=%s",
     tostring(db and db.enabled), tostring(PetIsOut()), tostring(mendSpell or MendSpellName()),
     tostring(MendInRange()),
     hp and string.format("%.0f", hp) or "?",
     tostring(db and db.hpThreshold),
-    tostring(db and db.anchor), tostring(lastAnchorMode), tostring(MendMark.IsShown()))
+    tostring(db and db.anchor), tostring(lastAnchorMode),
+    tostring(PetPlate() ~= nil), tostring(MendMark.IsShown()))
 end
 
 -- The nameplate CVars that decide whether the client publishes a pet plate at
--- all. Printed by /htk mend so "why isn't it over the head?" is answerable.
+-- all, plus what forcePlate changed. Printed by /htk mend so "why isn't it over
+-- the head?" is answerable without guesswork.
 function MendMark.PlateCVars()
   if not GetCVar then return "(GetCVar unavailable)" end
   local names = {
     "nameplateShowFriends", "nameplateShowAll", "nameplateShowEnemies",
-    "nameplateShowOnlyNames", "nameplateMaxDistance",
+    "nameplateShowFriendlyPets", "nameplateShowOnlyNames", "nameplateMaxDistance",
   }
   local out = {}
   for _, n in ipairs(names) do
     local ok, v = pcall(GetCVar, n)
-    out[#out + 1] = n .. "=" .. tostring(ok and v or "?")
+    if ok and v ~= nil then
+      local mark = (db and db.plateCVars and db.plateCVars[n] ~= nil) and "*" or ""
+      out[#out + 1] = n .. "=" .. tostring(v) .. mark
+    end
   end
   return table.concat(out, "  ")
 end
@@ -394,10 +597,14 @@ end
 function MendMark.PrintDiag()
   print("|cff39ff14HunterKit — Pet Mend Marker|r")
   print("  " .. MendMark.Diagnostic())
-  print("  cvars: " .. MendMark.PlateCVars())
-  if lastAnchorMode ~= "plate" then
+  print("  cvars (* = changed by HunterKit, restored on disable/logout): " .. MendMark.PlateCVars())
+  if lastAnchorMode == "plate" then
+    print("  Anchored over the pet's head via its name plate.")
+  else
     print("  No pet name plate from the client, so the marker is anchored to the pet unit frame.")
-    print("  True over-the-head anchoring needs a pet plate: Options → Nameplates → show friendly nameplates, or set Anchor = Plate.")
+    print("  For true over-the-head anchoring either enable friendly nameplates,")
+    print("  or tick Options → Pet Mend Marker → 'Force pet name plate' (HunterKit turns on the")
+    print("  minimum nameplate CVars and puts them back when you untick it).")
   end
 end
 
@@ -407,21 +614,41 @@ end
 function MendMark.Init()
   db = HK.db.mend
   if not HK.isHunter then return end   -- structural gate
+  if type(db.plateCVars) ~= "table" then db.plateCVars = {} end
 
   BuildFrame()
 
   HK.On("UNIT_HEALTH", function(u) if u == "pet" then Update() end end)
   HK.On("UNIT_MAXHEALTH", function(u) if u == "pet" then Update() end end)
   HK.On("UNIT_PET", function(u) if u == "player" then Update() end end)
-  HK.On("PLAYER_REGEN_ENABLED", Update)
+  HK.On("PLAYER_REGEN_ENABLED", function()
+    -- CVars are locked in combat: (re)apply or restore once we're out.
+    if db.forcePlate then plateWait = 10 else RestorePlateCVars() end
+    Update()
+  end)
   HK.On("PLAYER_REGEN_DISABLED", Update)
-  HK.On("NAME_PLATE_UNIT_ADDED", Update)
-  HK.On("NAME_PLATE_UNIT_REMOVED", Update)
+  HK.On("NAME_PLATE_UNIT_ADDED", function(unit, p)
+    if unit == "pet" then eventPlate = p end
+    Update()
+  end)
+  HK.On("NAME_PLATE_UNIT_REMOVED", function(unit)
+    if unit == "pet" then eventPlate = nil end
+    Update()
+  end)
   HK.On("PLAYER_ENTERING_WORLD", Update)
+  -- Restore before SavedVariables are written, so a forced CVar never ends up
+  -- persisted in the player's config if the addon is switched off.
+  -- Session-scoped by design: put the CVars back before SavedVariables are
+  -- written, so a forced plate never ends up persisted in the player's config.
+  -- Next login the ladder simply re-applies (Init + the ticker). If combat blocks
+  -- the restore, the originals stay in db.plateCVars and are restored later.
+  HK.On("PLAYER_LOGOUT", RestorePlateCVars)
   HK.On("SPELLS_CHANGED", function()
     mendSpell = nil                    -- re-resolve (may have just been trained)
     Update()
   end)
+
+  if not db.forcePlate then RestorePlateCVars() end
 
   ticker = HK.Ticker(0.10, Tick)
   Update()

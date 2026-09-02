@@ -3,6 +3,42 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.4.0] - 2026-09-02
+### Added (Pet Mend Marker: true over-the-head anchoring with nameplates off)
+- **Three independent ways to find the pet's name plate**, first hit wins:
+  `C_NamePlate.GetNamePlateForUnit("pet", true)` (which also returns the
+  "forbidden" plates instances use), the plate handed to `NAME_PLATE_UNIT_ADDED`,
+  and a scan of `C_NamePlate.GetNamePlates()`. Any of them gives real
+  world anchoring above the pet's head.
+- **"Force pet name plate" (opt-in, off by default).** This is the fix for "I want
+  it over the pet's head but I don't want nameplates on": HunterKit walks a ladder of
+  nameplate CVars from the least invasive up — `nameplateShowFriendlyPets` →
+  `nameplateShowFriends` → `nameplateShowAll` — **stopping at the first rung that
+  actually produces a pet plate**. CVars the client doesn't have are skipped
+  (`GetCVar` returns nil), it waits ~1s between rungs for the client to react, and it
+  never touches them in combat (the client locks CVars there). Your previous values are
+  saved in SavedVariables and **restored on untick and at logout**, so nothing is
+  written to your config permanently.
+- **Nameplate-style fallback widget.** When there's no pet plate to sit on, the marker
+  draws a plate of its own: pet name + a green→red health bar under the icon, so the
+  fallback reads like a nameplate instead of a stray icon. Hidden automatically when a
+  real plate is carrying the marker (that plate already shows name and health).
+- **`/htk mend` now reports `plate=true|false`** and marks every CVar HunterKit changed
+  with a `*`, and its advice line explains the Force pet name plate option.
+
+### Fixed / changed
+- Anchor resolution no longer depends on a single API: a client that only reports the
+  pet through `NAME_PLATE_UNIT_ADDED` (or only through the visible-plate list) now
+  anchors over the head instead of falling back to the pet frame.
+- **dbVersion stays 12**; the new `mend.plateStyle`, `mend.forcePlate` and
+  `mend.plateCVars` keys arrive through `MergeDefaults`. `HK.version` / `.toc` -> **0.4.0**.
+- README anchoring section rewritten to state the constraint and the workaround
+  precisely (no world-to-screen API; `UnitPosition` does not work on pets), and the
+  test suite grew from 67 to **95** behaviour checks (CVar ladder + escalation +
+  restore + logout restore + combat-lock guard + blocked-SetCVar guard + missing-CVar clients + plate
+  discovery + widget).
+
+
 ## [0.3.0] - 2026-09-02
 ### Added (Pet Mend Marker)
 - **A Mend Pet icon above your pet's head.** Green box + solid icon when the pet is

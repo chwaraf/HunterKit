@@ -286,6 +286,165 @@ HK.db.mend.anchor = "auto"
 HKTest.state.plate = nil
 
 -- ---------------------------------------------------------------------------
+-- 5b) Finding the plate: event cache, scan, and the opt-in CVar ladder
+-- ---------------------------------------------------------------------------
+HKTest.state.playerCombat = true
+HKTest.state.petHP = 1000
+HKTest.state.plate = nil
+HKTest.state.scanPlate = nil
+HKTest.TickMarker(1)
+
+local evtPlate = CreateFrame("Frame", "EventPetPlate", UIParent)
+evtPlate:SetSize(100, 40)
+HKTest.Fire("NAME_PLATE_UNIT_ADDED", "pet", evtPlate)
+check("uses the plate from NAME_PLATE_UNIT_ADDED", HK.MendMark.AnchorMode() == "plate",
+  HK.MendMark.AnchorMode())
+HKTest.Fire("NAME_PLATE_UNIT_REMOVED", "pet")
+HKTest.TickMarker(1)
+check("drops it on NAME_PLATE_UNIT_REMOVED", HK.MendMark.AnchorMode() == "petframe",
+  HK.MendMark.AnchorMode())
+
+local scanPlate = CreateFrame("Frame", "ScannedPetPlate", UIParent)
+scanPlate:SetSize(100, 40)
+scanPlate.namePlateUnitToken = "pet"
+HKTest.state.scanPlate = scanPlate
+HKTest.TickMarker(1)
+check("finds the pet plate via C_NamePlate.GetNamePlates()",
+  HK.MendMark.AnchorMode() == "plate", HK.MendMark.AnchorMode())
+HKTest.state.scanPlate = nil
+HKTest.TickMarker(1)
+
+-- opt-in CVar ladder: nothing is touched until the player asks for it
+check("forcePlate is off by default", HK.db.mend.forcePlate == false)
+check("no nameplate cvars touched by default", next(HK.db.mend.plateCVars) == nil)
+HK.db.mend.forcePlate = true
+HK.MendMark.RescanSettings()
+check("forcePlate waits before touching cvars",
+  HKTest.state.cvars.nameplateShowFriendlyPets == "0")
+HKTest.TickMarker(10)
+check("forcePlate turns on the pet-nameplate cvar",
+  HKTest.state.cvars.nameplateShowFriendlyPets == "1")
+check("previous cvar value saved for restore",
+  HK.db.mend.plateCVars.nameplateShowFriendlyPets == "0",
+  tostring(HK.db.mend.plateCVars.nameplateShowFriendlyPets))
+check("marker then anchors over the pet's head",
+  HK.MendMark.AnchorMode() == "plate", HK.MendMark.AnchorMode())
+
+-- combat locks CVars: the ladder must wait, not error
+HK.db.mend.forcePlate = false
+HK.MendMark.RescanSettings()
+HKTest.state.combatLockdown = true
+HK.db.mend.forcePlate = true
+HK.MendMark.RescanSettings()
+HKTest.TickMarker(30)
+check("cvars untouched while in combat lockdown",
+  HKTest.state.cvars.nameplateShowFriendlyPets == "0")
+HKTest.state.combatLockdown = false
+HK.db.mend.forcePlate = false
+HK.MendMark.RescanSettings()
+HKTest.TickMarker(1)
+
+-- escalation: pet CVar alone is not enough on this (modelled) client
+HKTest.state.petPlateNeedsFriends = true
+HK.db.mend.forcePlate = true
+HK.MendMark.RescanSettings()
+HKTest.TickMarker(10)
+check("ladder step 1 alone leaves it on the pet frame",
+  HK.MendMark.AnchorMode() == "petframe", HK.MendMark.AnchorMode())
+HKTest.TickMarker(10)
+check("ladder escalates to nameplateShowFriends",
+  HKTest.state.cvars.nameplateShowFriends == "1")
+check("world anchoring after escalation",
+  HK.MendMark.AnchorMode() == "plate", HK.MendMark.AnchorMode())
+HK.db.mend.forcePlate = false
+HK.MendMark.RescanSettings()
+check("unticking restores both cvars",
+  HKTest.state.cvars.nameplateShowFriendlyPets == "0" and HKTest.state.cvars.nameplateShowFriends == "0",
+  HKTest.state.cvars.nameplateShowFriendlyPets .. "/" .. HKTest.state.cvars.nameplateShowFriends)
+check("saved cvar list cleared after restore", next(HK.db.mend.plateCVars) == nil)
+HKTest.state.petPlateNeedsFriends = false
+HKTest.TickMarker(1)
+
+-- the ladder must not climb just because the pet went away
+HKTest.state.pet = false
+HK.db.mend.forcePlate = true
+HK.MendMark.RescanSettings()
+HKTest.TickMarker(30)
+check("ladder idle with no pet out", HKTest.state.cvars.nameplateShowFriendlyPets == "0",
+  HKTest.state.cvars.nameplateShowFriendlyPets)
+HKTest.state.pet = true
+HK.db.mend.forcePlate = false
+HK.MendMark.RescanSettings()
+HKTest.TickMarker(1)
+
+-- logout puts the CVars back even while the option stays on (session-scoped)
+HK.db.mend.forcePlate = true
+HK.MendMark.RescanSettings()
+HKTest.TickMarker(10)
+check("forced before logout", HKTest.state.cvars.nameplateShowFriendlyPets == "1")
+HKTest.Fire("PLAYER_LOGOUT")
+check("PLAYER_LOGOUT restores the cvars", HKTest.state.cvars.nameplateShowFriendlyPets == "0",
+  HKTest.state.cvars.nameplateShowFriendlyPets)
+HK.db.mend.forcePlate = false
+HKTest.TickMarker(1)
+
+-- a client that rejects the SetCVar itself must not loop or error
+HK.db.mend.plateCVars["nameplateShowFriendlyPets"] = "0"
+local realSet = SetCVar
+SetCVar = function(n, v) error("SetCVar is blocked") end
+HK.MendMark.RescanSettings()
+HKTest.TickMarker(3)
+check("survives a blocked SetCVar", HK.MendMark.IsShown())
+check("kept the saved value for a later retry",
+  HK.db.mend.plateCVars.nameplateShowFriendlyPets == "0",
+  tostring(HK.db.mend.plateCVars.nameplateShowFriendlyPets))
+SetCVar = realSet
+HK.MendMark.RescanSettings()
+check("restores once SetCVar works again",
+  HK.db.mend.plateCVars.nameplateShowFriendlyPets == nil
+    and HKTest.state.cvars.nameplateShowFriendlyPets == "0")
+
+-- a client with none of those CVars must not error out
+local realCVars = HKTest.state.cvars
+HKTest.state.cvars = {}
+HK.db.mend.forcePlate = true
+HK.MendMark.RescanSettings()
+HKTest.TickMarker(30)
+check("survives a client with no nameplate cvars", HK.MendMark.IsShown())
+HKTest.state.cvars = realCVars
+HK.db.mend.forcePlate = false
+HK.MendMark.RescanSettings()
+HKTest.TickMarker(1)
+
+-- ---------------------------------------------------------------------------
+-- 5c) Nameplate-style widget (fallback only)
+-- ---------------------------------------------------------------------------
+local widget = HKTest.PlateWidget()
+check("nameplate-style widget exists", widget ~= nil)
+HKTest.state.plate = nil
+HK.db.mend.plateStyle = true
+HKTest.state.petHP = 1000
+HK.MendMark.Update()
+check("widget shown in the pet-frame fallback", widget:IsShown())
+check("widget shows the pet's name", widget.fontstrings[1]:GetText() == "Fang",
+  widget.fontstrings[1]:GetText())
+HKTest.state.petHP = 500
+HK.MendMark.Update()
+local barFull = widget.textures[2]:GetWidth()
+local barNow = widget.textures[3]:GetWidth()
+check("widget HP bar tracks pet health", barNow < barFull and barNow > 0,
+  tostring(barNow) .. "/" .. tostring(barFull))
+HKTest.state.plate = plate
+HK.MendMark.Update()
+check("widget hidden when anchored to a real plate", not widget:IsShown())
+HKTest.state.plate = nil
+HK.db.mend.plateStyle = false
+HK.MendMark.Update()
+check("widget can be switched off", not widget:IsShown())
+HK.db.mend.plateStyle = true
+HK.MendMark.Update()
+
+-- ---------------------------------------------------------------------------
 -- 6) Diagnostics + slash command must not error
 -- ---------------------------------------------------------------------------
 HKTest.prints = {}

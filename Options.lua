@@ -453,8 +453,16 @@ function BuildWindow()
   MakeDropdown(content, y, "Anchor", { "auto", "plate", "petframe" },
     function() return db.mend.anchor end,
     function(v) db.mend.anchor = v; RefreshMend() end,
-    "auto = over the pet's head when the client exposes a pet name plate, otherwise above the pet unit frame. plate = head only (hidden with every nameplate off). petframe = always above the pet unit frame.")
+    "auto = over the pet's head whenever the client exposes a pet name plate, otherwise above the pet unit frame. plate = head only (hidden while there is no plate). petframe = always above the pet unit frame.")
   y = y - ROW
+  MakeCheckbox(content, y, "Force pet name plate", function() return db.mend.forcePlate end,
+    function(v) db.mend.forcePlate = v; RefreshMend() end,
+    "Makes the game publish a name plate for your pet so the marker can float over its head even though YOU have nameplates turned off. HunterKit enables the least it can (pet plates first, friendly plates only if the client needs that), saves your previous values and restores them when you untick this or log out. /htk mend lists exactly what it changed.")
+  y = y - CHK
+  MakeCheckbox(content, y, "Nameplate style bar", function() return db.mend.plateStyle end,
+    function(v) db.mend.plateStyle = v; RefreshMend() end,
+    "Pet name + health bar under the icon. Only drawn when there is no real pet plate to sit on (that plate already shows them).")
+  y = y - CHK
 
   -- Sound
   AddSection(content, y, "Gun Sound")

@@ -7,7 +7,7 @@ For **WoW Classic Era & Hardcore** (patch 1.15.x).
 A self-contained, dependency-free (no Ace3/LibDBIcon) addon built for the
 hardcore-first hunter. Every action is a deliberate click; nothing is automated.
 
-Current version: **0.3.0** — see [`CHANGELOG.md`](CHANGELOG.md).
+Current version: **0.4.0** — see [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Features
 
@@ -15,7 +15,7 @@ Current version: **0.3.0** — see [`CHANGELOG.md`](CHANGELOG.md).
 |---|---|
 | **Feed Pet button** | A one-click button beside the pet happiness icon. Always feeds the **best** food in your bags (max happiness tier, then smallest open stack). Respects your pins/excludes. Out-of-combat only (as Blizzard intends). |
 | **Sniper Mark** | A reticle by the target frame that reports **IN RANGE / TOO CLOSE / OUT OF RANGE**. You pick the shape per state (crosshair / rings / X); TOO CLOSE defaults to an X so it's colorblind-safe. Reflects state only — it never acts. |
-| **Pet Mend Marker** | A **Mend Pet icon above your pet's head**. Green + solid when the pet is inside Mend Pet range, faded and greyed when it isn't — so you know at a glance, without reading a bar. Goes **bigger and pulsing with an expanding red ring** at or below **30% pet HP**. **On by default.** |
+| **Pet Mend Marker** | A **Mend Pet icon floating above your pet's head, nameplate style**. Green + solid when the pet is inside Mend Pet range, faded and greyed when it isn't — so you know at a glance, without reading a bar. Goes **bigger and pulsing with an expanding red ring** at or below **30% pet HP**. **On by default**, and it works with nameplates turned off. |
 | **Gun sound** | Replaces the stock gunshot with a Star-Wars-style blaster pew. Respects guns-only, no-repeat, and mutes the stock sound. |
 | **Passive alert** | A big pulsing Ability Seal center-screen above your character while the pet is Passive, plus an optional glow on the passive button. Impossible to miss. |
 | **Options** | Draggable settings window, minimap button, `/htk lock\|unlock`, `/htk reset`. |
@@ -38,24 +38,40 @@ The marker answers one question mid-fight: **can I Mend right now?**
 - **`/htk mend`** prints the live state, the anchor actually in use, and the
   nameplate CVars the client is reading.
 
-### Anchoring — and why nameplates matter
+### Anchoring: how it floats over the pet
 
-The client only publishes a unit's **world position** while that unit has a name
-plate. Classic Era has no world-to-screen API, so no addon can float a frame over
-a pet the client isn't drawing a plate for. The marker therefore anchors like
-this:
+A frame can only sit at a unit's position in the world if the client publishes
+that position — and the only way it does that is through the unit's **name
+plate**. Classic Era has no world-to-screen API, and `UnitPosition()` doesn't
+work on pets at all, so no addon can project the pet into screen space by
+itself. What the marker does instead:
 
-1. **`auto` (default)** — over the pet's head when a pet name plate exists;
-   otherwise above the **pet unit frame**. It still works with every nameplate
-   turned off, it just follows the UI frame instead of the pet's head.
-2. **`plate`** — head-anchored only. Hidden when the client exposes no plate
-   (use this if you never want the UI fallback).
-3. **`petframe`** — always above the pet unit frame.
+**1. Find a pet plate — three independent ways, first hit wins.**
+`C_NamePlate.GetNamePlateForUnit("pet", true)` (including the "forbidden" plates
+instances use), the plate handed to `NAME_PLATE_UNIT_ADDED`, and a scan of
+`C_NamePlate.GetNamePlates()`. Any of them gives true over-the-head anchoring.
 
+**2. If you have nameplates off, make one exist — without you turning them on.**
+Tick **Force pet name plate** (opt-in, off by default). HunterKit then walks a
+ladder of nameplate CVars from the least invasive up —
+`nameplateShowFriendlyPets` → `nameplateShowFriends` → `nameplateShowAll` —
+skipping any the client doesn't have, and **stops at the first rung that
+actually produces a pet plate**. It waits ~1s between rungs so the client can
+react, and never touches CVars during combat (the client locks them). Your
+previous values are stored in SavedVariables and **restored when you untick the
+option or log out**, so nothing is written to your config permanently.
+`/htk mend` marks every CVar it changed with a `*`.
+
+**3. Otherwise fall back to the pet unit frame — and look like a plate anyway.**
+The fallback draws a nameplate-style widget under the icon (pet name + a
+green→red health bar), so it still reads like a plate rather than a stray icon.
 The pet unit frame is used **even when you've hidden it in Edit Mode** (a hidden
 frame keeps its layout), so the marker doesn't vanish for players following the
-UIParent advice below. Turn friendly nameplates on if you want true
-over-the-head anchoring; `/htk mend` tells you which mode is live.
+UIParent advice below.
+
+Anchor modes: **`auto`** (default) = head when a plate exists, else the pet
+frame · **`plate`** = head only, hidden while there's no plate · **`petframe`** =
+always the UI widget. `/htk mend` prints which one is live and why.
 
 ## Install
 
@@ -84,11 +100,13 @@ over-the-head anchoring; `/htk mend` tells you which mode is live.
 **"The mark says IN RANGE but my shot fails!"** — Walls. Classic has no line-of-sight API;
 `IsSpellInRange` is distance-only. No addon can do better.
 
-**"The mend marker isn't floating over my pet's head."** — That's the nameplate
-rule above: no pet plate, no world position. Run `/htk mend` — it prints the
-anchor in use (`mode=plate` vs `mode=petframe`) and the relevant CVars. Set
-Anchor = `petframe` to make the UI position permanent, or enable friendly
-nameplates for true head anchoring.
+**"The mend marker isn't floating over my pet's head."** — You have no pet name
+plate, and without one the client publishes no position to hang it from. Tick
+**Force pet name plate** in Options → Pet Mend Marker: HunterKit enables the
+minimum nameplate setting for you (and restores it afterwards), which is what
+makes head anchoring work with your own nameplates off. `/htk mend` confirms it —
+`mode=plate` means it's over the pet's head, `mode=petframe` means it's on the
+UI fallback, and the `*` marks show which CVars it had to change.
 
 **"I use a unit-frame addon / I hid the frames in Edit Mode"** — In options, set the
 Feed button and Sniper Mark **anchor parent to `UIParent`**. Since patch 1.15.9 you can
@@ -122,8 +140,10 @@ ship copyrighted recordings.
 ## Compatibility
 
 - **Edit Mode (1.15.9)** — supported via the `UIParent` anchor option.
-- **Nameplate addons / nameplates off** — the mend marker falls back to the pet
-  unit frame; see the anchoring section above.
+- **Nameplate addons / nameplates off** — the mend marker still works: tick
+  **Force pet name plate** for head anchoring, or let it use the nameplate-style
+  fallback widget. A nameplate addon that replaces Blizzard's plates is fine too —
+  the marker anchors to the plate frame, it doesn't restyle it.
 - **MuteSoundFile (`/msf`) addon** — both manage mutes; last writer wins per ID. If
   you use `/msf`, remove overlapping gunshot IDs from one of the two.
 - **Unit-frame addons** — set Feed/Mark parent to `UIParent`.

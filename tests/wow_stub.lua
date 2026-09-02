@@ -142,6 +142,17 @@ HKTest.state = {
   spellName = "Mend Pet",
   spellTexture = "Interface\\Icons\\Ability_Hunter_MendPet",
   plate = nil,
+  scanPlate = nil,       -- only discoverable via C_NamePlate.GetNamePlates()
+  petPlateNeedsFriends = false,  -- models a client where the pet CVar alone is not enough
+  combatLockdown = false,
+  cvars = {
+    nameplateShowFriends = "0",
+    nameplateShowAll = "0",
+    nameplateShowEnemies = "1",
+    nameplateShowFriendlyPets = "0",
+    nameplateShowOnlyNames = "0",
+    nameplateMaxDistance = "60",
+  },
 }
 
 function UnitClass() return "Testhunter", (HKTest.state.isHunter and "HUNTER" or "WARRIOR") end
@@ -167,8 +178,19 @@ function GetSpellTexture(id)
   return nil
 end
 function GetPetHappiness() return 3, 100, 0 end
-function InCombatLockdown() return false end
-function GetCVar(n) return HKTest.state.cvars and HKTest.state.cvars[n] or "0" end
+function UnitName(u) return (u == "pet") and "Fang" or "Testhunter" end
+function InCombatLockdown() return HKTest.state.combatLockdown == true end
+function GetCVar(n)
+  local c = HKTest.state.cvars
+  if not c then return nil end
+  return c[n]                       -- nil models a CVar this client doesn't have
+end
+function SetCVar(n, v)
+  local c = HKTest.state.cvars
+  if not c or c[n] == nil then error("SetCVar: unknown cvar " .. tostring(n)) end
+  c[n] = tostring(v)
+  return true
+end
 function GetTime() return HKTest.state.now or 0 end
 
 C_Spell = {
@@ -182,10 +204,28 @@ C_Spell = {
   end,
 }
 
+-- Models the client: a pet plate exists if one was handed to us explicitly, or
+-- once the pet-nameplate CVars allow friendly pet plates.
+AutoPetPlate = newFrame("Frame", "AutoPetNamePlate", UIParent)
+AutoPetPlate:SetSize(100, 40)
+AutoPetPlate.namePlateUnitToken = "pet"
+
 C_NamePlate = {
   GetNamePlateForUnit = function(unit, includeForbidden)
     if unit ~= "pet" then return nil end
-    return HKTest.state.plate
+    if HKTest.state.plate then return HKTest.state.plate end
+    local c = HKTest.state.cvars
+    if c.nameplateShowFriendlyPets == "1"
+       and (not HKTest.state.petPlateNeedsFriends or c.nameplateShowFriends == "1") then
+      return AutoPetPlate
+    end
+    return nil
+  end,
+  GetNamePlates = function()
+    local out = {}
+    if HKTest.state.plate then out[#out + 1] = HKTest.state.plate end
+    if HKTest.state.scanPlate then out[#out + 1] = HKTest.state.scanPlate end
+    return out
   end,
 }
 
@@ -236,6 +276,21 @@ end
 
 function HKTest.MarkerFrame()
   return _G["HunterKitMendMarker"]
+end
+
+function HKTest.PlateWidget()
+  return _G["HunterKitMendPlate"]
+end
+
+-- Run n marker ticks (the 0.10s ticker callback).
+function HKTest.TickMarker(n)
+  for _, t in ipairs(HKTest.tickers) do
+    if t.interval and math.abs(t.interval - 0.10) < 0.0001 then
+      for _ = 1, (n or 1) do t:Tick() end
+      return true
+    end
+  end
+  return false
 end
 
 -- Run N animation frames of the marker's OnUpdate at dt seconds each.
