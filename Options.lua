@@ -103,7 +103,7 @@ end
 local function MakeWindow()
   -- BackdropTemplate is required for SetBackdrop on the modern ClassFrameXML.
   win = CreateFrame("Frame", "HunterKitOptions", UIParent, "BackdropTemplate")
-  win:SetSize(392, 520)
+  win:SetSize(474, 604)
   win:SetFrameStrata("DIALOG")
   win:SetPoint("CENTER")
   win:SetMovable(true)
@@ -148,14 +148,14 @@ local function MakeWindow()
   -- via SetVerticalScroll, and let SetScrollChild manage the content position
   -- (do NOT also manually SetPoint the content — that's what broke the layout).
   local scrollArea = CreateFrame("ScrollFrame", "HunterKitOptionsScroll", win)
-  scrollArea:SetPoint("TOPLEFT", win, "TOPLEFT", 12, -34)
-  scrollArea:SetPoint("BOTTOMRIGHT", win, "BOTTOMRIGHT", -20, 12) -- leave room for the scrollbar
+  scrollArea:SetPoint("TOPLEFT", win, "TOPLEFT", 14, -34)
+  scrollArea:SetPoint("BOTTOMRIGHT", win, "BOTTOMRIGHT", -22, 12) -- leave room for the scrollbar
   scrollArea:SetFrameStrata("DIALOG")
   scrollArea:SetClipsChildren(true)
   scrollArea:EnableMouseWheel(true)
 
   local content = CreateFrame("Frame", "HunterKitOptionsContent", scrollArea)
-  content:SetWidth(360)
+  content:SetWidth(436)
   content:SetHeight(1)
   scrollArea:SetScrollChild(content)
   scrollArea.content = content
@@ -241,6 +241,19 @@ end
 -- ---------------------------------------------------------------------------
 -- Widget factories
 -- ---------------------------------------------------------------------------
+-- One tooltip path for every control. AddLine's 5th argument is `wrap` — without
+-- it a long help string renders as one clipped line, which is what it did before.
+local function AttachTooltip(widget, title, body)
+  if not widget or not body or body == "" then return end
+  widget:SetScript("OnEnter", function()
+    GameTooltip:SetOwner(widget, "ANCHOR_RIGHT")
+    GameTooltip:SetText(title, 0.35, 1, 0.35)
+    GameTooltip:AddLine(body, 0.9, 0.9, 0.9, true)   -- wrap = true
+    GameTooltip:Show()
+  end)
+  widget:SetScript("OnLeave", function() GameTooltip:Hide() end)
+end
+
 local function MakeHeader(parent, text)
   local h = parent:CreateFontString(nil, "OVERLAY")
   h:SetFontObject(GameFontHighlight)
@@ -277,60 +290,91 @@ local function MakeCheckbox(parent, y, labelText, get, set, tooltip)
   txt:SetFontObject(GameFontNormal)
   txt:SetJustifyH("LEFT")
   txt:SetWordWrap(false)
-  txt:SetWidth(240) -- room for the label without clipping into the edge
+  txt:SetWidth(math.max(120, (parent:GetWidth() or 436) - 44))
   txt:SetText(labelText)
   txt:SetTextColor(0.9, 0.9, 0.9)
-  if tooltip then
-    chk:SetScript("OnEnter", function()
-      GameTooltip:SetOwner(chk, "ANCHOR_RIGHT")
-      GameTooltip:SetText(labelText); GameTooltip:AddLine(tooltip, 1,1,1); GameTooltip:Show()
-    end)
-    chk:SetScript("OnLeave", function() GameTooltip:Hide() end)
-  end
+  AttachTooltip(chk, labelText, tooltip)
   return chk
 end
 
 local sliderCount = 0
+-- Layout: the label and its live value share the top row (label left, value
+-- right), the slider sits full-width underneath.
+--
+-- Why not the template's own fontstrings: `$parentText` is empty until you drag
+-- (so the value only appeared on interaction), `$parentLow`/`$parentHigh` are
+-- centred on the slider's bottom corners — at x=0 half of "Low" hung outside the
+-- scroll area and got clipped — and `$parentText` floated over the label. All
+-- three are hidden and replaced by our own row.
+local SLIDER_LABEL_H = 15
+local SLIDER_BAR_H   = 18
 local function MakeSlider(parent, y, labelText, min, max, step, get, set, tooltip)
   sliderCount = sliderCount + 1
   local name = "HunterKitOptSlider" .. sliderCount
+  local w = (parent:GetWidth() or 436)
+
+  local lbl = parent:CreateFontString(nil, "OVERLAY")
+  lbl:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, y)
+  lbl:SetFontObject(GameFontNormal)
+  lbl:SetJustifyH("LEFT")
+  lbl:SetWordWrap(false)
+  lbl:SetWidth(math.max(120, w - 76))
+  lbl:SetText(labelText)
+  lbl:SetTextColor(0.9, 0.9, 0.9)
+
+  -- Always visible, right-aligned, in its own column: it can never collide with
+  -- the label or with the row below.
+  local val = parent:CreateFontString(nil, "OVERLAY")
+  val:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -4, y)
+  val:SetFontObject(GameFontHighlight)
+  val:SetJustifyH("RIGHT")
+  val:SetWordWrap(false)
+  val:SetWidth(64)
+  val:SetTextColor(0.35, 1, 0.35)
+  val:SetText(tostring(get()))
+
   local sl = CreateFrame("Slider", name, parent, "OptionsSliderTemplate")
-  sl:SetWidth(180); sl:SetHeight(20)
-  sl:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, y)
+  sl:SetWidth(math.max(120, w - 16))
+  sl:SetHeight(SLIDER_BAR_H)
+  sl:SetPoint("TOPLEFT", parent, "TOPLEFT", 8, y - SLIDER_LABEL_H)
   sl:SetMinMaxValues(min, max)
   sl:SetValueStep(step)
   sl:SetObeyStepOnDrag(true)
+  -- Hide the template's own texts BEFORE SetValue: the client fires
+  -- OnValueChanged from SetValue, and we don't want it repopulating these.
+  for _, suf in ipairs({ "Text", "Low", "High" }) do
+    local fs = _G[name .. suf]
+    if fs and fs.Hide then fs:Hide() end
+  end
+  -- SetValue before the handler is attached: the client fires OnValueChanged
+  -- from SetValue, and we don't want a write-back (and a refresh of every module)
+  -- just for opening the window.
   sl:SetValue(get())
   sl:SetScript("OnValueChanged", function(self)
-    local v = self:GetValue()
-    local t = _G[name .. "Text"]
-    if t then t:SetText(string.format("%d", v)) end
-    set(v)
+    val:SetText(string.format("%d", self:GetValue()))
+    set(self:GetValue())
   end)
-  local txt = sl:CreateFontString(nil, "OVERLAY")
-  txt:SetPoint("LEFT", sl, "RIGHT", 8, 0)
-  txt:SetFontObject(GameFontNormal)
-  txt:SetJustifyH("LEFT")
-  txt:SetWordWrap(false)
-  txt:SetWidth(160)
-  txt:SetText(labelText)
-  txt:SetTextColor(0.9, 0.9, 0.9)
-  if tooltip then
-    sl:SetScript("OnEnter", function()
-      GameTooltip:SetOwner(sl, "ANCHOR_RIGHT"); GameTooltip:SetText(labelText)
-      GameTooltip:AddLine(tooltip, 1,1,1); GameTooltip:Show()
-    end)
-    sl:SetScript("OnLeave", function() GameTooltip:Hide() end)
-  end
+  val:SetText(string.format("%d", sl:GetValue()))   -- shown from the first frame
+  AttachTooltip(sl, labelText, tooltip)
   return sl
 end
 
 -- ---------------------------------------------------------------------------
 -- Build the settings
 -- ---------------------------------------------------------------------------
+-- Each feature gets a rule above its title plus extra air below, so the modules
+-- read as separate blocks instead of one long list.
+local SECTION_RULE_GAP = 7
 local function AddSection(content, y, name)
+  local rule = content:CreateTexture(nil, "BACKGROUND")
+  rule:SetPoint("TOPLEFT", content, "TOPLEFT", 0, y + SECTION_RULE_GAP)
+  rule:SetPoint("TOPRIGHT", content, "TOPRIGHT", 0, y + SECTION_RULE_GAP)
+  rule:SetHeight(1)
+  rule:SetTexture("Interface\\Buttons\\WHITE8x8")
+  rule:SetVertexColor(0.30, 0.55, 0.30, 0.85)
+
   local h = MakeHeader(content, name)
-  h:SetPoint("TOPLEFT", content, "TOPLEFT", 0, y)
+  h:SetPoint("TOPLEFT", content, "TOPLEFT", 0, y - 4)
   return h
 end
 
@@ -341,17 +385,18 @@ function BuildWindow()
   local y = 0
   local nextY = function(offset) y = y - offset end
 
-  -- Spacing scheme (compact): headers take 12, checkboxes 24, sliders/dropdowns 28.
-  local HDR = 12
-  local CHK = 24
-  local ROW = 28
+  -- Spacing scheme: a section header (title + rule) takes HDR, a checkbox CHK, a
+  -- slider or dropdown row ROW (label line + control + gap).
+  local HDR = 30
+  local CHK = 26
+  local ROW = 46
 
   -- master enabled
   AddSection(content, y, "Master")
   y = y - HDR
   MakeCheckbox(content, y, "Enable HunterKit", function() return db.enabled end,
     function(v) db.enabled = v; RefreshModules() end,
-    "Master switch. When off, every HunterKit frame and sound is hidden/disabled.")
+    "Off hides every HunterKit frame and sound.")
   y = y - CHK
 
   if not HK.isHunter then
@@ -367,19 +412,19 @@ function BuildWindow()
   y = y - HDR
   MakeCheckbox(content, y, "Enable feed button", function() return db.feed.enabled end,
     function(v) db.feed.enabled = v; RefreshFeed() end,
-    "One-click Feed Pet button beside the pet's happiness icon. Casts Feed Pet onto the best food in your bags. Right-click opens the food pin menu.")
+    "One-click Feed Pet beside the happiness icon. Right-click to pick food.")
   y = y - CHK
   MakeCheckbox(content, y, "Only when hungry", function() return db.feed.hungryOnly end,
     function(v) db.feed.hungryOnly = v; RefreshFeed() end,
-    "Hide the feed button once the pet is content/full (happiness 3). Show it again as soon as the pet gets hungry.")
+    "Hide the button once the pet is content.")
   y = y - CHK
   MakeSlider(content, y, "Button size", 24, 48, 1, function() return db.feed.size end,
-    function(v) db.feed.size = v; RefreshFeed() end, "Feed button size in pixels.")
+    function(v) db.feed.size = v; RefreshFeed() end, "Size of the feed button, in pixels.")
   y = y - ROW
   MakeDropdown(content, y, "Anchor", { "PetFrame", "UIParent" },
     function() return db.feed.parent end,
     function(v) db.feed.parent = v; RefreshFeed() end,
-    "PetFrame = beside the pet's happiness icon (default). UIParent = free/drag position (use if a unit-frame addon hides the pet frame).")
+    "PetFrame = by the happiness icon. UIParent = free/drag, for when an addon hides the pet frame.")
   y = y - ROW
 
   -- Range
@@ -387,33 +432,33 @@ function BuildWindow()
   y = y - HDR
   MakeCheckbox(content, y, "Enable range mark", function() return db.range.enabled end,
     function(v) db.range.enabled = v; RefreshRange() end,
-    "Reticle beside the target frame showing IN RANGE / TOO CLOSE / OUT OF RANGE.")
+    "Reticle by the target frame: in range, too close or out of range.")
   y = y - CHK
   MakeSlider(content, y, "Mark size", 20, 96, 1, function() return db.range.size end,
-    function(v) db.range.size = v; RefreshRange() end, "Reticle size in pixels.")
+    function(v) db.range.size = v; RefreshRange() end, "Size of the reticle, in pixels.")
   y = y - ROW
   MakeDropdown(content, y, "IN RANGE mark", { "crosshair", "rings", "x" },
     function() return db.range.markOK or "crosshair" end,
     function(v) db.range.markOK = v; RefreshRange() end,
-    "Mark shape shown when Auto Shot is in range (green).")
+    "Shape while Auto Shot is in range (green).")
   y = y - ROW
   MakeDropdown(content, y, "TOO CLOSE mark", { "x", "crosshair", "rings" },
     function() return db.range.markDead or "x" end,
     function(v) db.range.markDead = v; RefreshRange() end,
-    "Mark shape shown when the target is too close to shoot (red).")
+    "Shape when the target is too close (red).")
   y = y - ROW
   MakeDropdown(content, y, "OUT OF RANGE mark", { "rings", "crosshair", "x" },
     function() return db.range.markFar or "rings" end,
     function(v) db.range.markFar = v; RefreshRange() end,
-    "Mark shape shown when the target is out of range (grey).")
+    "Shape when the target is out of range (grey).")
   y = y - ROW
   MakeCheckbox(content, y, "Show range label", function() return db.range.showLabel end,
-    function(v) db.range.showLabel = v; RefreshRange() end, "Shows IN RANGE / TOO CLOSE / OUT OF RANGE under the mark.")
+    function(v) db.range.showLabel = v; RefreshRange() end, "Spell the state out under the mark.")
   y = y - CHK
   MakeDropdown(content, y, "Anchor", { "TargetFrame", "UIParent" },
     function() return db.range.parent end,
     function(v) db.range.parent = v; RefreshRange() end,
-    "TargetFrame = beside the target frame (default). UIParent = free/drag position (use if a unit-frame addon hides the target frame).")
+    "TargetFrame = beside the target. UIParent = free/drag, for when an addon hides the target frame.")
   y = y - ROW
 
   -- Pet Mend Marker
@@ -421,47 +466,47 @@ function BuildWindow()
   y = y - HDR
   MakeCheckbox(content, y, "Enable mend marker", function() return db.mend.enabled end,
     function(v) db.mend.enabled = v; RefreshMend() end,
-    "A Mend Pet icon above your pet's head. Green + solid when the pet is inside Mend Pet range, so you can see at a glance that a Mend will land; greyed and faded when the pet is too far.")
+    "Mend Pet icon over your pet. Solid green = a Mend will land, faded red = too far.")
   y = y - CHK
   MakeSlider(content, y, "Icon size", 20, 72, 1, function() return db.mend.size end,
-    function(v) db.mend.size = v; RefreshMend() end, "Marker icon size in pixels.")
+    function(v) db.mend.size = v; RefreshMend() end, "Size of the marker, in pixels.")
   y = y - ROW
   MakeSlider(content, y, "Height above head", -20, 80, 1, function() return db.mend.offsetY end,
     function(v) db.mend.offsetY = v; RefreshMend() end,
-    "Extra gap above the anchor (the pet's name plate, or the pet unit frame when no plate exists). Ignored once you have dragged the marker with /htk unlock.")
+    "Gap above the anchor. Ignored once you drag the marker (/htk unlock).")
   y = y - ROW
   MakeSlider(content, y, "Urgent below % HP", 5, 100, 5, function() return db.mend.hpThreshold end,
     function(v) db.mend.hpThreshold = v; RefreshMend() end,
-    "At or below this percent of the pet's max HP the marker grows, pulses and throws an expanding red ring.")
+    "At or below this HP the marker grows, pulses and shows a red ring.")
   y = y - ROW
   MakeCheckbox(content, y, "Urgent pulse", function() return db.mend.urgentPulse end,
     function(v) db.mend.urgentPulse = v; RefreshMend() end,
-    "Grow, pulse and expanding ring while the pet is below the threshold.")
+    "Grow, pulse and red ring while the pet is low.")
   y = y - CHK
   MakeCheckbox(content, y, "Only in combat", function() return db.mend.combatOnly end,
     function(v) db.mend.combatOnly = v; RefreshMend() end,
-    "Hide the marker out of combat. A pet below the threshold is always shown, combat or not.")
+    "Hide out of combat; a low pet always shows.")
   y = y - CHK
   MakeCheckbox(content, y, "Fade when out of range", function() return db.mend.dimWhenFar end,
     function(v) db.mend.dimWhenFar = v; RefreshMend() end,
-    "Grey and fade the icon while the pet is outside Mend Pet range.")
+    "Grey and fade while the pet is out of range.")
   y = y - CHK
   MakeCheckbox(content, y, "Label", function() return db.mend.showLabel end,
     function(v) db.mend.showLabel = v; RefreshMend() end,
-    "Shows 'MEND!' when the pet is low, and 'TOO FAR' when it is out of range.")
+    "'MEND!' when low, 'TOO FAR' when out of range.")
   y = y - CHK
   MakeDropdown(content, y, "Anchor", { "auto", "plate", "petframe" },
     function() return db.mend.anchor end,
     function(v) db.mend.anchor = v; RefreshMend() end,
-    "auto = over the pet's head whenever the client exposes a pet name plate, otherwise above the pet unit frame. plate = head only (hidden while there is no plate). petframe = always above the pet unit frame.")
+    "auto = over the head when a pet plate exists, else above the pet frame. plate = head only. petframe = UI frame only.")
   y = y - ROW
   MakeCheckbox(content, y, "Force pet name plate", function() return db.mend.forcePlate end,
     function(v) db.mend.forcePlate = v; RefreshMend() end,
-    "Makes the game publish a name plate for your pet so the marker can float over its head even though YOU have nameplates turned off. HunterKit enables the least it can, saves your previous values and restores them when you untick this or log out. NOTE: some clients (1.15.9) no longer have the nameplate CVars this needs - /htk mend says whether yours does, and lists every nameplate CVar it can find.")
+    "No pet-only setting exists: the finest the client offers is friendly + minions, which also shows other players' pets. Ticking it turns the least it can on and restores your values on untick or logout. /htk mend reports what your client allows.")
   y = y - CHK
   MakeCheckbox(content, y, "Nameplate style bar", function() return db.mend.plateStyle end,
     function(v) db.mend.plateStyle = v; RefreshMend() end,
-    "Pet name + health bar under the icon. Only drawn when there is no real pet plate to sit on (that plate already shows them).")
+    "Pet name + HP bar under the icon, only when no real plate is there.")
   y = y - CHK
 
   -- Sound
@@ -473,7 +518,7 @@ function BuildWindow()
       db.sound.muteOriginal = v
       RefreshSound()
     end,
-    "Plays a pew on each gun shot and silences the stock gunshot. Turning this OFF restores the normal gun sound immediately.")
+    "Pew on each shot, stock gunshot muted. Untick to restore it at once.")
   y = y - CHK
 
   -- Pulse
@@ -481,16 +526,16 @@ function BuildWindow()
   y = y - HDR
   MakeCheckbox(content, y, "Enable passive alert", function() return db.pulse.enabled end,
     function(v) db.pulse.enabled = v; RefreshPulse() end,
-    "Center-screen pulse while the pet is Passive.")
+    "Centre-screen pulse while the pet is Passive.")
   y = y - CHK
   MakeSlider(content, y, "Icon size", 48, 128, 2, function() return db.pulse.size end,
-    function(v) db.pulse.size = v; RefreshPulse() end, "")
+    function(v) db.pulse.size = v; RefreshPulse() end, "Size of the alert icon, in pixels.")
   y = y - ROW
   MakeCheckbox(content, y, "Sonar rings", function() return db.pulse.rings end,
-    function(v) db.pulse.rings = v end)
+    function(v) db.pulse.rings = v end, "Expanding sonar rings behind the icon.")
   y = y - CHK
   MakeCheckbox(content, y, "Label", function() return db.pulse.label end,
-    function(v) db.pulse.label = v; RefreshPulse() end, "Shows 'PET PASSIVE!' under the icon.")
+    function(v) db.pulse.label = v; RefreshPulse() end, "'PET PASSIVE!' under the icon.")
   y = y - CHK
 
   -- Positions
@@ -536,16 +581,10 @@ function MakeDropdown(parent, y, labelText, options, get, set, tooltip)
   txt:SetFontObject(GameFontNormal)
   txt:SetJustifyH("LEFT")
   txt:SetWordWrap(false)
-  txt:SetWidth(180)
+  txt:SetWidth(math.max(120, (parent:GetWidth() or 436) - 190))
   txt:SetText(labelText)
   txt:SetTextColor(0.9, 0.9, 0.9)
-  if tooltip then
-    row:SetScript("OnEnter", function()
-      GameTooltip:SetOwner(row, "ANCHOR_RIGHT"); GameTooltip:SetText(labelText)
-      GameTooltip:AddLine(tooltip, 1,1,1); GameTooltip:Show()
-    end)
-    row:SetScript("OnLeave", function() GameTooltip:Hide() end)
-  end
+  AttachTooltip(row, labelText, tooltip)
   return row
 end
 

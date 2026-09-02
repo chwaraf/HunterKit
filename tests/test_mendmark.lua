@@ -352,15 +352,30 @@ HKTest.TickMarker(10)
 check("ladder step 1 alone leaves it on the pet frame",
   HK.MendMark.AnchorMode() == "petframe", HK.MendMark.AnchorMode())
 HKTest.TickMarker(10)
+-- rung 2 is the friendly-minions CVar: that (together with friendly) is what
+-- publishes a pet plate on Classic Era, and it is still not enough alone here.
+check("ladder rung 2 is nameplateShowFriendlyMinions",
+  HKTest.state.cvars.nameplateShowFriendlyMinions == "1",
+  tostring(HKTest.state.cvars.nameplateShowFriendlyMinions))
+check("minions alone still leaves it on the pet frame",
+  HK.MendMark.AnchorMode() == "petframe", HK.MendMark.AnchorMode())
+HKTest.TickMarker(10)
 check("ladder escalates to nameplateShowFriends",
   HKTest.state.cvars.nameplateShowFriends == "1")
 check("world anchoring after escalation",
   HK.MendMark.AnchorMode() == "plate", HK.MendMark.AnchorMode())
+HKTest.TickMarker(30)
+check("ladder stops once a pet plate exists",
+  HKTest.state.cvars.nameplateShowAll == "0", tostring(HKTest.state.cvars.nameplateShowAll))
 HK.db.mend.forcePlate = false
 HK.MendMark.RescanSettings()
-check("unticking restores both cvars",
-  HKTest.state.cvars.nameplateShowFriendlyPets == "0" and HKTest.state.cvars.nameplateShowFriends == "0",
-  HKTest.state.cvars.nameplateShowFriendlyPets .. "/" .. HKTest.state.cvars.nameplateShowFriends)
+check("unticking restores every cvar it touched",
+  HKTest.state.cvars.nameplateShowFriendlyPets == "0"
+    and HKTest.state.cvars.nameplateShowFriendlyMinions == "0"
+    and HKTest.state.cvars.nameplateShowFriends == "0",
+  HKTest.state.cvars.nameplateShowFriendlyPets .. "/"
+    .. HKTest.state.cvars.nameplateShowFriendlyMinions .. "/"
+    .. HKTest.state.cvars.nameplateShowFriends)
 check("saved cvar list cleared after restore", next(HK.db.mend.plateCVars) == nil)
 HKTest.state.petPlateNeedsFriends = false
 HKTest.TickMarker(1)

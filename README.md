@@ -7,7 +7,7 @@ For **WoW Classic Era & Hardcore** (patch 1.15.x).
 A self-contained, dependency-free (no Ace3/LibDBIcon) addon built for the
 hardcore-first hunter. Every action is a deliberate click; nothing is automated.
 
-Current version: **0.6.2** — see [`CHANGELOG.md`](CHANGELOG.md).
+Current version: **0.7.0** — see [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Features
 
@@ -18,7 +18,7 @@ Current version: **0.6.2** — see [`CHANGELOG.md`](CHANGELOG.md).
 | **Pet Mend Marker** | A **Mend Pet icon floating above your pet's head, nameplate style**. Green + solid when the pet is inside Mend Pet range, faded and greyed when it isn't — so you know at a glance, without reading a bar. Goes **bigger and pulsing with an expanding red ring** at or below **30% pet HP**. **On by default**, and it works with nameplates turned off. |
 | **Gun sound** | Replaces the stock gunshot with a Star-Wars-style blaster pew. Respects guns-only, no-repeat, and mutes the stock sound. |
 | **Passive alert** | A big pulsing Ability Seal center-screen above your character while the pet is Passive, plus an optional glow on the passive button. Impossible to miss. |
-| **Options** | Draggable settings window, minimap button, `/htk lock\|unlock`, `/htk reset`. |
+| **Options** | Draggable settings window — one rule per feature block, live numbers on every slider, wrapped tooltips. Minimap button, `/htk lock\|unlock`, `/htk reset`. |
 
 ## Pet Mend Marker
 
@@ -62,15 +62,21 @@ children of `WorldFrame` carrying the unit token. Any of them gives true
 over-the-head anchoring.
 
 **2. If you have nameplates off, make one exist — without you turning them on.**
+**There is no pet-only plate setting on any client.** The finest granularity the
+CVar API offers is *friendly pets / minions* — enabling it publishes plates for
+**other players' pets and minions too**. There is nothing narrower to choose.
+
 Tick **Force pet name plate** (opt-in, off by default). HunterKit then walks a
 ladder of nameplate CVars from the least invasive up —
-`nameplateShowFriendlyPets` → `nameplateShowFriends` → `nameplateShowAll` —
-skipping any the client doesn't have, and **stops at the first rung that
-actually produces a pet plate**. It waits ~1s between rungs so the client can
-react, and never touches CVars during combat (the client locks them). Your
-previous values are stored in SavedVariables and **restored when you untick the
-option or log out**, so nothing is written to your config permanently.
-`/htk mend` marks every CVar it changed with a `*`.
+`nameplateShowFriendlyPets` → `nameplateShowFriendlyMinions` →
+`nameplateShowFriends` → `nameplateShowAll` — skipping any the client doesn't
+have, and **stops at the first rung that actually produces a pet plate**. (On
+Classic Era the friendly + minions pair is what publishes one.) It waits ~1s
+between rungs so the client can react, and never touches CVars during combat
+(the client locks them). Your previous values are stored in SavedVariables and
+**restored when you untick the option or log out**, so nothing is written to
+your config permanently. `/htk mend` marks every CVar it changed with a `*` and
+shows the value it replaced.
 
 **3. Otherwise fall back to the pet unit frame — and look like a plate anyway.**
 The fallback draws a nameplate-style widget under the icon (pet name + a
@@ -98,17 +104,32 @@ always the UI widget.
 screen-pos APIs: GetUnitNamePosition=absent  GetUnitScreenPosition=absent
 pet plate via:   GetNamePlateForUnit=none  NAME_PLATE_UNIT_ADDED=none  GetNamePlates=none  NamePlateN scan=none
 plates visible:  0
-UnitPosition(pet)=refused  GetPlayerFacing=0.89
-nameplate cvars: nameplateShowAll=1  nameplateShowEnemies=1  nameplateMaxDistance=41
+UnitPosition(pet)=-1.0,-1.0,-1.0  GetPlayerFacing=0.89
 ```
 
-So on that client there is **no** pet plate, **no** screen-position API, **no** pet
-world position, and the friendly/pet nameplate CVars no longer exist at all —
-which means over-the-head anchoring is genuinely unavailable there and *Force pet
-name plate* cannot help (the addon says so instead of suggesting it). On such a
-client the marker is a draggable UI widget; on a client that does publish a pet
-plate it floats over the pet's head with no further setup. Run `/htk mend` to see
-which one you have.
+What that measurement rules out on 1.15.9: **no** screen-position API, **no** pet
+world position (`UnitPosition("pet")` is refused), and **no pet plate while
+nameplates are off** — so without a plate there is nothing to anchor to, and the
+marker is a draggable UI widget. On a client that does publish a pet plate it
+floats over the pet's head with no further setup. Run `/htk mend` to see which one
+you have.
+
+**What it does *not* rule out:** earlier builds also concluded the
+friendly/pet nameplate CVars "no longer exist". That was wrong, and it was our
+instrument, not the client: `C_Console.GetAllCommands()` lists registered
+**console commands**, and several nameplate CVars aren't registered as one. Pet
+plates *are* available on 1.15.9 through the friendly + minions settings (that is
+not pet-only — see below). `/htk mend` therefore probes the CVars **by name**
+with `GetCVar`, and reports each one it finds with its value. Shape of that line
+(**illustrative** — run `/htk mend` for your own client's real values):
+
+```
+cvars: nameplateShowAll=1  nameplateShowEnemies=1  nameplateShowFriends=0
+       nameplateShowFriendlyMinions=0  nameplateShowFriendlyPets=0  nameplateMaxDistance=41.000000
+```
+
+(Real output varies by client; anything the client doesn't have is simply absent
+from the line, which is now a trustworthy absence.)
 
 `/htk mend` prints which one is live **and a capability report for your client**:
 which screen-position APIs exist and what they return, which of the four plate
@@ -145,12 +166,17 @@ than described here, that output says exactly why.
 
 **"The mend marker isn't floating over my pet's head."** — Run `/htk mend` and
 read the `anchor would be:` line. `plate` = it's over the pet's head. `petframe` =
-the client publishes no position for your pet, so it's on the UI fallback — on
-**1.15.9 that is the expected result** (see the measured output above): no pet
-plate, no screen-position API, and the nameplate CVars that used to create one are
-gone. In that case `/htk unlock` and drag it where you want it. On a client that
-does have those CVars, **Force pet name plate** makes head anchoring work with
-your own nameplates off, and restores them afterwards.
+the client publishes no position for your pet, so it's on the UI fallback. With no
+pet plate of any kind — no screen-position API either — that's all there is: use
+`/htk unlock` and drag it where you want it. **Force pet name plate** makes head
+anchoring work with your own nameplates off and restores them afterwards; note it
+is *not* pet-only (see above), and there is no pet-only setting to ask for.
+
+> Earlier versions of this README said the friendly-plate CVars were "gone" on
+> 1.15.9. That was a bad measurement, not a client fact: the diagnostic listed
+> **console commands** (`C_Console.GetAllCommands()`), and several real nameplate
+> CVars aren't registered as console commands. `/htk mend` now probes the CVars
+> **by name** with `GetCVar`, so what it prints is what the client actually has.
 
 **"How do I know what my client actually supports?"** — Run `/htk mend`. Alongside
 the marker's state it prints a capability report: every screen-position API it
@@ -211,13 +237,16 @@ test suite enforces part of it:
 | `HunterKit.toc` | the version bumps, or a `.lua` file is added/removed |
 | `Core.lua` | `HK.version` and, for schema changes, `HK.defaults` + `dbVersion` + a migration block |
 
-`python3 tests/run_tests.py` runs the Lua tests: it loads the real `Core.lua` and
-`MendMark.lua` against a stub client (`tests/wow_stub.lua`), then checks that
-every addon file parses, that the `.toc` matches the files on disk, that the
-`.toc` version matches `HK.version`, that the newest `CHANGELOG` entry matches
-it too, and that every `/htk` subcommand in `Core.lua` is documented here.
-Needs a Lua interpreter on `PATH` (`lua`/`lua5.1`/`luajit`) or `pip install lupa`.
-Add `--verbose` to echo the addon's chat output.
+`python3 tests/run_tests.py` runs the Lua tests: it loads the real addon files
+against a stub client (`tests/wow_stub.lua`) — no logic is re-implemented — and
+needs a Lua interpreter on `PATH` (`lua`/`lua5.1`/`luajit`) or `pip install lupa`.
+Add `--verbose` to echo the addon's chat output. **201 checks**, in three files:
+
+| File | Covers |
+|---|---|
+| `test_mendmark.lua` (132) | marker visibility, range/urgency styling, all four plate-discovery paths, the anchor modes, the force-plate CVar ladder, drag/lock, restricted-region safety |
+| `test_options_ui.lua` (29) | **builds the real settings window** and checks the layout: window/content size, one divider per section, slider values visible before interaction, no clipped or overlapping text, wrapped tooltips, no stray globals, no module `Init` that throws |
+| `test_docs.lua` (40) | every file parses, the `.toc` matches disk, `.toc` version == `HK.version` == newest `CHANGELOG` entry, every `/htk` subcommand documented here |
 
 ## License
 

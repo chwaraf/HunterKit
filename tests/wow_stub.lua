@@ -98,8 +98,44 @@ function Frame:SetText(t) self.text = t; self:Record("SetText", t) end
 function Frame:GetText() return self.text end
 function Frame:SetTextColor(r, g, b, a) self.textColor = { r, g, b, a } end
 function Frame:SetJustifyH(j) self.justifyH = j end
+function Frame:SetJustifyV(j) self.justifyV = j end
+function Frame:SetWordWrap(v) self.wordWrap = v and true or false end
+function Frame:SetNonSpaceWrap(v) self.nonSpaceWrap = v and true or false end
+function Frame:SetMaxLines(n) self.maxLines = n end
+function Frame:SetSpacing(n) self.spacing = n end
+function Frame:GetStringWidth() return self.width or 0 end
 function Frame:SetShadowColor() end
 function Frame:SetShadowOffset() end
+
+-- Widget methods the options window uses. Deliberately explicit: a missing
+-- method must still surface as an error, not be silently swallowed.
+function Frame:SetClipsChildren(v) self.clipsChildren = v end
+function Frame:SetScrollChild(c) self.scrollChild = c end
+function Frame:GetScrollChild() return self.scrollChild end
+function Frame:SetVerticalScroll(v) self.vscroll = v end
+function Frame:GetVerticalScroll() return self.vscroll or 0 end
+function Frame:EnableMouseWheel(v) self.mouseWheel = v end
+function Frame:SetMinMaxValues(a, b) self.minValue, self.maxValue = a, b end
+function Frame:GetMinMaxValues() return self.minValue, self.maxValue end
+function Frame:SetValueStep(v) self.valueStep = v end
+function Frame:SetObeyStepOnDrag(v) self.obeyStep = v end
+function Frame:SetValue(v)
+  self.value = v
+  if self.scripts and self.scripts["OnValueChanged"] then self.scripts["OnValueChanged"](self, v) end
+end
+function Frame:GetValue() return self.value end
+function Frame:GetTop() return (self.height or 0) end
+function Frame:SetChecked(v) self.checked = v and true or false end
+function Frame:GetChecked() return self.checked end
+function Frame:SetNormalTexture() end
+function Frame:SetPushedTexture() end
+function Frame:SetHighlightTexture() end
+function Frame:SetCheckedTexture() end
+function Frame:SetDisabledCheckedTexture() end
+function Frame:SetHitRectInsets() end
+function Frame:RegisterForClicks() end
+function Frame:SetFormattedText(fmt, ...) self.text = string.format(fmt, ...) end
+function Frame:GetEffectiveScale() return 1 end
 
 function Frame:CreateTexture(name, layer)
   local t = newFrame("Texture", name, self)
@@ -116,7 +152,19 @@ function Frame:CreateFontString(name, layer)
 end
 
 function CreateFrame(kind, name, parent, template)
-  return newFrame(kind, name, parent, template)
+  local f = newFrame(kind, name, parent, template)
+  -- OptionsSliderTemplate ships three fontstrings; the real client creates them
+  -- with the frame, and their clipping/overlap is exactly what the tests assert on.
+  if template == "OptionsSliderTemplate" and name then
+    for _, suf in ipairs({ "Text", "Low", "High" }) do
+      local fs = newFrame("FontString", name .. suf, f)
+      fs.shown = true
+    end
+    _G[name .. "Text"]:SetPoint("BOTTOM", f, "TOP", 0, 0)
+    _G[name .. "Low"]:SetPoint("TOPLEFT", f, "BOTTOMLEFT", 0, 0)
+    _G[name .. "High"]:SetPoint("TOPRIGHT", f, "BOTTOMRIGHT", 0, 0)
+  end
+  return f
 end
 
 -- ---------------------------------------------------------------------------
@@ -132,6 +180,21 @@ function UIParent:GetEffectiveScale() return 1 end
 PetFrame = newFrame("Frame", "PetFrame", UIParent)
 PetFrame:SetSize(120, 40)
 PetFrame:Hide()
+
+-- Tooltip stub that records every line so tests can assert on wrapping.
+GameTooltip = newFrame("Frame", "GameTooltip", UIParent)
+GameTooltip.lines = {}
+function GameTooltip:SetOwner() end
+function GameTooltip:SetText(t) self.lines[#self.lines + 1] = { text = t } end
+function GameTooltip:AddLine(t, r, g, b, wrap)
+  self.lines[#self.lines + 1] = { text = t, wrap = wrap }
+end
+function GameTooltip:Show() end
+function GameTooltip:Hide() self.lines = {} end
+
+Minimap = newFrame("Frame", "Minimap", UIParent)
+UISpecialFrames = {}
+function tinsert(t, v) t[#t + 1] = v end
 
 STANDARD_TEXT_FONT = "Fonts\\FRIZQT__.TTF"
 SlashCmdList = {}
@@ -157,6 +220,7 @@ HKTest.state = {
     nameplateShowAll = "0",
     nameplateShowEnemies = "1",
     nameplateShowFriendlyPets = "0",
+    nameplateShowFriendlyMinions = "0",
     nameplateShowOnlyNames = "0",
     nameplateMaxDistance = "60",
   },
@@ -290,6 +354,22 @@ end
 -- ---------------------------------------------------------------------------
 -- Loader: run the addon's files the way the client does (varargs = name, ns)
 -- ---------------------------------------------------------------------------
+-- Globals that exist before the addon loads. A `local` that was never declared
+-- (the bug that produced "attempt to call a nil value (global 'Update')") shows
+-- up here as an accidental global assignment or read, so tests can fail on it
+-- instead of the client doing it mid-raid.
+HKTest.baselineGlobals = {}
+for k in pairs(_G) do HKTest.baselineGlobals[k] = true end
+
+function HKTest.StrayGlobals()
+  local out = {}
+  for k in pairs(_G) do
+    if not HKTest.baselineGlobals[k] then out[#out + 1] = k end
+  end
+  table.sort(out)
+  return out
+end
+
 function HKTest.LoadAddon(...)
   HK = {}
   local paths = { ... }

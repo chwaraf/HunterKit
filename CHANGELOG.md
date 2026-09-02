@@ -3,6 +3,66 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.7.0] - 2026-09-02
+### Changed (Options window layout — 7 reported UI problems)
+- **The window is bigger:** 392×520 → **474×604**, content column 360 → **436 px**,
+  with more room for the scrollbar.
+- **"L" clipped off every *Low*.** `OptionsSliderTemplate`'s `$parentLow`/`$parentHigh`
+  fontstrings are centred on the bar's bottom corners; the bar started at content
+  `x=0`, so the left label sat half outside the scroll area, which clips its
+  children. The template's `Text`/`Low`/`High` are now **hidden** and the bar is
+  inset 8 px.
+- **Slider values are always visible.** `$parentText` was only written from
+  `OnValueChanged`, so a slider showed no number until you touched it. Each row now
+  has its own value fontstring, written at build time and updated on drag.
+- **Numbers no longer overlap the labels.** Layout per row: label left, value
+  right-aligned in a 64 px column, full-width slider underneath (was: label to the
+  right of a half-width slider, with the template's text floating over it).
+- **Sections are visibly separate.** Each feature block gets a 1 px rule spanning
+  the content width plus more air: header 30 px, checkbox 26 px, slider/dropdown 46 px.
+- **Tooltips wrap and are concise.** `GameTooltip:AddLine` was called without its
+  5th argument, so long help text rendered as one clipped line; it now passes
+  `wrap = true` through one shared `AttachTooltip` helper. 26 strings were rewritten
+  shorter (every slider body now fits in 220 characters; the longest of all 28 is
+  243, the force-plate caveat), and the two controls that had no tooltip at all
+  (Passive Alert size, sonar rings) got one — all 28 controls now have one.
+
+### Changed (nameplate diagnostics — the earlier conclusion was wrong)
+- **`nameplateShowFriendlyMinions` is now a rung of the force-plate ladder**
+  (`FriendlyPets` → `FriendlyMinions` → `Friends` → `All`), which is what publishes
+  a pet plate on Classic Era. Rungs are cumulative and the ladder still stops at the
+  first rung that yields a plate.
+- **`/htk mend` probes CVars by name.** `C_Console.GetAllCommands()` returns
+  registered *console commands*, not CVars, so the previous dump omitted real
+  nameplate CVars and reported them as "not on this client". The dump now probes a
+  candidate list with `GetCVar` (nil = genuinely absent) and adds any nameplate
+  console commands on top; values HunterKit changed are marked `*` with the value
+  they replaced.
+- **Honest answer to "can you turn on a plate for just my pet?":** no. The finest
+  granularity the CVar API offers is friendly pets/minions, which also publishes
+  plates for other players' pets and minions. The README and the in-game tooltip say
+  so, and the README's "those CVars are gone on 1.15.9" claim is corrected.
+
+### Added (tests)
+- **`tests/test_options_ui.lua` (29 checks).** The harness used to only syntax-check
+  `Options.lua`; `MakeWindow` now runs against `tests/wow_stub.lua` (the stub gained
+  the widget methods it needs: scroll children, slider min/max/value,
+  `SetWordWrap`, `GameTooltip` line recording, and `OptionsSliderTemplate`'s three
+  fontstrings), and the suite asserts the layout above — value visible before
+  interaction, template `Text`/`Low`/`High` hidden, bar inset from the clipping
+  edge, label/value columns disjoint, one divider per section, every tooltip
+  wrapped. Reverting the fixes makes 12 of these fail.
+- **A module `Init` that throws now fails the suite.** `HK:Load()` pcall-guards each
+  module, so a missing client method inside `MakeWindow` used to disappear silently.
+- **Stray-global guard.** The stub snapshots `_G` before the addon loads; the suite
+  fails on any new global outside an explicit allowlist. That is the bug class that
+  shipped twice as `attempt to call a nil value (global 'Update')` — dropping a
+  `local` in `Options.lua` reproduces it (`FAIL … — sliderCount`).
+- Mend-marker tests cover the new minions rung (rung 2 is
+  `nameplateShowFriendlyMinions`, insufficient alone; the ladder stops once a plate
+  exists) and restoring **every** CVar it touched.
+- Suite: **132 behaviour + 29 UI + 40 docs = 201 checks**.
+
 ## [0.6.2] - 2026-09-02
 ### Fixed (live client error: `/htk unlock` / `/htk lock` threw + tainted)
 - **`HunterKitMendMarker:SetClampedToScreen(): Action[ClampedToScreen] failed because

@@ -15,7 +15,11 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-TESTS = [os.path.join(HERE, "test_mendmark.lua"), os.path.join(HERE, "test_docs.lua")]
+TESTS = [
+    os.path.join(HERE, "test_mendmark.lua"),
+    os.path.join(HERE, "test_options_ui.lua"),
+    os.path.join(HERE, "test_docs.lua"),
+]
 
 
 def addon_files():

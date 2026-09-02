@@ -54,10 +54,35 @@ local C_FAR     = { 1, 0.15, 0.15 }
 -- step at a time and only escalates if the previous step produced no pet plate.
 -- GetCVar returns nil for a CVar the client doesn't have (Midnight dropped the
 -- friendly ones), so a missing entry is skipped instead of erroring.
+-- There is NO pet-only plate setting on any client: the finest granularity the
+-- CVar API offers is "friendly pets/minions", which also publishes plates for
+-- other players' pets and minions. Rungs are cumulative (each step adds one and
+-- never removes an earlier one) so the ladder stops at the first rung that
+-- actually yields a pet plate. Classic Era 1.15.9 publishes pet plates through
+-- the friendly + minions pair, which is why minions is a rung of its own.
 local PLATE_CVAR_LADDER = {
   "nameplateShowFriendlyPets",
+  "nameplateShowFriendlyMinions",
   "nameplateShowFriends",
   "nameplateShowAll",
+}
+-- CVars to PROBE by name. C_Console.GetAllCommands() only lists registered
+-- *console commands*, so several real nameplate CVars are missing from it -- that
+-- is how an earlier diagnostic wrongly reported the friendly ones as absent.
+local PLATE_CVAR_CANDIDATES = {
+  "nameplateShowAll",
+  "nameplateShowEnemies",
+  "nameplateShowFriends",
+  "nameplateShowEnemyMinions",
+  "nameplateShowEnemyPets",
+  "nameplateShowFriendlyMinions",
+  "nameplateShowFriendlyPets",
+  "nameplateShowFriendlyGuardians",
+  "nameplateShowFriendlyTotems",
+  "nameplateShowFriendlyNPCs",
+  "nameplateShowOnlyNames",
+  "nameplateShowSelf",
+  "nameplateMaxDistance",
 }
 local plateStep = 0          -- how many ladder rungs we've enabled
 local plateWait = 0          -- ticks since the last step (give the client a beat)
@@ -772,7 +797,22 @@ end
 -- Every nameplate CVar this client actually has, so "which setting would give my
 -- pet a plate?" is answerable instead of guessed.
 function MendMark.NameplateCVarDump()
-  local names = {}
+  local seen, names = {}, {}
+  local function add(n)
+    if type(n) ~= "string" then return end
+    n = (n:gsub("^/", ""))
+    if n:lower():find("nameplate", 1, true) and not seen[n] then
+      seen[n] = true
+      names[#names + 1] = n
+    end
+  end
+
+  -- 1) Probe a candidate list directly. GetCVar returns nil for a CVar this
+  --    client does not have, so absence here is a real absence.
+  for _, n in ipairs(PLATE_CVAR_CANDIDATES) do
+    if GetCVar and pcall(GetCVar, n) and GetCVar(n) ~= nil then add(n) end
+  end
+  -- 2) Plus anything nameplate-ish registered as a console command.
   if C_Console and C_Console.GetAllCommands then
     local ok, list = pcall(C_Console.GetAllCommands)
     if ok and type(list) == "table" then
@@ -780,27 +820,31 @@ function MendMark.NameplateCVarDump()
         local n
         if type(e) == "string" then n = e
         elseif type(e) == "table" then n = e.command or e.name or e.cvar end
-        if type(n) == "string" then
-          n = (n:gsub("^/", ""))
-          if n:lower():find("nameplate", 1, true) then names[#names + 1] = n end
-        end
+        add(n)
       end
     end
   end
-  if #names == 0 then return "(C_Console.GetAllCommands unavailable)" end
+  if #names == 0 then return "(no nameplate CVars found)" end
   table.sort(names)
   local out = {}
   for _, n in ipairs(names) do
     local ok, v = pcall(GetCVar, n)
-    out[#out + 1] = n .. "=" .. tostring(ok and v or "?")
+    local val = tostring(ok and v or "?")
+    -- "*" = a value HunterKit changed for the force-plate ladder (restored on
+    -- untick / logout).
+    if type(db) == "table" and type(db.plateCVars) == "table" and db.plateCVars[n] ~= nil then
+      val = val .. " (was " .. tostring(db.plateCVars[n]) .. ")*"
+    end
+    out[#out + 1] = n .. "=" .. val
   end
   return table.concat(out, "  ")
 end
 
 -- How many rungs of the force-plate ladder could still change something: the CVar
 -- exists on this client AND is currently off. Zero means ticking "Force pet name
--- plate" cannot help (1.15.9 is like this: the friendly-plate CVars are gone and
--- nameplateShowAll is already 1), and we must say that instead of suggesting it.
+-- plate" cannot help (nameplateShowAll is already 1 and no friendly rung exists),
+-- and we must say that instead of suggesting it. Probing by name (not by console
+-- command list) is what makes this trustworthy.
 function MendMark.LadderCVarsUsable()
   if not GetCVar then return 0 end
   local n = 0
