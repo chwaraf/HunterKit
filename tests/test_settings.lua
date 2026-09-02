@@ -205,6 +205,36 @@ if resetBtn then
 end
 
 -- ---------------------------------------------------------------------------
+-- ---------------------------------------------------------------------------
+-- 3) The master switch hides every feature, not just the mend marker
+-- ---------------------------------------------------------------------------
+-- Regression: unchecking "Enable HunterKit" used to hide only the mend marker;
+-- the sniper mark, feed button and passive alert kept running because their
+-- modules only looked at their own per-feature toggle.
+HKTest.state.pet = true
+HK.db.enabled = true
+SetState("OK")
+HK.Range.RescanSettings()
+HK.FeedPet.RescanSettings()
+check("master on: mark shown", HK.Range.IsFrameValid(),
+  tostring(HK.Range.IsFrameValid()))
+check("master on: feed button shown", HK.FeedPet.IsButtonValid(),
+  tostring(HK.FeedPet.IsButtonValid()))
+
+HK.db.enabled = false
+HK.Range.RescanSettings()
+HK.FeedPet.RescanSettings()
+check("master off hides the mark", not HK.Range.IsFrameValid(),
+  tostring(HK.Range.IsFrameValid()))
+check("master off hides the feed button", not HK.FeedPet.IsButtonValid(),
+  tostring(HK.FeedPet.IsButtonValid()))
+
+HK.db.enabled = true
+HK.Range.RescanSettings()
+HK.FeedPet.RescanSettings()
+check("master on restores the mark", HK.Range.IsFrameValid(),
+  tostring(HK.Range.IsFrameValid()))
+
 say(string.format("\n%d passed, %d failed", passes, #failures))
 if #failures > 0 then
   for _, f in ipairs(failures) do say("  - " .. f) end

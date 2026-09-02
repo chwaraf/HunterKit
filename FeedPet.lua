@@ -506,7 +506,7 @@ UpdateState = function()
     if not InCombatLockdown() then button:SetShown(true) end
     return
   end
-  local show = db.enabled and UnitExists("pet") and not UnitIsDead("pet")
+  local show = HK.db.enabled ~= false and db.enabled and UnitExists("pet") and not UnitIsDead("pet")
   -- "Show only when hungry": hide the feed button once the pet is content/full
   -- (happiness >= 3), so it's only visible when there's actually something to feed.
   if show and db.hungryOnly then
@@ -538,7 +538,7 @@ end
 
 RefreshEverything = function()
   if not initialised then return end
-  if not HK.db.feed.enabled then
+  if HK.db.enabled == false or not HK.db.feed.enabled then
     ApplyVisibility(false)
     return
   end

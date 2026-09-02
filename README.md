@@ -7,7 +7,7 @@ For **WoW Classic Era & Hardcore** (patch 1.15.x).
 A self-contained, dependency-free (no Ace3/LibDBIcon) addon built for the
 hardcore-first hunter. Every action is a deliberate click; nothing is automated.
 
-Current version: **0.8.2** — see [`CHANGELOG.md`](CHANGELOG.md).
+Current version: **0.8.3** — see [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Features
 
@@ -18,7 +18,7 @@ Current version: **0.8.2** — see [`CHANGELOG.md`](CHANGELOG.md).
 | **Pet Mend Marker** | A **Mend Pet icon floating above your pet's head, nameplate style**. Green + solid when the pet is inside Mend Pet range, faded and greyed when it isn't — so you know at a glance, without reading a bar. Goes **bigger and pulsing with an expanding red ring** at or below **30% pet HP**. **On by default**, and it works with nameplates turned off. |
 | **Gun sound** | Replaces the stock gunshot with a Star-Wars-style blaster pew. Respects guns-only, no-repeat, and mutes the stock sound. |
 | **Passive alert** | A big pulsing Ability Seal center-screen above your character while the pet is Passive, plus an optional glow on the passive button. Impossible to miss. |
-| **Options** | Draggable settings window — one rule per feature block, every slider's number centred above its bar, wrapped tooltips, and a two-click **Reset ALL settings** button. Minimap button, `/htk lock\|unlock`, `/htk reset`. |
+| **Options** | Draggable settings window — a master **Enable HunterKit** switch that pauses *every* feature at once, one rule per feature block, every slider's number centred above its bar, wrapped tooltips, and a two-click **Reset ALL settings** button. Minimap button, `/htk lock\|unlock`, `/htk reset`. |
 
 ## Sniper Mark
 

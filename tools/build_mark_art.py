@@ -50,8 +50,10 @@ def convert(src, dst):
         r.point(lambda v: int(v * 0.30)),
         g.point(lambda v: int(v * 0.59))),
         b.point(lambda v: int(v * 0.11)))
-    # strengthen: keep mid glow but crush near-black noise
-    lum = lum.point(lambda v: 0 if v < 8 else v)
+    # strengthen: crush near-black noise, then gamma-boost the glow so strokes
+    # are solid white in-game instead of a faint wash (ADD blend uses alpha as
+    # intensity, so mid-grey alpha read as "barely visible").
+    lum = lum.point(lambda v: 0 if v < 8 else min(255, int(255 * ((v / 255.0) ** 0.55))))
     white = Image.new("L", im.size, 255)
     out = Image.merge("RGBA", (white, white, white, lum))
 
@@ -96,12 +98,17 @@ def main():
         cols = min(6, n)
         rows = (n + cols - 1) // cols
         cell = 96
-        canvas = Image.new("RGBA", (cols * cell, rows * cell), (60, 60, 66, 255))
+        # composite ADDITIVELY over the grey, exactly like the in-game ADD blend,
+        # so the preview predicts what the client will show.
+        canvas = Image.new("RGB", (cols * cell, rows * cell), (60, 60, 66))
+        layer = Image.new("RGB", canvas.size, (0, 0, 0))
         for i, t in enumerate(thumbs):
             x = (i % cols) * cell
             y = (i // cols) * cell
-            canvas.alpha_composite(t.resize((cell, cell)), (x, y))
-        canvas.convert("RGB").save(prev)
+            a = t.resize((cell, cell)).split()[3]
+            layer.paste(Image.merge("RGB", (a, a, a)), (x, y))
+        from PIL import ImageChops as IC
+        IC.add(canvas, layer).save(prev)
         print("preview -> %s" % prev)
 
 

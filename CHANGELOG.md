@@ -3,6 +3,25 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.8.3] - 2026-09-02
+### Fixed
+- **The master "Enable HunterKit" switch only hid the mend marker.** Range, Feed
+  and PassivePulse checked only their own per-feature toggle, so unchecking the
+  master left the sniper mark, feed button and passive alert running. All three
+  now honour `HK.db.enabled` (hide + self-pause), matching MendMark and Sounds.
+  Covered by new regression checks (master off hides mark + feed button; master on
+  restores them).
+- **Generated marks were barely visible in-game.** Two causes, both fixed: the art
+  was drawn with `BLEND`, while the known-good classic marks use `ADD` — the mark
+  now renders with `ADD` exactly like the originals, so the black surround adds
+  nothing and the white art adds its tint at full strength; and the converter now
+  gamma-boosts the keyed alpha so strokes are solid instead of a faint wash. The
+  build preview now composites additively over grey, i.e. it predicts what the
+  client shows, and every mark reads bright and bold in it.
+
+### Added (tests)
+- Master-switch regression checks; suite now 139 + 54 + 36 + 40 = 269, all passing.
+
 ## [0.8.2] - 2026-09-02
 ### Fixed
 - **`reticle` was almost invisible.** Its generated strokes were hairline-thin; it

@@ -261,7 +261,10 @@ local function DrawArt(path, r, g, b)
   t:ClearAllPoints()
   t:SetAllPoints(frame)
   t:SetTexture(path)
-  t:SetBlendMode("BLEND")
+  -- ADD, exactly like the classic marks: the black surround contributes nothing
+  -- and the white art adds its tint at full strength, so the mark reads bright
+  -- on any background (BLEND left the generated art washed out).
+  t:SetBlendMode("ADD")
   if t.SetRotation then t:SetRotation(0) end
   t:SetVertexColor(r, g, b, 1)
   t:Show()
@@ -352,7 +355,7 @@ end
 
 -------------------------------------------------------------------------------
 Tick = function()
-  if not HK.db.range.enabled then return end -- self-pause (cheap no-op)
+  if HK.db.enabled == false or not HK.db.range.enabled then return end -- self-pause
   Range.Update()
 end
 
@@ -362,7 +365,7 @@ function Range.Update()
   -- hide it, and don't re-evaluate range (it would hide an out-of-combat/no-target
   -- mark and fight the drag).
   if HK.Editing() then return end
-  if not HK.db.range.enabled then
+  if HK.db.enabled == false or not HK.db.range.enabled then
     frame:SetShown(false)
     lastState, shownState = nil, nil
     farPending, farPendingN = nil, 0
