@@ -14,6 +14,8 @@ local db
 local frame, label
 local ticker
 local lastState = nil
+local shownState = nil
+local farPending, farPendingN = nil, 0
 
 local autoShot
 
@@ -200,9 +202,10 @@ local function art(path) return { { "art", MEDIA .. path } } end
 --   IN RANGE    open, angular, centred  — "the shot is available"
 --   TOO CLOSE   closed, heavy, blocking — "back up"
 --   OUT OF RANGE broken, thin, hollow   — "no shot"
--- Most styles are bundled .tga art (the old crosshair marks plus a new modern
--- set); a few stay procedural for vector crispness. The first entry of each
--- state is the classic mark, restored as the default.
+-- Every style is bundled .tga art: the old crosshair marks plus a modern sci-fi
+-- set; the procedural primitives below remain as the engine's fallback but no
+-- shipped style needs them. The first entry of each state is the classic mark,
+-- restored as the default.
 local STYLES = {
   OK = {
     crosshair = art("crosshair.tga"),
@@ -218,36 +221,15 @@ local STYLES = {
     cross = art("mark-dead-cross.tga"),
     block = art("mark-dead-block.tga"),
     bars  = art("mark-dead-bars.tga"),
-    burst = {
-      { "seg", -0.34, 0, -0.95, 0, 0.08 }, { "seg", 0.34, 0, 0.95, 0, 0.08 },
-      { "seg", 0, -0.34, 0, -0.95, 0.08 }, { "seg", 0, 0.34, 0, 0.95, 0.08 },
-      { "seg", -0.24, -0.24, -0.68, -0.68, 0.08 }, { "seg", 0.24, 0.24, 0.68, 0.68, 0.08 },
-      { "seg", -0.24, 0.24, -0.68, 0.68, 0.08 },   { "seg", 0.24, -0.24, 0.68, -0.68, 0.08 },
-    },
+    burst = art("mark-dead-burst.tga"),
   },
   FAR = {
     rings = art("crosshair-outline.tga"),
-    dashed = {
-      { "seg", -0.9, 0.9, -0.35, 0.9, 0.07 }, { "seg", 0.35, 0.9, 0.9, 0.9, 0.07 },
-      { "seg", -0.9, -0.9, -0.35, -0.9, 0.07 }, { "seg", 0.35, -0.9, 0.9, -0.9, 0.07 },
-      { "seg", -0.9, -0.9, -0.9, -0.35, 0.07 }, { "seg", -0.9, 0.35, -0.9, 0.9, 0.07 },
-      { "seg", 0.9, -0.9, 0.9, -0.35, 0.07 },   { "seg", 0.9, 0.35, 0.9, 0.9, 0.07 },
-    },
-    halo = { { "ring", 0, 0, 0.30, 0.07 } },
-    sides = {
-      { "seg", -0.92, -0.5, -0.92, 0.5, 0.06 },
-      { "seg", 0.92, -0.5, 0.92, 0.5, 0.06 },
-    },
-    slashes = {
-      { "seg", -0.95, -0.45, -0.25, 0.95, 0.06 },
-      { "seg", -0.35, -0.95, 0.35, 0.45, 0.06 },
-      { "seg", 0.25, -0.95, 0.95, 0.45, 0.06 },
-    },
-    weakcross = {
-      { "seg", -0.95, 0, -0.62, 0, 0.06 }, { "seg", -0.30, 0, 0.02, 0, 0.06 },
-      { "seg", 0.34, 0, 0.66, 0, 0.06 },   { "seg", 0, -0.95, 0, -0.62, 0.06 },
-      { "seg", 0, -0.30, 0, 0.02, 0.06 },  { "seg", 0, 0.34, 0, 0.66, 0.06 },
-    },
+    dashed  = art("mark-far-dashring.tga"),
+    halo    = art("mark-far-halo.tga"),
+    sides   = art("mark-far-sides.tga"),
+    slashes = art("mark-far-slashes.tga"),
+    hollow  = art("mark-far-hollow.tga"),
   },
 }
 
@@ -255,7 +237,7 @@ local STYLES = {
 local STYLE_ORDER = {
   OK   = { "crosshair", "reticle", "aperture", "chevrons", "diamond", "ticks" },
   DEAD = { "x", "hexx", "cross", "block", "bars", "burst" },
-  FAR  = { "rings", "dashed", "halo", "sides", "slashes", "weakcross" },
+  FAR  = { "rings", "dashed", "halo", "sides", "slashes", "hollow" },
 }
 
 -- Texture pool: primitives are created once and reused, so switching style
@@ -382,16 +364,39 @@ function Range.Update()
   if HK.Editing() then return end
   if not HK.db.range.enabled then
     frame:SetShown(false)
-    lastState = nil
+    lastState, shownState = nil, nil
+    farPending, farPendingN = nil, 0
     return
   end
   local s = ComputeState()
   lastState = s
-  if s then
-    frame:SetShown(true)
-    ApplyState(s)
-  else
+  if not s then
     frame:SetShown(false)
+    shownState, farPending, farPendingN = nil, nil, 0
+    return
+  end
+  frame:SetShown(true)
+  if s == shownState then
+    farPending, farPendingN = nil, 0
+    ApplyState(s)
+    return
+  end
+  -- The range probes can misreport for a single tick while you move (the server
+  -- lags your position), and the most visible false reading is a one-tick
+  -- OUT OF RANGE flash when crossing from TOO CLOSE into IN RANGE. Entering FAR
+  -- therefore needs two consecutive agreeing ticks; every other change applies
+  -- at once so the mark never feels laggy.
+  if s == "FAR" then
+    if farPending then farPendingN = farPendingN + 1 else farPending, farPendingN = true, 1 end
+    if farPendingN >= 2 then
+      shownState = s
+      farPending, farPendingN = nil, 0
+      ApplyState(s)
+    end
+  else
+    farPending, farPendingN = nil, 0
+    shownState = s
+    ApplyState(s)
   end
 end
 

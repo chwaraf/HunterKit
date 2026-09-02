@@ -21,7 +21,7 @@ MEDIA = os.path.join(ROOT, "Media")
 
 # (source png in art/, output tga in Media/)
 MAP = [
-    ("trial-ok.png", "mark-ok-reticle.tga"),
+    ("ok-reticle.png", "mark-ok-reticle.tga"),
     ("ok-aperture.png", "mark-ok-aperture.tga"),
     ("ok-chevrons.png", "mark-ok-chevrons.tga"),
     ("ok-diamond.png", "mark-ok-diamond.tga"),

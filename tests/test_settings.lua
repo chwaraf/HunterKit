@@ -90,6 +90,7 @@ check("TOO CLOSE uses the chosen shape", HK.Range.CurrentStyle() == "burst",
 SetState("FAR")
 HK.db.range.markFar = "slashes"
 HK.Range.RescanSettings()
+HK.Range.Update() -- entering FAR needs a second agreeing tick (debounce)
 check("OUT OF RANGE uses the chosen shape", HK.Range.CurrentStyle() == "slashes",
   tostring(HK.Range.CurrentStyle()))
 
@@ -104,6 +105,23 @@ HK.db.range.size = 96
 HK.Range.RescanSettings()
 local wide = HK.Range.VisibleShapes()
 check("a resized mark still draws", wide > 0, tostring(wide))
+
+-- Regression: a one-tick OUT OF RANGE misread must never flash on screen while
+-- crossing between TOO CLOSE and IN RANGE (the probes can lag the server's
+-- position for a single tick).
+HK.db.range.markOK = "crosshair"
+SetState("OK")
+HK.Range.Update()
+check("crosses into IN RANGE immediately", HK.Range.CurrentStyle() == "crosshair",
+  tostring(HK.Range.CurrentStyle()))
+SetState("FAR")
+HK.Range.Update() -- a lone misread tick
+check("a lone FAR tick does not flash", HK.Range.CurrentStyle() == "crosshair",
+  tostring(HK.Range.CurrentStyle()))
+SetState("OK")
+HK.Range.Update()
+check("still IN RANGE after the misread", HK.Range.CurrentStyle() == "crosshair",
+  tostring(HK.Range.CurrentStyle()))
 
 -- ---------------------------------------------------------------------------
 -- 2) Reset ALL settings
@@ -122,6 +140,7 @@ local rangeSlice = HK.db.range          -- identity the module already holds
 local mendSlice = HK.db.mend
 
 HK.ResetAll()
+HK.Range.Update() -- second tick confirms the FAR state after the reset
 
 check("sizes restored", HK.db.range.size == HK.defaults.range.size
   and HK.db.mend.size == HK.defaults.mend.size

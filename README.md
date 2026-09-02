@@ -7,7 +7,7 @@ For **WoW Classic Era & Hardcore** (patch 1.15.x).
 A self-contained, dependency-free (no Ace3/LibDBIcon) addon built for the
 hardcore-first hunter. Every action is a deliberate click; nothing is automated.
 
-Current version: **0.8.1** — see [`CHANGELOG.md`](CHANGELOG.md).
+Current version: **0.8.2** — see [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Features
 
@@ -40,13 +40,12 @@ so the state colour tints them:
 |---|---|
 | IN RANGE | **`crosshair`** · `reticle` · `aperture` · `chevrons` · `diamond` · `ticks` |
 | TOO CLOSE | **`x`** · `hexx` · `cross` · `block` · `bars` · `burst` |
-| OUT OF RANGE | **`rings`** · `dashed` · `halo` · `sides` · `slashes` · `weakcross` |
+| OUT OF RANGE | **`rings`** · `dashed` · `halo` · `sides` · `slashes` · `hollow` |
 
 The new art is generated on a black field and luminance-keyed to alpha by
 `tools/build_mark_art.py` (black → transparent, mark → white), cropped, squared and
-resized to 256px. A handful of the *OUT OF RANGE* styles (and `burst`) are still
-crisp procedural vectors while their art is generated; they will be swapped for art
-in a follow-up. The colour always carries the state as well, so the mark stays
+resized to 256px, and **every** style is now art (the whole OUT OF RANGE and
+TOO CLOSE sets included). The colour always carries the state as well, so the mark stays
 readable for colourblind players who pick a shape per state.
 
 ## Pet Mend Marker

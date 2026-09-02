@@ -3,6 +3,30 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.8.2] - 2026-09-02
+### Fixed
+- **`reticle` was almost invisible.** Its generated strokes were hairline-thin; it
+  has been redrawn with heavy, chunky strokes and re-keyed, and now reads clearly
+  at in-game size.
+- **A one-tick OUT OF RANGE flash when crossing from TOO CLOSE into IN RANGE.**
+  The range probes can lag the server's position for a single tick while you move,
+  and the most visible false reading was a momentary OUT OF RANGE. Entering FAR now
+  requires two consecutive agreeing ticks (0.2 s); every other state change still
+  applies instantly so the mark never feels laggy. Covered by a new regression test
+  (a lone FAR tick must not change what is on screen).
+
+### Changed (Sniper Mark — complete art set)
+- The last procedural styles are gone: TOO CLOSE `burst` and the whole OUT OF RANGE
+  set (`dashed`, `halo`, `sides`, `slashes`, `hollow`) are now bundled bold art, so
+  **every** style in **every** state is a detailed graphic mark. The old
+  `weakcross` procedural is retired and renamed `hollow` (its art); unknown saved
+  values still fall back to the state default.
+- Art regenerated bolder across the board and shipped uncompressed (type-2) 256px.
+
+### Added (tests)
+- Three new checks for the FAR debounce plus a confirming-tick update; suite now
+  139 + 54 + 31 + 40 = 264, all passing.
+
 ## [0.8.1] - 2026-09-02
 ### Changed (Sniper Mark — graphic styles, classic marks restored)
 - **The classic marks are back as the defaults.** `Media/crosshair.tga` (IN RANGE),
