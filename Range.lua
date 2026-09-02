@@ -190,61 +190,34 @@ local RING_SEGMENTS = 24
 -- 5.3+ renamed it.
 local atan2 = math.atan2 or function(y, x) return math.atan(y, x) end
 
+-- Path prefix for the bundled mark art. Art textures are white-on-alpha so the
+-- per-state SetVertexColor tints them; procedural primitives stay vector-crisp.
+local MEDIA = "Interface\\AddOns\\HunterKit\\Media\\"
+local function art(path) return { { "art", MEDIA .. path } } end
+
 -- The three families are deliberately different in character so the state reads
 -- at a glance even without the colour:
 --   IN RANGE    open, angular, centred  — "the shot is available"
 --   TOO CLOSE   closed, heavy, blocking — "back up"
 --   OUT OF RANGE broken, thin, hollow   — "no shot"
+-- Most styles are bundled .tga art (the old crosshair marks plus a new modern
+-- set); a few stay procedural for vector crispness. The first entry of each
+-- state is the classic mark, restored as the default.
 local STYLES = {
   OK = {
-    crosshair = {
-      { "seg", -1, 0, -0.32, 0, 0.07 }, { "seg", 0.32, 0, 1, 0, 0.07 },
-      { "seg", 0, -1, 0, -0.32, 0.07 }, { "seg", 0, 0.32, 0, 1, 0.07 },
-    },
-    brackets = {
-      { "seg", -1, -0.45, -1, -1, 0.09 }, { "seg", -1, -1, -0.45, -1, 0.09 },
-      { "seg", 1, -0.45, 1, -1, 0.09 },   { "seg", 1, -1, 0.45, -1, 0.09 },
-      { "seg", -1, 0.45, -1, 1, 0.09 },   { "seg", -1, 1, -0.45, 1, 0.09 },
-      { "seg", 1, 0.45, 1, 1, 0.09 },     { "seg", 1, 1, 0.45, 1, 0.09 },
-    },
-    diamond = {
-      { "seg", 0, 1, 1, 0, 0.07 },   { "seg", 1, 0, 0, -1, 0.07 },
-      { "seg", 0, -1, -1, 0, 0.07 }, { "seg", -1, 0, 0, 1, 0.07 },
-    },
-    chevrons = {
-      { "seg", -0.62, 0.95, 0, 0.38, 0.09 }, { "seg", 0, 0.38, 0.62, 0.95, 0.09 },
-      { "seg", -0.62, -0.95, 0, -0.38, 0.09 }, { "seg", 0, -0.38, 0.62, -0.95, 0.09 },
-    },
-    ticks = {
-      { "seg", -1, 0, -0.68, 0, 0.13 }, { "seg", 0.68, 0, 1, 0, 0.13 },
-      { "seg", 0, -1, 0, -0.68, 0.13 }, { "seg", 0, 0.68, 0, 1, 0.13 },
-      { "dot", 0, 0, 0.20 },
-    },
-    ringdot = {
-      { "ring", 0, 0, 0.86, 0.06 },
-      { "dot", 0, 0, 0.22 },
-    },
+    crosshair = art("crosshair.tga"),
+    reticle   = art("mark-ok-reticle.tga"),
+    aperture  = art("mark-ok-aperture.tga"),
+    chevrons  = art("mark-ok-chevrons.tga"),
+    diamond   = art("mark-ok-diamond.tga"),
+    ticks     = art("mark-ok-ticks.tga"),
   },
   DEAD = {
-    x = {
-      { "seg", -0.9, -0.9, 0.9, 0.9, 0.13 },
-      { "seg", -0.9, 0.9, 0.9, -0.9, 0.13 },
-    },
-    block = {
-      { "seg", -0.78, 0.78, 0.78, 0.78, 0.17 }, { "seg", -0.78, -0.78, 0.78, -0.78, 0.17 },
-      { "seg", -0.78, -0.78, -0.78, 0.78, 0.17 }, { "seg", 0.78, -0.78, 0.78, 0.78, 0.17 },
-    },
-    circle = {
-      { "ring", 0, 0, 0.80, 0.20 },
-    },
-    arrows = {
-      { "seg", -0.15, 0.55, -0.72, 0, 0.12 }, { "seg", -0.72, 0, -0.15, -0.55, 0.12 },
-      { "seg", 0.15, 0.55, 0.72, 0, 0.12 },   { "seg", 0.72, 0, 0.15, -0.55, 0.12 },
-    },
-    bars = {
-      { "seg", -0.82, 0.52, 0.82, 0.52, 0.24 },
-      { "seg", -0.82, -0.52, 0.82, -0.52, 0.24 },
-    },
+    x     = art("crosshair-x.tga"),
+    hexx  = art("mark-dead-hexx.tga"),
+    cross = art("mark-dead-cross.tga"),
+    block = art("mark-dead-block.tga"),
+    bars  = art("mark-dead-bars.tga"),
     burst = {
       { "seg", -0.34, 0, -0.95, 0, 0.08 }, { "seg", 0.34, 0, 0.95, 0, 0.08 },
       { "seg", 0, -0.34, 0, -0.95, 0.08 }, { "seg", 0, 0.34, 0, 0.95, 0.08 },
@@ -253,19 +226,14 @@ local STYLES = {
     },
   },
   FAR = {
-    rings = {
-      { "ring", 0, 0, 0.94, 0.05 },
-      { "ring", 0, 0, 0.52, 0.05 },
-    },
+    rings = art("crosshair-outline.tga"),
     dashed = {
       { "seg", -0.9, 0.9, -0.35, 0.9, 0.07 }, { "seg", 0.35, 0.9, 0.9, 0.9, 0.07 },
       { "seg", -0.9, -0.9, -0.35, -0.9, 0.07 }, { "seg", 0.35, -0.9, 0.9, -0.9, 0.07 },
       { "seg", -0.9, -0.9, -0.9, -0.35, 0.07 }, { "seg", -0.9, 0.35, -0.9, 0.9, 0.07 },
       { "seg", 0.9, -0.9, 0.9, -0.35, 0.07 },   { "seg", 0.9, 0.35, 0.9, 0.9, 0.07 },
     },
-    halo = {
-      { "ring", 0, 0, 0.30, 0.07 },
-    },
+    halo = { { "ring", 0, 0, 0.30, 0.07 } },
     sides = {
       { "seg", -0.92, -0.5, -0.92, 0.5, 0.06 },
       { "seg", 0.92, -0.5, 0.92, 0.5, 0.06 },
@@ -283,11 +251,10 @@ local STYLES = {
   },
 }
 
--- Dropdown order, and the fallback style per state (an older save may hold a
--- style that belongs to a different state, or one that no longer exists).
+-- Dropdown order; first entry is the default (and the fallback for unknown saves).
 local STYLE_ORDER = {
-  OK   = { "crosshair", "brackets", "diamond", "chevrons", "ticks", "ringdot" },
-  DEAD = { "x", "block", "circle", "arrows", "bars", "burst" },
+  OK   = { "crosshair", "reticle", "aperture", "chevrons", "diamond", "ticks" },
+  DEAD = { "x", "hexx", "cross", "block", "bars", "burst" },
   FAR  = { "rings", "dashed", "halo", "sides", "slashes", "weakcross" },
 }
 
@@ -307,6 +274,17 @@ local function NextTex()
   return t
 end
 
+local function DrawArt(path, r, g, b)
+  local t = NextTex()
+  t:ClearAllPoints()
+  t:SetAllPoints(frame)
+  t:SetTexture(path)
+  t:SetBlendMode("BLEND")
+  if t.SetRotation then t:SetRotation(0) end
+  t:SetVertexColor(r, g, b, 1)
+  t:Show()
+end
+
 local function DrawSeg(x1, y1, x2, y2, w, size, r, g, b)
   local t = NextTex()
   local dx, dy = (x2 - x1) * size / 2, (y2 - y1) * size / 2
@@ -314,6 +292,7 @@ local function DrawSeg(x1, y1, x2, y2, w, size, r, g, b)
   t:SetSize(math.max(1, math.sqrt(dx * dx + dy * dy)), math.max(1, w * size))
   t:SetPoint("CENTER", frame, "CENTER", (x1 + x2) * size / 4, (y1 + y2) * size / 4)
   if t.SetRotation then t:SetRotation(atan2(dy, dx)) end
+  t:SetBlendMode("ADD")
   t:SetVertexColor(r, g, b, 1)
   t:Show()
 end
@@ -334,6 +313,7 @@ local function DrawDot(cx, cy, s, size, r, g, b)
   t:SetSize(math.max(1, s * size), math.max(1, s * size))
   t:SetPoint("CENTER", frame, "CENTER", cx * size / 2, cy * size / 2)
   if t.SetRotation then t:SetRotation(0) end
+  t:SetBlendMode("ADD")
   t:SetVertexColor(r, g, b, 1)
   t:Show()
 end
@@ -345,7 +325,8 @@ local function DrawStyle(prims, size, r, g, b)
   for _, p in ipairs(prims) do
     if p[1] == "seg" then DrawSeg(p[2], p[3], p[4], p[5], p[6], size, r, g, b)
     elseif p[1] == "ring" then DrawRing(p[2], p[3], p[4], p[5], size, r, g, b)
-    elseif p[1] == "dot" then DrawDot(p[2], p[3], p[4], size, r, g, b) end
+    elseif p[1] == "dot" then DrawDot(p[2], p[3], p[4], size, r, g, b)
+    elseif p[1] == "art" then DrawArt(p[2], r, g, b) end
   end
 end
 

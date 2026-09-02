@@ -3,6 +3,43 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.8.1] - 2026-09-02
+### Changed (Sniper Mark — graphic styles, classic marks restored)
+- **The classic marks are back as the defaults.** `Media/crosshair.tga` (IN RANGE),
+  `crosshair-x.tga` (TOO CLOSE) and `crosshair-outline.tga` (OUT OF RANGE) — the art
+  removed in 0.8.0 — are restored and set as each state's first/default style.
+  They were dropped because 0.8.0's procedural engine replaced them, which traded
+  "always works" for "looks simple"; the user asked for graphic styles, so the
+  answer is real art, not fewer primitives.
+- **A new modern sci-fi art set.** Nine `.tga` marks were generated (glowing white
+  on black), luminance-keyed to alpha by `tools/build_mark_art.py` (black →
+  transparent, mark → white so the state colour tints them), cropped, squared and
+  resized to 256 px: `reticle`, `aperture`, `chevrons`, `diamond`, `ticks` (IN
+  RANGE) and `hexx`, `cross`, `block`, `bars` (TOO CLOSE). Each state now has six
+  art-or-vector styles; the new ones total ~0.5 MB versus the old 3 × 1 MB.
+- **New renderer primitive** `{"art", path}` draws a full-frame tinted texture;
+  procedural `seg`/`ring`/`dot` primitives are kept for the crisp fallbacks
+  (`burst`, and the OUT OF RANGE set whose art is still being generated) and set
+  their blend mode explicitly so a pooled texture reused after an art draw stays
+  correct.
+- The shape dropdowns list the new names, and unknown saved values still fall back
+  to the state's default (the classic mark), so old configurations stay valid.
+
+### Tooling
+- `tools/build_mark_art.py` converts `art/*.png` into `Media/*.tga` and writes a
+  human-viewable `art/preview.png`. Source PNGs are ignored via a new `.gitignore`
+  so only the small `.tga` ship.
+
+### Known follow-up
+- A few *OUT OF RANGE* styles (`dashed`, `halo`, `sides`, `slashes`, `weakcross`)
+  and TOO CLOSE `burst` remain procedural until the image-generation allowance
+  resets; they will be swapped for matching art. Everything else is already art.
+
+### Added (tests)
+- The existing shape tests now run against art-backed styles: six distinct
+  silhouettes per state, defaults equal the classic marks, and the on-screen style
+  follows the dropdown. 139 + 54 + 28 + 40 = 261 checks.
+
 ## [0.8.0] - 2026-09-02
 ### Fixed
 - **The sniper-mark shape options did nothing.** `Range.lua` built its shape table

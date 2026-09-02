@@ -7,14 +7,14 @@ For **WoW Classic Era & Hardcore** (patch 1.15.x).
 A self-contained, dependency-free (no Ace3/LibDBIcon) addon built for the
 hardcore-first hunter. Every action is a deliberate click; nothing is automated.
 
-Current version: **0.8.0** — see [`CHANGELOG.md`](CHANGELOG.md).
+Current version: **0.8.1** — see [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Features
 
 | Feature | What it does |
 |---|---|
 | **Feed Pet button** | A one-click button beside the pet happiness icon. Always feeds the **best** food in your bags (max happiness tier, then smallest open stack). Respects your pins/excludes. Out-of-combat only (as Blizzard intends). |
-| **Sniper Mark** | A reticle by the target frame that reports **IN RANGE / TOO CLOSE / OUT OF RANGE** — and each state has **six shapes of its own** to choose from (18 in total), drawn procedurally so the states differ by silhouette, not just colour. Reflects state only — it never acts. |
+| **Sniper Mark** | A reticle by the target frame that reports **IN RANGE / TOO CLOSE / OUT OF RANGE** — six art styles per state (the classic marks restored as defaults plus a modern sci-fi set), tinted by state. Reflects state only — it never acts. |
 | **Pet Mend Marker** | A **Mend Pet icon floating above your pet's head, nameplate style**. Green + solid when the pet is inside Mend Pet range, faded and greyed when it isn't — so you know at a glance, without reading a bar. Goes **bigger and pulsing with an expanding red ring** at or below **30% pet HP**. **On by default**, and it works with nameplates turned off. |
 | **Gun sound** | Replaces the stock gunshot with a Star-Wars-style blaster pew. Respects guns-only, no-repeat, and mutes the stock sound. |
 | **Passive alert** | A big pulsing Ability Seal center-screen above your character while the pet is Passive, plus an optional glow on the passive button. Impossible to miss. |
@@ -31,18 +31,23 @@ It reflects state only — it never fires, targets or casts.
 | **TOO CLOSE** (inside the deadzone) | red | closed and heavy — back up |
 | **OUT OF RANGE** | grey | broken and hollow — no shot |
 
-Each state has **six shapes of its own**, and they are drawn procedurally from a
-1×1 Blizzard texture rather than from art files, so the silhouette changes with
-the choice (the states were previously three recolours of one icon):
+Each state has **six shapes of its own**, and each one is a real piece of art, not
+a recolour of a single icon. The classic crosshair / X / ring marks are back as the
+defaults, joined by a new modern sci-fi set — all shipped as white-on-alpha `.tga`
+so the state colour tints them:
 
-| State | Shapes (click the option to cycle) |
+| State | Shapes (click the option to cycle), **bold** = default |
 |---|---|
-| IN RANGE | `crosshair` · `brackets` · `diamond` · `chevrons` · `ticks` · `ringdot` |
-| TOO CLOSE | `x` · `block` · `circle` · `arrows` · `bars` · `burst` |
-| OUT OF RANGE | `rings` · `dashed` · `halo` · `sides` · `slashes` · `weakcross` |
+| IN RANGE | **`crosshair`** · `reticle` · `aperture` · `chevrons` · `diamond` · `ticks` |
+| TOO CLOSE | **`x`** · `hexx` · `cross` · `block` · `bars` · `burst` |
+| OUT OF RANGE | **`rings`** · `dashed` · `halo` · `sides` · `slashes` · `weakcross` |
 
-The colour always carries the state as well, so the mark stays readable for
-colourblind players who pick a shape per state.
+The new art is generated on a black field and luminance-keyed to alpha by
+`tools/build_mark_art.py` (black → transparent, mark → white), cropped, squared and
+resized to 256px. A handful of the *OUT OF RANGE* styles (and `burst`) are still
+crisp procedural vectors while their art is generated; they will be swapped for art
+in a follow-up. The colour always carries the state as well, so the mark stays
+readable for colourblind players who pick a shape per state.
 
 ## Pet Mend Marker
 
