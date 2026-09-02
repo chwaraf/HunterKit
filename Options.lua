@@ -659,12 +659,21 @@ function Positions.SetLock(locked)
     local dd = d
     local name = key
     local f = dd.frame
+    -- Skip frames that aren't the player's to move right now (the mend marker
+    -- while it's floating over the pet's head). Touching their drag state is both
+    -- meaningless and, on restricted anchors, an error.
+    if f and not HK.DraggableActive(dd) then
+      HK.Dbg("SetLock skip (not draggable now)", key)
+      f = nil
+    end
     if f then
       local clickable = dd.opts.clickable
       local mouse = clickable or unlock
       f:SetMovable(unlock)
       f:EnableMouse(mouse)
-      f:SetClampedToScreen(true)
+      -- pcall-guarded: a frame anchored to a name plate refuses to be clamped
+      -- ("Can't clamp restricted regions") and would taint the whole loop.
+      HK.SafeClamp(f, true)
       if unlock then
         -- blank secure click for clickable frames (avoid feeding while dragging).
         -- The feed button now uses a spell + target-item combo (not a macro), so

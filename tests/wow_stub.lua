@@ -59,7 +59,14 @@ function Frame:GetScale() return self.scale end
 function Frame:SetFrameStrata(s) self.strata = s end
 function Frame:SetFrameLevel(l) self.level = l end
 function Frame:EnableMouse(v) self.mouse = v end
-function Frame:SetClampedToScreen(v) self.clamped = v end
+function Frame:SetClampedToScreen(v)
+  -- The client refuses (and taints) when the frame is anchored to a protected
+  -- region such as a name plate. `restricted` models that.
+  if self.restricted then
+    error("Action[ClampedToScreen] failed because[Can't clamp restricted regions]")
+  end
+  self.clamped = v
+end
 function Frame:SetMovable(v) self.movable = v end
 function Frame:RegisterForDrag() end
 function Frame:RegisterEvent(e) self.events[e] = true end

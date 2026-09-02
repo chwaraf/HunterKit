@@ -6,7 +6,7 @@
 
 local ADDON_NAME, HK = ...
 
-HK.version = "0.6.1"
+HK.version = "0.6.2"
 
 -- ---------------------------------------------------------------------------
 -- Defaults (schema). This is the source of truth for the options window and
@@ -382,6 +382,27 @@ function HK.SaveDragged(frame, db)
   db.offsetX = (fx or 0) - (uw / 2)
   db.offsetY = (fy or 0) - (uh / 2)
   db.moved = true
+end
+
+-- Whether a registered draggable should take part in lock/unlock at all. A
+-- frame that is currently anchored to something it must follow (e.g. the mend
+-- marker sitting on the pet's name plate) is not the player's to move, and
+-- touching its drag state can throw on restricted regions.
+function HK.DraggableActive(d)
+  if d and d.opts and d.opts.draggableIf then
+    return d.opts.draggableIf() and true or false
+  end
+  return true
+end
+
+-- SetClampedToScreen() throws "Can't clamp restricted regions" (and taints) when
+-- the frame is anchored to a protected frame such as a name plate. Every call
+-- goes through here so a restricted frame can never break lock/unlock.
+function HK.SafeClamp(f, on)
+  if not f or not f.SetClampedToScreen then return false end
+  local ok, err = pcall(f.SetClampedToScreen, f, on)
+  if not ok then HK.Dbg("SetClampedToScreen refused:", tostring(err)) end
+  return ok
 end
 
 -- Decide whether a draggable should be pinned to UIParent CENTRE (absolute) rather

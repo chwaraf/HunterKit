@@ -70,7 +70,7 @@ local mendSpell = nil
 -- and a closure that references a local declared LATER compiles to a GLOBAL
 -- lookup (nil at runtime) — which is exactly the "attempt to call a nil value"
 -- that /htk reset hit when it invoked the registered apply().
-local OnUpdateAnchor, Update
+local OnUpdateAnchor, Update, ResolveAnchor
 
 -- ---------------------------------------------------------------------------
 -- Small probes (all pcall-guarded: a missing API must never break the marker)
@@ -310,7 +310,7 @@ local function BuildFrame()
   frame:SetFrameStrata("HIGH")
   frame:SetFrameLevel(250)
   frame:EnableMouse(false)      -- never intercept clicks (world clicks matter!)
-  frame:SetClampedToScreen(false) -- it must follow the pet off-screen, not clamp
+  HK.SafeClamp(frame, false)    -- it must follow the pet off-screen, not clamp
   frame:SetSize(db.size, db.size)
 
   icon = frame:CreateTexture(nil, "ARTWORK")
@@ -357,6 +357,14 @@ local function BuildFrame()
   HK.RegisterDraggable("mend", frame, function() Update() end, function(x, y)
     db.pinX, db.pinY = x, y
   end, {
+    -- Only the UI fallback is the player's to move. While the marker floats over
+    -- the pet's head (plate/screen anchor) it must keep following the pet — and
+    -- a frame anchored to a name plate is a restricted region, so lock/unlock
+    -- must leave it alone entirely.
+    draggableIf = function()
+      local mode = ResolveAnchor()
+      return mode == "petframe"
+    end,
     restore = function() Update() end,
     -- Re-bind the pulse loop; the drag handlers blank the frame's OnUpdate.
     onUpdate = function() frame:SetScript("OnUpdate", OnUpdateAnchor) end,
@@ -421,7 +429,7 @@ end
 --   plate    -> the plate frame
 --   screen   -> x, y, apiName
 --   petframe -> the pet unit frame
-local function ResolveAnchor()
+ResolveAnchor = function()
   local mode = db.anchor or "auto"
 
   if mode == "petframe" then

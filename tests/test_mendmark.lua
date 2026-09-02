@@ -592,6 +592,62 @@ do
 end
 
 -- ---------------------------------------------------------------------------
+-- 5g) Restricted regions: a plate-anchored marker must not be lock/unlock-touched
+-- ---------------------------------------------------------------------------
+-- Only the UI fallback is the player's to move.
+HKTest.state.plate = nil
+HKTest.state.playerCombat = true
+HK.MendMark.Update()
+check("draggable while on the UI fallback",
+  HK.DraggableActive(HK.draggables["mend"]) == true)
+HKTest.state.plate = plate
+HK.MendMark.Update()
+check("not draggable while over the pet's head",
+  HK.DraggableActive(HK.draggables["mend"]) == false,
+  tostring(HK.DraggableActive(HK.draggables["mend"])))
+_G["GetUnitNamePosition"] = function(u) if u == "pet" then return 900, 400 end end
+HKTest.state.plate = nil
+HK.MendMark.Update()
+check("not draggable while on a screen-position anchor",
+  HK.DraggableActive(HK.draggables["mend"]) == false)
+_G["GetUnitNamePosition"] = nil
+HK.MendMark.Update()
+
+-- A plate-anchored frame refuses SetClampedToScreen; HK.SafeClamp must absorb it.
+HKTest.state.plate = plate
+HK.MendMark.Update()
+marker.restricted = true
+do
+  local ok, err = pcall(marker.SetClampedToScreen, marker, true)
+  check("stub reproduces the client's restricted-region error", not ok, err)
+  check("HK.SafeClamp absorbs it", HK.SafeClamp(marker, true) == false)
+end
+
+-- The SetLock guard, using the same helpers Options.lua calls: skip the frame
+-- entirely when it isn't draggable, and never clamp it unguarded.
+marker.movable = "untouched"
+for _, unlock in ipairs({ true, false }) do
+  local ok, err = pcall(function()
+    for key, d in pairs(HK.draggables) do
+      local f = d.frame
+      if f and not HK.DraggableActive(d) then f = nil end
+      if f then
+        f:SetMovable(unlock)
+        f:EnableMouse(unlock)
+        HK.SafeClamp(f, true)
+      end
+    end
+  end)
+  check("SetLock guard survives a restricted marker (unlock=" .. tostring(unlock) .. ")", ok, err)
+end
+check("restricted marker was skipped, not touched", marker.movable == "untouched",
+  tostring(marker.movable))
+marker.movable = nil
+marker.restricted = nil
+HKTest.state.plate = nil
+HK.MendMark.Update()
+
+-- ---------------------------------------------------------------------------
 -- 6) Diagnostics + slash command must not error
 -- ---------------------------------------------------------------------------
 HKTest.prints = {}

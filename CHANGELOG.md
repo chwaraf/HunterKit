@@ -3,6 +3,38 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.6.2] - 2026-09-02
+### Fixed (live client error: `/htk unlock` / `/htk lock` threw + tainted)
+- **`HunterKitMendMarker:SetClampedToScreen(): Action[ClampedToScreen] failed because
+  [Can't clamp restricted regions]` + `Lua Taint: HunterKit`.** The mend marker was
+  registered as draggable unconditionally, so `Positions.SetLock` ran its full drag
+  setup on it — including `f:SetClampedToScreen(true)` (Options.lua:667) — even while
+  the marker was anchored to the pet's **name plate**, which is a protected/restricted
+  frame. The client refuses the call and taints the addon.
+- **Root design error:** the over-the-head marker was never the player's to move. It
+  must follow the pet. Only the **UI fallback** should be draggable.
+
+### Changed
+- **`draggableIf` opt-out for registered draggables.** The mend marker registers
+  `draggableIf = function() return ResolveAnchor() == "petframe" end`, so it takes part
+  in lock/unlock only while it's on the UI fallback. While it's on a plate or a
+  screen-position anchor, `SetLock` skips it entirely (no SetMovable, no clamp, no drag
+  scripts, no taint).
+- **`HK.DraggableActive(d)`** (Core) decides that, so the rule lives in one place and is
+  testable rather than inlined in the lock loop.
+- **`HK.SafeClamp(f, on)`** (Core) pcall-guards every `SetClampedToScreen` call, so a
+  restricted anchor can never break lock/unlock for *any* module — not just this one.
+  The marker's own build-time `SetClampedToScreen(false)` goes through it too.
+
+### Tests
+- The stub now reproduces the client's restricted-region error. New checks: draggable on
+  the UI fallback, NOT draggable on a plate anchor, NOT draggable on a screen-position
+  anchor, `HK.SafeClamp` absorbs the throw, and a SetLock-shaped loop (using the real
+  Core helpers) skips the restricted marker without touching it.
+- **Proven:** stubbing `HK.DraggableActive` back to `return true` fails three checks,
+  including "restricted marker was skipped, not touched". Behaviour suite is now 129.
+
+
 ## [0.6.1] - 2026-09-02
 ### Fixed (live client error: `/htk reset` and `/htk unlock`)
 - **`HunterKit/MendMark.lua:355: attempt to call a nil value`.** The draggable

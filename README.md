@@ -7,7 +7,7 @@ For **WoW Classic Era & Hardcore** (patch 1.15.x).
 A self-contained, dependency-free (no Ace3/LibDBIcon) addon built for the
 hardcore-first hunter. Every action is a deliberate click; nothing is automated.
 
-Current version: **0.6.1** — see [`CHANGELOG.md`](CHANGELOG.md).
+Current version: **0.6.2** — see [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Features
 
@@ -81,7 +81,10 @@ UIParent advice below.
 
 **4. Otherwise the UI fallback is yours to place.** `/htk unlock`, drag the
 marker wherever you read it best, lock again — the spot is saved per character
-(`/htk reset` returns it above the pet frame).
+(`/htk reset` returns it above the pet frame). Only the fallback is draggable:
+while the marker floats over the pet's head it keeps following the pet, and
+lock/unlock leaves it alone (a frame anchored to a name plate is a *restricted
+region* — touching its clamp/drag state throws and taints).
 
 Anchor modes: **`auto`** (default) = head when a plate exists, else the pet
 frame · **`plate`** = head only, hidden while there's no plate · **`petframe`** =
