@@ -47,7 +47,11 @@ check("db.mend defaults merged", HK.db.mend ~= nil and HK.db.mend.enabled == tru
   HK.db.mend and tostring(HK.db.mend.enabled))
 check("default low-HP threshold is 30%", HK.db.mend.hpThreshold == 30)
 check("default anchor is auto", HK.db.mend.anchor == "auto")
-check("db version migrated to 12", HK.db.dbVersion == 12, tostring(HK.db.dbVersion))
+check("db version migrated to 13", HK.db.dbVersion == 13, tostring(HK.db.dbVersion))
+check("new installs default to the bold cross family",
+  HK.db.range.markOK == "plus" and HK.db.range.markDead == "cross"
+  and HK.db.range.markFar == "broken",
+  HK.db.range.markOK .. "/" .. HK.db.range.markDead .. "/" .. HK.db.range.markFar)
 
 -- BuildFrame creates, in order: icon, ring, then HK.CreateBorder's four strips.
 local function iconOf(f) return f.textures[1] end
