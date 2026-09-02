@@ -38,6 +38,7 @@ local ticker
 local phase = 0
 local urgentNow = false
 local lastAnchorMode = nil
+local lastAnchorSource = nil
 local eventPlate = nil
 
 -- Mend Pet (136) resolves to the localized name of the rank you actually know.
@@ -182,8 +183,53 @@ local function PlateFromScan()
   return nil
 end
 
+-- 4) the pre-C_NamePlate layout: NamePlate1..N children of WorldFrame, with the
+--    unit token on the child unit frame. TBC/Wrath-lineage clients use this.
+local function PlateFromLegacyScan()
+  if type(WorldFrame) ~= "table" or not WorldFrame.GetChildren then return nil end
+  local ok, kids = pcall(function() return { WorldFrame:GetChildren() } end)
+  if not ok or type(kids) ~= "table" then return nil end
+  for _, f in ipairs(kids) do
+    if type(f) == "table" and f.GetName then
+      local nm = f:GetName()
+      if type(nm) == "string" and nm:match("^NamePlate%d+$") then
+        local unit = f.unit
+        if unit == nil and type(f.UnitFrame) == "table" then unit = f.UnitFrame.unit end
+        if unit == nil then
+          local okc, child = pcall(f.GetChildren, f)
+          if okc and type(child) == "table" then unit = child.unit end
+        end
+        if unit == "pet" and PlateUsable(f) then return f end
+      end
+    end
+  end
+  return nil
+end
+
 local function PetPlate()
-  return PlateForUnit() or PlateFromEvent() or PlateFromScan()
+  return PlateForUnit() or PlateFromEvent() or PlateFromScan() or PlateFromLegacyScan()
+end
+
+-- ---------------------------------------------------------------------------
+-- Direct screen-position APIs (no plate needed), if this client has one
+-- ---------------------------------------------------------------------------
+-- Probed by name at runtime. Most clients have none of these; a client that does
+-- gives us the pet's on-screen position with nameplates completely off, which is
+-- exactly what the plate-only rule otherwise forbids. `/htk mend` prints the raw
+-- values so the convention can be checked against what's on screen.
+local WORLD_POS_APIS = { "GetUnitNamePosition", "GetUnitScreenPosition" }
+
+local function WorldScreenPos()
+  for _, name in ipairs(WORLD_POS_APIS) do
+    local fn = _G[name]
+    if type(fn) == "function" then
+      local ok, x, y = pcall(fn, "pet")
+      if ok and type(x) == "number" and type(y) == "number" then
+        return x, y, name
+      end
+    end
+  end
+  return nil
 end
 
 -- ---------------------------------------------------------------------------
@@ -353,6 +399,7 @@ end
 local function ApplyAnchor()
   local mode = db.anchor or "auto"
   local ox, oy = db.offsetX or 0, db.offsetY or 0
+  lastAnchorSource = nil     -- only set by the screen-position path
 
   if mode ~= "petframe" then
     local p = PetPlate()
@@ -373,6 +420,21 @@ local function ApplyAnchor()
       lastAnchorMode = "none"
       return lastAnchorMode
     end
+  end
+
+  -- A direct screen-position API beats any UI fallback: this is true world
+  -- anchoring with nameplates off. The returned Y is assumed to be measured from
+  -- the TOP-left in pixels (the usual convention); `/htk mend` prints the raw
+  -- pair so it can be verified on screen.
+  local wx, wy, src = WorldScreenPos()
+  if wx and UIParent then
+    local scale = (UIParent.GetEffectiveScale and UIParent:GetEffectiveScale()) or 1
+    local sh = (GetScreenHeight and GetScreenHeight()) or UIParent:GetHeight() or 0
+    frame:ClearAllPoints()
+    frame:SetPoint("BOTTOM", UIParent, "BOTTOMLEFT", wx / scale, sh - (wy / scale) + oy)
+    lastAnchorMode = "screen"
+    lastAnchorSource = src
+    return lastAnchorMode
   end
 
   -- UI fallback: the pet unit frame. Deliberately used even when the player has
@@ -561,6 +623,11 @@ function MendMark.AnchorMode()
   return lastAnchorMode
 end
 
+-- Which world-position API produced the current anchor (nil unless mode=screen).
+function MendMark.AnchorSource()
+  return lastAnchorSource
+end
+
 -- Diagnostics for /htk selfcheck and /htk mend: the raw values behind the icon.
 function MendMark.Diagnostic()
   local hp = PetHPPercent()
@@ -594,10 +661,63 @@ function MendMark.PlateCVars()
   return table.concat(out, "  ")
 end
 
+-- Capability report: what THIS client actually offers for world anchoring. This
+-- exists because the answer differs between clients (Era vs TBC-lineage vs the
+-- Midnight UI merge) and guessing at it is how you ship the wrong thing.
+function MendMark.Capabilities()
+  local out = {}
+
+  local apis = {}
+  for _, name in ipairs(WORLD_POS_APIS) do
+    if type(_G[name]) == "function" then
+      local ok, x, y = pcall(_G[name], "pet")
+      apis[#apis + 1] = name .. "=" .. (ok and (tostring(x) .. "," .. tostring(y)) or "ERR")
+    else
+      apis[#apis + 1] = name .. "=absent"
+    end
+  end
+  out[#out + 1] = "  screen-pos APIs: " .. table.concat(apis, "  ")
+
+  local paths = {
+    GetNamePlateForUnit = PlateForUnit(),
+    ["NAME_PLATE_UNIT_ADDED"] = PlateFromEvent(),
+    GetNamePlates = PlateFromScan(),
+    ["NamePlateN scan"] = PlateFromLegacyScan(),
+  }
+  local found = {}
+  for _, name in ipairs({ "GetNamePlateForUnit", "NAME_PLATE_UNIT_ADDED", "GetNamePlates", "NamePlateN scan" }) do
+    found[#found + 1] = name .. "=" .. (paths[name] and "plate" or "none")
+  end
+  out[#out + 1] = "  pet plate via:   " .. table.concat(found, "  ")
+
+  local n = 0
+  if C_NamePlate and C_NamePlate.GetNamePlates then
+    local ok, plates = pcall(C_NamePlate.GetNamePlates)
+    if ok and type(plates) == "table" then n = #plates end
+  end
+  out[#out + 1] = "  plates visible:  " .. tostring(n) .. "   anchor now: " .. tostring(lastAnchorMode)
+    .. (lastAnchorSource and (" (" .. lastAnchorSource .. ")") or "")
+
+  local up = "n/a"
+  if UnitPosition then
+    local ok, x, y, z = pcall(UnitPosition, "pet")
+    up = ok and string.format("%.1f,%.1f,%.1f", x or -1, y or -1, z or -1) or "refused"
+  end
+  local facing = "n/a"
+  if GetPlayerFacing then
+    local ok, f = pcall(GetPlayerFacing)
+    facing = ok and string.format("%.2f", f or -1) or "refused"
+  end
+  out[#out + 1] = "  UnitPosition(pet)=" .. up .. "  GetPlayerFacing=" .. facing
+
+  return table.concat(out, "\n")
+end
+
 function MendMark.PrintDiag()
   print("|cff39ff14HunterKit — Pet Mend Marker|r")
   print("  " .. MendMark.Diagnostic())
   print("  cvars (* = changed by HunterKit, restored on disable/logout): " .. MendMark.PlateCVars())
+  print(MendMark.Capabilities())
   if lastAnchorMode == "plate" then
     print("  Anchored over the pet's head via its name plate.")
   else

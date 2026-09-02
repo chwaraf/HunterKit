@@ -445,6 +445,59 @@ HK.db.mend.plateStyle = true
 HK.MendMark.Update()
 
 -- ---------------------------------------------------------------------------
+-- 5d) Non-nameplate world anchoring paths
+-- ---------------------------------------------------------------------------
+-- legacy layout: a NamePlateN child of WorldFrame carrying unit = "pet"
+local legacyUnitFrame = CreateFrame("Frame", nil, nil)
+legacyUnitFrame.unit = "pet"
+local legacyPlate = CreateFrame("Frame", "NamePlate7", WorldFrame)
+legacyPlate:SetSize(100, 40)
+function legacyPlate:GetChildren() return legacyUnitFrame end
+HKTest.state.plate = nil
+HKTest.TickMarker(1)
+check("finds the pet through the legacy NamePlateN scan",
+  HK.MendMark.AnchorMode() == "plate", HK.MendMark.AnchorMode())
+-- retire it (the stub keeps every frame it ever created)
+legacyPlate.name = "RetiredPlate7"
+HKTest.TickMarker(1)
+check("stops using a plate that is no longer a NamePlateN",
+  HK.MendMark.AnchorMode() == "petframe", HK.MendMark.AnchorMode())
+
+-- a direct screen-position API needs no plate at all
+_G["GetUnitNamePosition"] = function(u)
+  if u ~= "pet" then return nil end
+  return HKTest.state.screenPos and 900, 400 or nil
+end
+HKTest.state.screenPos = true
+HKTest.TickMarker(1)
+check("uses a screen-position API when the client has one",
+  HK.MendMark.AnchorMode() == "screen", HK.MendMark.AnchorMode())
+check("reports which API produced it", HK.MendMark.AnchorSource() == "GetUnitNamePosition",
+  tostring(HK.MendMark.AnchorSource()))
+do
+  local p = marker.points[1]
+  -- 400px down from the top of a 1080-high screen = 680 up from the bottom,
+  -- plus the user's "height above head" offset.
+  check("converts screen coords to a UIParent anchor",
+    p and p[1] == "BOTTOM" and p[2] == UIParent and p[3] == "BOTTOMLEFT"
+      and near(p[5], 680 + HK.db.mend.offsetY),
+    p and tostring(p[5]))
+end
+_G["GetUnitNamePosition"] = nil
+HKTest.state.screenPos = nil
+HKTest.TickMarker(1)
+check("falls back when the API stops answering",
+  HK.MendMark.AnchorMode() == "petframe", HK.MendMark.AnchorMode())
+check("stale screen-source is cleared", HK.MendMark.AnchorSource() == nil,
+  tostring(HK.MendMark.AnchorSource()))
+
+-- capability report names the paths it tried
+local caps = HK.MendMark.Capabilities()
+check("capability report covers screen-pos APIs", caps:find("GetUnitNamePosition=absent") ~= nil, caps)
+check("capability report covers plate discovery", caps:find("GetNamePlateForUnit=") ~= nil)
+check("capability report covers UnitPosition(pet)", caps:find("UnitPosition%(pet%)=") ~= nil)
+
+-- ---------------------------------------------------------------------------
 -- 6) Diagnostics + slash command must not error
 -- ---------------------------------------------------------------------------
 HKTest.prints = {}

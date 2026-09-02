@@ -3,6 +3,35 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.5.0] - 2026-09-02
+### Added (world anchoring paths that don't depend on C_NamePlate)
+- **Direct screen-position probing.** Some TBC-lineage builds are reported to expose a
+  unit's on-screen name position as a plain function. HunterKit now probes for those by
+  name at load (`GetUnitNamePosition`, `GetUnitScreenPosition`) and, if one answers for
+  `pet`, anchors to it directly — **true world anchoring with every nameplate off**
+  (`mode=screen`). Absent on a client, nothing changes. The Y convention (measured from
+  the top-left, in pixels) is converted to a UIParent anchor and the raw pair is printed
+  by `/htk mend` so it can be checked on screen instead of trusted.
+- **Legacy `NamePlateN` discovery.** Fourth plate path: `NamePlate1..N` children of
+  `WorldFrame` with the unit token on the child unit frame — the layout clients used
+  before `C_NamePlate`.
+- **`/htk mend` capability report.** Prints which screen-position APIs the client has
+  (and their raw return), which of the four plate-discovery paths found the pet, the
+  visible plate count, and `UnitPosition("pet")` / `GetPlayerFacing`. Client capability
+  differs between Era, TBC-lineage and the Midnight UI merge, so the addon reports it
+  instead of assuming.
+
+### Notes
+- `UnitPosition()` is documented as not working on pets ("does not work on pets or any
+  unit not in your group"), and there is still no world-to-screen API in Classic Era —
+  but rather than argue about which client has what, the probe makes it answerable
+  in-game in one command.
+- Test suite: 95 -> **105** behaviour checks (legacy NamePlateN scan incl. a plate that
+  stops matching, screen-position anchor + coordinate conversion + height offset,
+  fallback when the API stops answering, stale anchor-source cleared, capability
+  report contents).
+
+
 ## [0.4.0] - 2026-09-02
 ### Added (Pet Mend Marker: true over-the-head anchoring with nameplates off)
 - **Three independent ways to find the pet's name plate**, first hit wins:

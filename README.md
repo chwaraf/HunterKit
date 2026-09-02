@@ -7,7 +7,7 @@ For **WoW Classic Era & Hardcore** (patch 1.15.x).
 A self-contained, dependency-free (no Ace3/LibDBIcon) addon built for the
 hardcore-first hunter. Every action is a deliberate click; nothing is automated.
 
-Current version: **0.4.0** — see [`CHANGELOG.md`](CHANGELOG.md).
+Current version: **0.5.0** — see [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Features
 
@@ -46,10 +46,20 @@ plate**. Classic Era has no world-to-screen API, and `UnitPosition()` doesn't
 work on pets at all, so no addon can project the pet into screen space by
 itself. What the marker does instead:
 
-**1. Find a pet plate — three independent ways, first hit wins.**
+**0. If the client hands out screen coordinates directly, no plate is needed.**
+Older/TBC-lineage builds have been reported to expose the unit's on-screen name
+position as a plain function. HunterKit probes for those by name at load
+(`GetUnitNamePosition`, `GetUnitScreenPosition`) and, if one answers for `pet`,
+anchors straight to it — real world anchoring with every nameplate off. `/htk mend`
+prints whether your client has one and the raw values it returned, so this is
+verifiable rather than assumed (`mode=screen`).
+
+**1. Find a pet plate — four independent ways, first hit wins.**
 `C_NamePlate.GetNamePlateForUnit("pet", true)` (including the "forbidden" plates
-instances use), the plate handed to `NAME_PLATE_UNIT_ADDED`, and a scan of
-`C_NamePlate.GetNamePlates()`. Any of them gives true over-the-head anchoring.
+instances use), the plate handed to `NAME_PLATE_UNIT_ADDED`, a scan of
+`C_NamePlate.GetNamePlates()`, and the pre-`C_NamePlate` layout — `NamePlate1..N`
+children of `WorldFrame` carrying the unit token. Any of them gives true
+over-the-head anchoring.
 
 **2. If you have nameplates off, make one exist — without you turning them on.**
 Tick **Force pet name plate** (opt-in, off by default). HunterKit then walks a
@@ -71,7 +81,13 @@ UIParent advice below.
 
 Anchor modes: **`auto`** (default) = head when a plate exists, else the pet
 frame · **`plate`** = head only, hidden while there's no plate · **`petframe`** =
-always the UI widget. `/htk mend` prints which one is live and why.
+always the UI widget.
+
+`/htk mend` prints which one is live **and a capability report for your client**:
+which screen-position APIs exist and what they return, which of the four plate
+paths found the pet, how many plates are visible, and what `UnitPosition("pet")`
+and `GetPlayerFacing` give back. If something anchors differently on your client
+than described here, that output says exactly why.
 
 ## Install
 
@@ -107,6 +123,13 @@ minimum nameplate setting for you (and restores it afterwards), which is what
 makes head anchoring work with your own nameplates off. `/htk mend` confirms it —
 `mode=plate` means it's over the pet's head, `mode=petframe` means it's on the
 UI fallback, and the `*` marks show which CVars it had to change.
+
+**"How do I know what my client actually supports?"** — Run `/htk mend`. Alongside
+the marker's state it prints a capability report: every screen-position API it
+probed for (`absent` or the raw x,y it returned), which of the four plate-discovery
+paths found your pet, the visible plate count, and `UnitPosition("pet")` /
+`GetPlayerFacing` results. Client capabilities differ between Era, TBC-lineage and
+the Midnight UI merge — this is the ground truth rather than a guess.
 
 **"I use a unit-frame addon / I hid the frames in Edit Mode"** — In options, set the
 Feed button and Sniper Mark **anchor parent to `UIParent`**. Since patch 1.15.9 you can

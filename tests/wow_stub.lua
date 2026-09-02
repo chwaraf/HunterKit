@@ -179,6 +179,23 @@ function GetSpellTexture(id)
 end
 function GetPetHappiness() return 3, 100, 0 end
 function UnitName(u) return (u == "pet") and "Fang" or "Testhunter" end
+function UnitPosition(u)
+  if u ~= "pet" then return 100, 200, 0, 1 end
+  if HKTest.state.petPosition == false then return nil end   -- client refuses pets
+  return 101.5, 202.5, 0.5, 1
+end
+function GetPlayerFacing() return 1.25 end
+function GetScreenHeight() return 1080 end
+
+-- The pre-C_NamePlate layout: NamePlateN children of WorldFrame.
+WorldFrame = newFrame("Frame", "WorldFrame", UIParent)
+function WorldFrame:GetChildren()
+  local out = {}
+  for _, f in ipairs(HKTest.frames) do
+    if f.name and f.name:match("^NamePlate%d+$") then out[#out + 1] = f end
+  end
+  return table.unpack and table.unpack(out) or unpack(out)
+end
 function InCombatLockdown() return HKTest.state.combatLockdown == true end
 function GetCVar(n)
   local c = HKTest.state.cvars
