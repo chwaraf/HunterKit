@@ -3,6 +3,390 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.8.0] - 2026-09-02
+### Fixed
+- **The sniper-mark shape options did nothing.** `Range.lua` built its shape table
+  at load time —
+  `local SHAPES = { crosshair = reticle, x = xMark, rings = outlineMark }` — but
+  those three textures are created later by `BuildFrame()`, so every value was
+  `nil` and the table was **empty**. Consequences: `StyleFor` never matched the
+  saved choice and always returned the hardcoded fallback, and `ShowStyle`
+  iterated nothing, so the mark kept whatever visibility it was built with. The
+  dropdowns were decorative. The shape is now drawn on demand and the saved
+  choice is honoured immediately.
+
+### Changed (Sniper Mark — 18 shapes, six per state)
+- **Each state has six shapes of its own**, and the states differ by *character*,
+  not just colour: IN RANGE is open/angular (`crosshair`, `brackets`, `diamond`,
+  `chevrons`, `ticks`, `ringdot`), TOO CLOSE is closed/blocking (`x`, `block`,
+  `circle`, `arrows`, `bars`, `burst`), OUT OF RANGE is broken/hollow (`rings`,
+  `dashed`, `halo`, `sides`, `slashes`, `weakcross`).
+- **Drawn procedurally** from `Interface\Buttons\WHITE8x8` (line segments, rings
+  approximated by 24 segments, dots) in a −1..1 unit box scaled to the mark size.
+  No art files, textures are pooled and reused, and a style switch costs no
+  allocations after the first draw.
+- `Media/crosshair.tga`, `crosshair-x.tga` and `crosshair-outline.tga` are
+  **removed** — nothing references them any more (~3 MB). They are still in git
+  history at `31d1ce4` if you want the old look back.
+- The three dropdowns now cycle their own state's six shapes (they all offered the
+  same three before), and say so in their tooltips.
+
+### Changed (Options)
+- **Slider numbers are centred** above the bar instead of right-aligned, and the
+  label column is capped at the left half minus the number's column so a long
+  label cannot run underneath it. A programmatic `SetValue` no longer writes back
+  to the db (`syncing` guard).
+- **Reset ALL settings button** (new *Reset* section): two clicks — the first arms
+  it ("Click again to CONFIRM"), the armed state expires after 5 s — then
+  `HK.ResetAll()` restores every default, including saved positions.
+- **The open window follows a reset.** Every control registers a refresher
+  (`Options.RefreshControls`), so checkboxes, sliders and dropdowns re-display the
+  restored values instead of showing what you had before.
+
+### Changed (MendMark)
+- **"Force pet name plate" now admits defeat.** Once every rung the client has is
+  on, the pet is out, and ~5 s later there is still no pet plate, the option
+  switches itself off, restores the CVars it changed, refreshes the checkbox and
+  prints one line saying head anchoring isn't available on this client. Before, it
+  left your nameplate CVars changed and appeared to do nothing.
+
+### Fixed (Core)
+- `HK.ResetAll` wipes and refills each db **sub-table in place** rather than
+  replacing it: every module holds its own local reference to its slice
+  (`db = HK.db.range`), so fresh tables would have left them all writing to
+  orphans that are never saved.
+
+### Added (tests)
+- **`tests/test_settings.lua` (28 checks)**: six distinct shapes per state (no two
+  identical), the shape on screen follows the dropdown for all three states,
+  unknown saved values fall back, `HK.ResetAll` restores defaults while keeping
+  the db slices the modules hold, and the reset button's two-click/expiry flow.
+- **The Options harness now loads every module in `.toc` order**, as the client
+  does — the shape dropdowns read their lists from `Range`. That immediately
+  surfaced two modules failing to initialise under the stub (`FeedPet`,
+  `PassivePulse`); the stub gained the tooltip, bag, sound and unit APIs they use,
+  plus `PetHasActionBar`, `CheckInteractDistance`, target state, `SetRotation` and
+  a queued `C_Timer.After` (`HKTest.RunDelayed`) so delayed callbacks are testable.
+- MendMark: the force-plate give-up path (ladder climbs, then restores, switches
+  off, prints once and not every tick).
+- Revert proofs: ignoring the saved shape → 4 failures; `HK.ResetAll` replacing
+  the db slices → the identity check fails; the force-plate give-up removed → 5
+  failures.
+- Suite: **139 + 54 + 28 + 40 = 261 checks**.
+
+## [0.7.1] - 2026-09-02
+### Changed
+- **`/htk unlock` shows the movable fallback, not the over-the-head marker.**
+  While frames are unlocked, `ResolveAnchor()` returns the pet-frame anchor even
+  when a pet plate exists — and even when *Anchor* is set to `plate` — so what you
+  see is what you can drag. `/htk lock` sends it back over the pet's head. It has
+  to work that way: a frame anchored to a name plate is a **restricted region**
+  (the client throws and taints if anything touches its drag or clamp state) and
+  the addon re-applies the plate anchor every 100 ms, so the head marker can be
+  neither moved nor held. Edit mode therefore shows **one** marker, not two —
+  there is no second, movable copy of the head marker to show.
+- **The clamp follows the anchor.** Never clamped while the marker hangs off a
+  name plate (it must follow the pet off-screen, and the client refuses the call
+  anyway); clamped while it is the draggable fallback in edit mode, so it can't be
+  dropped off-screen. Applied only when the anchor mode changes, not 10×/second.
+
+### Fixed
+- **A frame that stopped being draggable was never cleaned up.** `Positions.SetLock`
+  skipped every frame whose `draggableIf` reported "not movable now". That was
+  right while the state was static, but the marker's state now flips, so locking
+  left it with its drag handlers, its mouse-enabled state and its faded edit-mode
+  alpha. "Not movable now" now only skips the *setup*; anything we made draggable
+  is still torn down (tracked as `dd.dragSetup`).
+- **Unlock clamped a plate-anchored frame for up to 100 ms.** `draggableIf`
+  answered "petframe" while the frame was still anchored to the plate (the ticker
+  had not re-anchored yet), so `SetLock` ran `SetClampedToScreen(true)` on a
+  restricted region — the exact client error fixed in 0.6.2, absorbed by
+  `HK.SafeClamp` but still thrown. `draggableIf` now calls `Update()` first, so the
+  frame is off the plate before `SetLock` acts on the answer.
+
+### Added (tests)
+- `test_options_ui.lua` now drives the **real** `HK.Positions.ToggleLock()` with a
+  live pet plate: unlock → fallback anchor, frame movable, drag handlers bound,
+  fallback widget shown, head marker off the plate; lock → back on the plate,
+  handlers removed, not movable, alpha restored, still on screen. A stub that
+  throws `Can't clamp restricted regions` whenever the marker is plate-anchored
+  proves it is never clamped in that state. Edit mode with no pet stays on the UI
+  fallback and never goes looking for a plate.
+- Each of the three fixes proven by reverting it: the edit-mode anchor branch → 7
+  failures, the `Update()` inside `draggableIf` → the clamp failure, the
+  `dragSetup` teardown guard → 2 "left draggable" failures.
+- Suite: **132 behaviour + 52 UI + 40 docs = 224 checks**.
+
+## [0.7.0] - 2026-09-02
+### Changed (Options window layout — 7 reported UI problems)
+- **The window is bigger:** 392×520 → **474×604**, content column 360 → **436 px**,
+  with more room for the scrollbar.
+- **"L" clipped off every *Low*.** `OptionsSliderTemplate`'s `$parentLow`/`$parentHigh`
+  fontstrings are centred on the bar's bottom corners; the bar started at content
+  `x=0`, so the left label sat half outside the scroll area, which clips its
+  children. The template's `Text`/`Low`/`High` are now **hidden** and the bar is
+  inset 8 px.
+- **Slider values are always visible.** `$parentText` was only written from
+  `OnValueChanged`, so a slider showed no number until you touched it. Each row now
+  has its own value fontstring, written at build time and updated on drag.
+- **Numbers no longer overlap the labels.** Layout per row: label left, value
+  right-aligned in a 64 px column, full-width slider underneath (was: label to the
+  right of a half-width slider, with the template's text floating over it).
+- **Sections are visibly separate.** Each feature block gets a 1 px rule spanning
+  the content width plus more air: header 30 px, checkbox 26 px, slider/dropdown 46 px.
+- **Tooltips wrap and are concise.** `GameTooltip:AddLine` was called without its
+  5th argument, so long help text rendered as one clipped line; it now passes
+  `wrap = true` through one shared `AttachTooltip` helper. 26 strings were rewritten
+  shorter (every slider body now fits in 220 characters; the longest of all 28 is
+  243, the force-plate caveat), and the two controls that had no tooltip at all
+  (Passive Alert size, sonar rings) got one — all 28 controls now have one.
+
+### Changed (nameplate diagnostics — the earlier conclusion was wrong)
+- **`nameplateShowFriendlyMinions` is now a rung of the force-plate ladder**
+  (`FriendlyPets` → `FriendlyMinions` → `Friends` → `All`), which is what publishes
+  a pet plate on Classic Era. Rungs are cumulative and the ladder still stops at the
+  first rung that yields a plate.
+- **`/htk mend` probes CVars by name.** `C_Console.GetAllCommands()` returns
+  registered *console commands*, not CVars, so the previous dump omitted real
+  nameplate CVars and reported them as "not on this client". The dump now probes a
+  candidate list with `GetCVar` (nil = genuinely absent) and adds any nameplate
+  console commands on top; values HunterKit changed are marked `*` with the value
+  they replaced.
+- **Honest answer to "can you turn on a plate for just my pet?":** no. The finest
+  granularity the CVar API offers is friendly pets/minions, which also publishes
+  plates for other players' pets and minions. The README and the in-game tooltip say
+  so, and the README's "those CVars are gone on 1.15.9" claim is corrected.
+
+### Added (tests)
+- **`tests/test_options_ui.lua` (29 checks).** The harness used to only syntax-check
+  `Options.lua`; `MakeWindow` now runs against `tests/wow_stub.lua` (the stub gained
+  the widget methods it needs: scroll children, slider min/max/value,
+  `SetWordWrap`, `GameTooltip` line recording, and `OptionsSliderTemplate`'s three
+  fontstrings), and the suite asserts the layout above — value visible before
+  interaction, template `Text`/`Low`/`High` hidden, bar inset from the clipping
+  edge, label/value columns disjoint, one divider per section, every tooltip
+  wrapped. Reverting the fixes makes 12 of these fail.
+- **A module `Init` that throws now fails the suite.** `HK:Load()` pcall-guards each
+  module, so a missing client method inside `MakeWindow` used to disappear silently.
+- **Stray-global guard.** The stub snapshots `_G` before the addon loads; the suite
+  fails on any new global outside an explicit allowlist. That is the bug class that
+  shipped twice as `attempt to call a nil value (global 'Update')` — dropping a
+  `local` in `Options.lua` reproduces it (`FAIL … — sliderCount`).
+- Mend-marker tests cover the new minions rung (rung 2 is
+  `nameplateShowFriendlyMinions`, insufficient alone; the ladder stops once a plate
+  exists) and restoring **every** CVar it touched.
+- Suite: **132 behaviour + 29 UI + 40 docs = 201 checks**.
+
+## [0.6.2] - 2026-09-02
+### Fixed (live client error: `/htk unlock` / `/htk lock` threw + tainted)
+- **`HunterKitMendMarker:SetClampedToScreen(): Action[ClampedToScreen] failed because
+  [Can't clamp restricted regions]` + `Lua Taint: HunterKit`.** The mend marker was
+  registered as draggable unconditionally, so `Positions.SetLock` ran its full drag
+  setup on it — including `f:SetClampedToScreen(true)` (Options.lua:667) — even while
+  the marker was anchored to the pet's **name plate**, which is a protected/restricted
+  frame. The client refuses the call and taints the addon.
+- **Root design error:** the over-the-head marker was never the player's to move. It
+  must follow the pet. Only the **UI fallback** should be draggable.
+
+### Changed
+- **`draggableIf` opt-out for registered draggables.** The mend marker registers
+  `draggableIf = function() return ResolveAnchor() == "petframe" end`, so it takes part
+  in lock/unlock only while it's on the UI fallback. While it's on a plate or a
+  screen-position anchor, `SetLock` skips it entirely (no SetMovable, no clamp, no drag
+  scripts, no taint).
+- **`HK.DraggableActive(d)`** (Core) decides that, so the rule lives in one place and is
+  testable rather than inlined in the lock loop.
+- **`HK.SafeClamp(f, on)`** (Core) pcall-guards every `SetClampedToScreen` call, so a
+  restricted anchor can never break lock/unlock for *any* module — not just this one.
+  The marker's own build-time `SetClampedToScreen(false)` goes through it too.
+
+### Tests
+- The stub now reproduces the client's restricted-region error. New checks: draggable on
+  the UI fallback, NOT draggable on a plate anchor, NOT draggable on a screen-position
+  anchor, `HK.SafeClamp` absorbs the throw, and a SetLock-shaped loop (using the real
+  Core helpers) skips the restricted marker without touching it.
+- **Proven:** stubbing `HK.DraggableActive` back to `return true` fails three checks,
+  including "restricted marker was skipped, not touched". Behaviour suite is now 129.
+
+
+## [0.6.1] - 2026-09-02
+### Fixed (live client error: `/htk reset` and `/htk unlock`)
+- **`HunterKit/MendMark.lua:355: attempt to call a nil value`.** The draggable
+  registration sits inside `BuildFrame` (line 304), but `local function Update` was
+  declared at line 595 — so the closure `function() Update() end` compiled to a
+  **global** lookup (nil at runtime), not the local. `Options.Reset` calls `d.apply()`
+  on every registered draggable, which is where it surfaced; `Options.SetLock` would
+  have hit it the same way on lock.
+- **Fix:** forward-declare `local OnUpdateAnchor, Update` at the top (the file already
+  did exactly this for `OnUpdateAnchor`, for the same reason) and assign
+  `Update = function() ... end` where the body lives.
+
+### Added (regression coverage — the gap that let it ship)
+- The suite now **invokes every callback each draggable registers** — `apply`, `save`,
+  `opts.restore`, `opts.onUpdate`, `opts.saveFromScreen` — plus an Options-style
+  `Reset` loop. Previously it only checked the registration existed, which is why a
+  nil-callable slipped through.
+- **Proven, not assumed:** reverting the fix makes the suite fail with the client's own
+  message — `attempt to call a nil value (global 'Update')` — and restoring it passes.
+- Scanned all eight addon files for the same forward-reference bug class (a call to a
+  `local function` declared later in the chunk): all clean.
+
+
+## [0.6.0] - 2026-09-02
+### Measured on a live 1.15.9 client (via the 0.5.0 probe)
+```
+screen-pos APIs: GetUnitNamePosition=absent  GetUnitScreenPosition=absent
+pet plate via:   GetNamePlateForUnit=none  NAME_PLATE_UNIT_ADDED=none  GetNamePlates=none  NamePlateN scan=none
+plates visible:  0        UnitPosition(pet)=refused   GetPlayerFacing=0.89
+nameplate cvars: nameplateShowAll=1  nameplateShowEnemies=1  nameplateMaxDistance=41
+```
+No pet plate, no screen-position API, no pet world position, and the friendly/pet
+nameplate CVars no longer exist — so **over-the-head anchoring is not available on
+1.15.9** and *Force pet name plate* cannot help there (rungs 1-2 are gone, rung 3
+`nameplateShowAll` is already 1). Recorded in the README so nobody re-litigates it.
+
+### Fixed
+- **`/htk mend` printed misleading advice.** Out of combat with a healthy pet the
+  marker is hidden *before* it resolves an anchor, so the report showed `mode=nil`
+  and then claimed it "is anchored to the pet unit frame". Anchor resolution is now
+  split from anchor application (`ResolveAnchor`), so the report always prints
+  `anchor would be: <mode>` plus why the marker is hidden.
+
+### Added
+- **`hidden because:` line** — the exact gate that's keeping the marker off screen
+  (master switch, no pet, Mend Pet untrained, out of combat + healthy, ...).
+- **Full nameplate CVar dump** from `C_Console.GetAllCommands()` — this is what
+  proved the friendly-plate CVars are gone on 1.15.9, and it answers "which setting
+  would give my pet a plate?" on any client instead of guessing.
+- **`LadderCVarsUsable()`** — counts ladder rungs that exist *and* are still off, so
+  the addon only suggests Force pet name plate when it could actually work, and says
+  plainly "nothing else to turn on here" when it can't.
+- **The UI fallback is now draggable** (`/htk unlock` → drag → lock), registered like
+  the feed button and sniper mark, with the drop point stored in `mend.pinX`/`pinY`
+  (kept separate from `offsetY`, which is still the gap above the anchor's top edge in
+  plate mode). `/htk reset` returns it above the pet frame. On a client where the head
+  anchor is impossible, placement is the only lever left, so it's in the player's hands.
+
+### Notes
+- Test suite: 105 -> **118** behaviour checks, including a stub of the exact 1.15.9
+  CVar set asserting the report resolves the anchor while hidden, names the hidden
+  reason, dumps the CVars, and does NOT suggest force-plate when it cannot help.
+
+
+## [0.5.0] - 2026-09-02
+### Added (world anchoring paths that don't depend on C_NamePlate)
+- **Direct screen-position probing.** Some TBC-lineage builds are reported to expose a
+  unit's on-screen name position as a plain function. HunterKit now probes for those by
+  name at load (`GetUnitNamePosition`, `GetUnitScreenPosition`) and, if one answers for
+  `pet`, anchors to it directly — **true world anchoring with every nameplate off**
+  (`mode=screen`). Absent on a client, nothing changes. The Y convention (measured from
+  the top-left, in pixels) is converted to a UIParent anchor and the raw pair is printed
+  by `/htk mend` so it can be checked on screen instead of trusted.
+- **Legacy `NamePlateN` discovery.** Fourth plate path: `NamePlate1..N` children of
+  `WorldFrame` with the unit token on the child unit frame — the layout clients used
+  before `C_NamePlate`.
+- **`/htk mend` capability report.** Prints which screen-position APIs the client has
+  (and their raw return), which of the four plate-discovery paths found the pet, the
+  visible plate count, and `UnitPosition("pet")` / `GetPlayerFacing`. Client capability
+  differs between Era, TBC-lineage and the Midnight UI merge, so the addon reports it
+  instead of assuming.
+
+### Notes
+- `UnitPosition()` is documented as not working on pets ("does not work on pets or any
+  unit not in your group"), and there is still no world-to-screen API in Classic Era —
+  but rather than argue about which client has what, the probe makes it answerable
+  in-game in one command.
+- Test suite: 95 -> **105** behaviour checks (legacy NamePlateN scan incl. a plate that
+  stops matching, screen-position anchor + coordinate conversion + height offset,
+  fallback when the API stops answering, stale anchor-source cleared, capability
+  report contents).
+
+
+## [0.4.0] - 2026-09-02
+### Added (Pet Mend Marker: true over-the-head anchoring with nameplates off)
+- **Three independent ways to find the pet's name plate**, first hit wins:
+  `C_NamePlate.GetNamePlateForUnit("pet", true)` (which also returns the
+  "forbidden" plates instances use), the plate handed to `NAME_PLATE_UNIT_ADDED`,
+  and a scan of `C_NamePlate.GetNamePlates()`. Any of them gives real
+  world anchoring above the pet's head.
+- **"Force pet name plate" (opt-in, off by default).** This is the fix for "I want
+  it over the pet's head but I don't want nameplates on": HunterKit walks a ladder of
+  nameplate CVars from the least invasive up — `nameplateShowFriendlyPets` →
+  `nameplateShowFriends` → `nameplateShowAll` — **stopping at the first rung that
+  actually produces a pet plate**. CVars the client doesn't have are skipped
+  (`GetCVar` returns nil), it waits ~1s between rungs for the client to react, and it
+  never touches them in combat (the client locks CVars there). Your previous values are
+  saved in SavedVariables and **restored on untick and at logout**, so nothing is
+  written to your config permanently.
+- **Nameplate-style fallback widget.** When there's no pet plate to sit on, the marker
+  draws a plate of its own: pet name + a green→red health bar under the icon, so the
+  fallback reads like a nameplate instead of a stray icon. Hidden automatically when a
+  real plate is carrying the marker (that plate already shows name and health).
+- **`/htk mend` now reports `plate=true|false`** and marks every CVar HunterKit changed
+  with a `*`, and its advice line explains the Force pet name plate option.
+
+### Fixed / changed
+- Anchor resolution no longer depends on a single API: a client that only reports the
+  pet through `NAME_PLATE_UNIT_ADDED` (or only through the visible-plate list) now
+  anchors over the head instead of falling back to the pet frame.
+- **dbVersion stays 12**; the new `mend.plateStyle`, `mend.forcePlate` and
+  `mend.plateCVars` keys arrive through `MergeDefaults`. `HK.version` / `.toc` -> **0.4.0**.
+- README anchoring section rewritten to state the constraint and the workaround
+  precisely (no world-to-screen API; `UnitPosition` does not work on pets), and the
+  test suite grew from 67 to **95** behaviour checks (CVar ladder + escalation +
+  restore + logout restore + combat-lock guard + blocked-SetCVar guard + missing-CVar clients + plate
+  discovery + widget).
+
+
+## [0.3.0] - 2026-09-02
+### Added (Pet Mend Marker)
+- **A Mend Pet icon above your pet's head.** Green box + solid icon when the pet is
+  inside Mend Pet range, so you can see at a glance — without reading a bar — that a
+  Mend will land. Out of range it gets a **red box**, a greyed icon faded to 45% and a
+  `TOO FAR` label, so "not in range" reads differently from "in range" at a glance.
+- **Urgent state at or below 30% pet HP.** The marker grows up to ~14%, pulses, throws
+  an expanding red ring and labels itself `MEND!`. The box colour keeps carrying the
+  range answer (green/red) so the two signals never fight. The threshold is a slider (5-100%,
+  default 30) and the pulse can be turned off.
+- **On by default**, with its own Options → Pet Mend Marker section: enable, icon size,
+  height above the head, urgent threshold, urgent pulse, only-in-combat, fade when out
+  of range, label, and the anchor mode.
+- **Visibility rules:** hidden with no pet, a dead pet, or Mend Pet untrained. *Only in
+  combat* is on by default, but a pet below the threshold always shows, combat or not.
+  `/htk unlock` force-shows it so the size/height sliders can be tuned out of combat.
+- **`/htk mend`** prints the live diagnostic (spell, range state, HP vs threshold,
+  anchor mode, shown/hidden) plus the nameplate CVars the client is reading.
+  `/htk selfcheck` gained `mend marker` and `mend diag` probes, and `/htk help` + the
+  `/htk` feature line list the new module.
+
+### Notes (anchoring, honestly)
+- Classic Era exposes a unit's world position **only while it has a name plate** —
+  there is no world-to-screen API, so no addon can float a frame over a pet the client
+  isn't drawing a plate for. The marker therefore uses the pet's name plate when one
+  exists (`mode=plate`) and **falls back to the pet unit frame** otherwise
+  (`mode=petframe`), so it still works with every nameplate turned off. Anchor = `plate`
+  makes it head-only (hidden with no plate); `petframe` makes the UI position permanent.
+- The pet-frame fallback is used **even when the pet frame is hidden in Edit Mode** (a
+  hidden frame keeps its layout), so the marker doesn't disappear for players who follow
+  the "hide the default frames" advice.
+- Nothing is automated: this is a readout. It never casts Mend Pet.
+
+### Changed (docs + schema)
+- **Options window is 60px taller** (392x520) so the new section doesn't push the
+  Positions buttons out of view; the window already scrolls (wheel + draggable bar).
+- **dbVersion 11 -> 12.** New `mend` section; existing users get the defaults via
+  `MergeDefaults` (no field rewrite). `HK.version` / `.toc` bumped to **0.3.0**.
+- **README rewritten to match the shipped addon**: the Pet Mend Marker section and its
+  anchoring rules, the per-state sniper mark styles shipped in 0.2.34, `/htk mend`, and a
+  Development section stating that README/CHANGELOG/.toc/Core are updated in the same
+  change as the code.
+- **New `tests/` harness.** `python3 tests/run_tests.py` loads the real `Core.lua` and
+  `MendMark.lua` against a stub client and asserts the marker's states, thresholds,
+  gating and anchoring (67 checks), then checks that every addon file parses, that the
+  `.toc` matches the files on disk, that the `.toc` and newest CHANGELOG entry match
+  `HK.version`, and that every `/htk` subcommand is documented in the README.
+
+
 ## [0.2.34] - 2026-09-02
 ### Changed
 - **Sniper mark: per-state style pickers.** The two old "Blink when too close" and

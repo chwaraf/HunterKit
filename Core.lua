@@ -6,7 +6,7 @@
 
 local ADDON_NAME, HK = ...
 
-HK.version = "0.2.34"
+HK.version = "0.8.0"
 
 -- ---------------------------------------------------------------------------
 -- Defaults (schema). This is the source of truth for the options window and
@@ -14,7 +14,7 @@ HK.version = "0.2.34"
 -- ---------------------------------------------------------------------------
 HK.defaults = {
   enabled   = true,
-  dbVersion = 11,
+  dbVersion = 12,
   firstRun  = true,
 
   ui = {
@@ -81,6 +81,31 @@ HK.defaults = {
     rings             = true,
     label             = true,
     smallGlowOnPetBar = false,
+  },
+
+  mend = {
+    enabled     = true,
+    size        = 34,
+    offsetX     = 0,
+    offsetY     = 4,       -- gap above the anchor (name plate / pet frame) top edge
+    pinX        = 0,       -- dragged position (absolute UIParent CENTRE offset)
+    pinY        = 0,
+    moved       = false,   -- true once dragged; then the UI fallback is pinned
+    hpThreshold = 30,      -- % of max HP at or below which the marker goes urgent
+    urgentPulse = true,    -- grow + pulse + expanding ring while urgent
+    urgentCycle = 0.55,    -- seconds per urgent pulse
+    combatOnly  = true,    -- hide out of combat (a pet below the threshold still shows)
+    dimWhenFar  = true,    -- grey + fade when the pet is outside Mend Pet range
+    showLabel   = true,    -- "MEND!" when urgent, "TOO FAR" when out of range
+    anchor      = "auto",  -- auto | plate (world only) | petframe (always UI)
+    plateStyle  = true,    -- nameplate-style name + HP bar under the icon when
+                           -- we're NOT anchored to a real pet plate
+    -- Opt-in: turn on the minimum nameplate CVars so the client publishes a pet
+    -- plate and the marker can anchor over the pet's head with the player's own
+    -- nameplate settings left alone. Previous values are stored here and restored
+    -- on disable/logout, so nothing is written to the config permanently.
+    forcePlate  = false,
+    plateCVars  = {},      -- name -> value before HunterKit changed it
   },
 }
 HK.DBNAME = "HunterKitDB"
@@ -319,6 +344,50 @@ function HK.Ticker(interval, fn)
   return C_Timer.NewTicker(interval, fn)
 end
 
+--- Restore EVERY setting to its default.
+---
+--- The sub-tables are wiped and refilled in place rather than replaced: each
+--- module keeps its own local reference to its slice (`db = HK.db.range`), so
+--- handing HK.db fresh tables would leave every module writing to orphans that
+--- are never saved. Identity must survive; only the contents change.
+local function ResetInto(dst, src)
+  for k in pairs(dst) do dst[k] = nil end
+  for k, v in pairs(src) do
+    if type(v) == "table" then
+      dst[k] = {}
+      ResetInto(dst[k], v)
+    else
+      dst[k] = v
+    end
+  end
+end
+
+function HK.ResetAll()
+  for k, v in pairs(HK.defaults) do
+    if type(v) == "table" then
+      if type(HK.db[k]) ~= "table" then HK.db[k] = {} end
+      ResetInto(HK.db[k], v)
+    else
+      HK.db[k] = v
+    end
+  end
+  -- Drop keys this version no longer knows about (older saves).
+  for k in pairs(HK.db) do
+    if HK.defaults[k] == nil and k ~= "dbVersion" then HK.db[k] = nil end
+  end
+  HK.db.dbVersion = HK.dbVersion
+
+  -- Re-apply everywhere. RescanSettings re-reads the db slice and rebuilds what
+  -- the setting controls; the mend marker also puts any forced nameplate CVar
+  -- back, because forcePlate is a default-off setting.
+  for _, name in ipairs({ "FeedPet", "Range", "Sounds", "PassivePulse", "MendMark" }) do
+    local m = HK[name]
+    if m and m.RescanSettings then pcall(m.RescanSettings) end
+  end
+  if HK.MendMark and HK.MendMark.Update then pcall(HK.MendMark.Update) end
+  print("|cff39ff14HunterKit|r all settings restored to their defaults.")
+end
+
 -- ---------------------------------------------------------------------------
 -- Drag / position helpers (shared by feed button, sniper mark, passive alert)
 -- ---------------------------------------------------------------------------
@@ -357,6 +426,27 @@ function HK.SaveDragged(frame, db)
   db.offsetX = (fx or 0) - (uw / 2)
   db.offsetY = (fy or 0) - (uh / 2)
   db.moved = true
+end
+
+-- Whether a registered draggable should take part in lock/unlock at all. A
+-- frame that is currently anchored to something it must follow (e.g. the mend
+-- marker sitting on the pet's name plate) is not the player's to move, and
+-- touching its drag state can throw on restricted regions.
+function HK.DraggableActive(d)
+  if d and d.opts and d.opts.draggableIf then
+    return d.opts.draggableIf() and true or false
+  end
+  return true
+end
+
+-- SetClampedToScreen() throws "Can't clamp restricted regions" (and taints) when
+-- the frame is anchored to a protected frame such as a name plate. Every call
+-- goes through here so a restricted frame can never break lock/unlock.
+function HK.SafeClamp(f, on)
+  if not f or not f.SetClampedToScreen then return false end
+  local ok, err = pcall(f.SetClampedToScreen, f, on)
+  if not ok then HK.Dbg("SetClampedToScreen refused:", tostring(err)) end
+  return ok
 end
 
 -- Decide whether a draggable should be pinned to UIParent CENTRE (absolute) rather
@@ -538,6 +628,16 @@ local function LoadDB()
     db.dbVersion = 11
   end
 
+  -- v11 -> v12: the Pet Mend Marker section (`mend`) was added. No field rewrite
+  -- is needed — HK.MergeDefaults fills a whole missing section from
+  -- HK.defaults, so existing users simply receive the new keys with their default
+  -- values (marker ON, 30% threshold, world/plate anchor with a pet-frame
+  -- fallback). The bump exists so the schema change is recorded and so a later
+  -- migration has a version to hang off.
+  if db.dbVersion < 12 then
+    db.dbVersion = 12
+  end
+
   db.dbVersion = HK.defaults.dbVersion
   HunterKitDB = db
   HK.db = db
@@ -587,9 +687,10 @@ end
 
 local function FeatureStatus()
   local d = HK.db or {}
-  return string.format("feed=%s range=%s sound=%s pulse=%s",
+  return string.format("feed=%s range=%s sound=%s pulse=%s mend=%s",
     tostring(d.feed and d.feed.enabled), tostring(d.range and d.range.enabled),
-    tostring(d.sound and d.sound.enabled), tostring(d.pulse and d.pulse.enabled))
+    tostring(d.sound and d.sound.enabled), tostring(d.pulse and d.pulse.enabled),
+    tostring(d.mend and d.mend.enabled))
 end
 
 local function PrintHelp()
@@ -600,6 +701,7 @@ local function PrintHelp()
   print("  /htk reset         — reset positions")
   print("  /htk sound         — preview pews")
   print("  /htk feed          — show the current feed macro + food")
+  print("  /htk mend          — pet mend marker diagnostics")
   print("  /htk selfcheck     — API diagnostics")
   print("  /htk gunlist       — list muted gun-sound FileDataIDs")
   print("  /htk debug         — toggle verbose logging")
@@ -626,6 +728,8 @@ SlashCmdList["HUNTERKIT"] = function(msg)
     if HK.Sounds then HK.Sounds.Preview() end
   elseif msg == "feed" then
     if HK.FeedPet then HK.FeedPet:PrintFeed() else print("HunterKit: FeedPet not initialised.") end
+  elseif msg == "mend" then
+    if HK.MendMark then HK.MendMark.PrintDiag() else print("HunterKit: MendMark not initialised.") end
   elseif msg == "gunlist" then
     if HK.Sounds then HK.Sounds.PrintGunList() end
   elseif msg == "selfcheck" then
@@ -680,6 +784,12 @@ function HK:SelfCheck()
   end)
   probe("sniper mark", function()
     return HK.Range and (HK.Range.IsFrameValid() and "VALID" or "missing") or "-"
+  end)
+  probe("mend marker", function()
+    return HK.MendMark and (HK.MendMark.IsShown() and "SHOWN" or "hidden") or "-"
+  end)
+  probe("mend diag", function()
+    return HK.MendMark and HK.MendMark.Diagnostic() or "-"
   end)
   probe("range diag", function()
     return HK.Range and HK.Range.Diagnostic() or "-"

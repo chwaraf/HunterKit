@@ -11,7 +11,7 @@ local Range = {}
 HK.Range = Range
 
 local db
-local frame, label, reticle, xMark, outlineMark
+local frame, label
 local ticker
 local lastState = nil
 
@@ -33,7 +33,7 @@ local LABELS = {
 
 -- forward declarations (referenced by Init/BuildFrame before their bodies are
 -- defined later in this file's chunk)
-local ApplyState, ShowStyle, Tick
+local ApplyState, Tick
 
 -- ---------------------------------------------------------------------------
 -- Init
@@ -62,27 +62,8 @@ function BuildFrame()
   frame:EnableMouse(false) -- never intercept clicks
   Range.ApplyPosition()
 
-  -- A single graphic reticle (Media/crosshair.tga) tinted per state.
-  reticle = frame:CreateTexture(nil, "ARTWORK")
-  reticle:SetTexture("Interface\\AddOns\\HunterKit\\Media\\crosshair.tga")
-  reticle:SetAllPoints(frame)
-  reticle:SetBlendMode("ADD")
-
-  -- A matching bold X for the close/dead zone (colourblind-safe shape-code).
-  xMark = frame:CreateTexture(nil, "ARTWORK")
-  xMark:SetTexture("Interface\\AddOns\\HunterKit\\Media\\crosshair-x.tga")
-  xMark:SetAllPoints(frame)
-  xMark:SetBlendMode("ADD")
-  xMark:Hide()
-
-  -- OUT OF RANGE uses a bare outline-only reticle (no cross, no centre dot) so it
-  -- reads as "no shot available" and is clearly distinct from the full green
-  -- crosshair that appears when IN RANGE.
-  outlineMark = frame:CreateTexture(nil, "ARTWORK")
-  outlineMark:SetTexture("Interface\\AddOns\\HunterKit\\Media\\crosshair-outline.tga")
-  outlineMark:SetAllPoints(frame)
-  outlineMark:SetBlendMode("ADD")
-  outlineMark:Hide()
+  -- The mark itself is drawn procedurally (see "Shapes" below): one style per
+  -- range state, six styles to choose from per state, no art files.
 
   label = frame:CreateFontString(nil, "OVERLAY")
   label:SetPoint("CENTER", frame, "BOTTOM", 0, -6)
@@ -195,46 +176,208 @@ end
 -- ---------------------------------------------------------------------------
 -- Rendering
 -- ---------------------------------------------------------------------------
--- Available mark shapes -> the texture that draws them (all three are direct
--- children of `frame`, so showing one and hiding the rest is enough).
-local SHAPES = {
-  crosshair = reticle,
-  x         = xMark,
-  rings     = outlineMark,
+-- Every mark is drawn from one 1x1 Blizzard texture instead of an art file: 18
+-- distinct silhouettes with nothing to ship in Media/, and the three states
+-- differ by SHAPE, not only by colour.
+--
+-- A style is a list of primitives in a unit box (x,y from -1..1, 0,0 = centre):
+--   {"seg",  x1, y1, x2, y2, w}   a line; w = thickness as a fraction of the size
+--   {"ring", cx, cy, r, w}        a circle outline, drawn from short segments
+--   {"dot",  cx, cy, s}           a filled square; s = side as a fraction
+local LINE_TEX = "Interface\\Buttons\\WHITE8x8"
+local RING_SEGMENTS = 24
+-- WoW is Lua 5.1 (math.atan2); the fallback is only for the test harness, where
+-- 5.3+ renamed it.
+local atan2 = math.atan2 or function(y, x) return math.atan(y, x) end
+
+-- The three families are deliberately different in character so the state reads
+-- at a glance even without the colour:
+--   IN RANGE    open, angular, centred  — "the shot is available"
+--   TOO CLOSE   closed, heavy, blocking — "back up"
+--   OUT OF RANGE broken, thin, hollow   — "no shot"
+local STYLES = {
+  OK = {
+    crosshair = {
+      { "seg", -1, 0, -0.32, 0, 0.07 }, { "seg", 0.32, 0, 1, 0, 0.07 },
+      { "seg", 0, -1, 0, -0.32, 0.07 }, { "seg", 0, 0.32, 0, 1, 0.07 },
+    },
+    brackets = {
+      { "seg", -1, -0.45, -1, -1, 0.09 }, { "seg", -1, -1, -0.45, -1, 0.09 },
+      { "seg", 1, -0.45, 1, -1, 0.09 },   { "seg", 1, -1, 0.45, -1, 0.09 },
+      { "seg", -1, 0.45, -1, 1, 0.09 },   { "seg", -1, 1, -0.45, 1, 0.09 },
+      { "seg", 1, 0.45, 1, 1, 0.09 },     { "seg", 1, 1, 0.45, 1, 0.09 },
+    },
+    diamond = {
+      { "seg", 0, 1, 1, 0, 0.07 },   { "seg", 1, 0, 0, -1, 0.07 },
+      { "seg", 0, -1, -1, 0, 0.07 }, { "seg", -1, 0, 0, 1, 0.07 },
+    },
+    chevrons = {
+      { "seg", -0.62, 0.95, 0, 0.38, 0.09 }, { "seg", 0, 0.38, 0.62, 0.95, 0.09 },
+      { "seg", -0.62, -0.95, 0, -0.38, 0.09 }, { "seg", 0, -0.38, 0.62, -0.95, 0.09 },
+    },
+    ticks = {
+      { "seg", -1, 0, -0.68, 0, 0.13 }, { "seg", 0.68, 0, 1, 0, 0.13 },
+      { "seg", 0, -1, 0, -0.68, 0.13 }, { "seg", 0, 0.68, 0, 1, 0.13 },
+      { "dot", 0, 0, 0.20 },
+    },
+    ringdot = {
+      { "ring", 0, 0, 0.86, 0.06 },
+      { "dot", 0, 0, 0.22 },
+    },
+  },
+  DEAD = {
+    x = {
+      { "seg", -0.9, -0.9, 0.9, 0.9, 0.13 },
+      { "seg", -0.9, 0.9, 0.9, -0.9, 0.13 },
+    },
+    block = {
+      { "seg", -0.78, 0.78, 0.78, 0.78, 0.17 }, { "seg", -0.78, -0.78, 0.78, -0.78, 0.17 },
+      { "seg", -0.78, -0.78, -0.78, 0.78, 0.17 }, { "seg", 0.78, -0.78, 0.78, 0.78, 0.17 },
+    },
+    circle = {
+      { "ring", 0, 0, 0.80, 0.20 },
+    },
+    arrows = {
+      { "seg", -0.15, 0.55, -0.72, 0, 0.12 }, { "seg", -0.72, 0, -0.15, -0.55, 0.12 },
+      { "seg", 0.15, 0.55, 0.72, 0, 0.12 },   { "seg", 0.72, 0, 0.15, -0.55, 0.12 },
+    },
+    bars = {
+      { "seg", -0.82, 0.52, 0.82, 0.52, 0.24 },
+      { "seg", -0.82, -0.52, 0.82, -0.52, 0.24 },
+    },
+    burst = {
+      { "seg", -0.34, 0, -0.95, 0, 0.08 }, { "seg", 0.34, 0, 0.95, 0, 0.08 },
+      { "seg", 0, -0.34, 0, -0.95, 0.08 }, { "seg", 0, 0.34, 0, 0.95, 0.08 },
+      { "seg", -0.24, -0.24, -0.68, -0.68, 0.08 }, { "seg", 0.24, 0.24, 0.68, 0.68, 0.08 },
+      { "seg", -0.24, 0.24, -0.68, 0.68, 0.08 },   { "seg", 0.24, -0.24, 0.68, -0.68, 0.08 },
+    },
+  },
+  FAR = {
+    rings = {
+      { "ring", 0, 0, 0.94, 0.05 },
+      { "ring", 0, 0, 0.52, 0.05 },
+    },
+    dashed = {
+      { "seg", -0.9, 0.9, -0.35, 0.9, 0.07 }, { "seg", 0.35, 0.9, 0.9, 0.9, 0.07 },
+      { "seg", -0.9, -0.9, -0.35, -0.9, 0.07 }, { "seg", 0.35, -0.9, 0.9, -0.9, 0.07 },
+      { "seg", -0.9, -0.9, -0.9, -0.35, 0.07 }, { "seg", -0.9, 0.35, -0.9, 0.9, 0.07 },
+      { "seg", 0.9, -0.9, 0.9, -0.35, 0.07 },   { "seg", 0.9, 0.35, 0.9, 0.9, 0.07 },
+    },
+    halo = {
+      { "ring", 0, 0, 0.30, 0.07 },
+    },
+    sides = {
+      { "seg", -0.92, -0.5, -0.92, 0.5, 0.06 },
+      { "seg", 0.92, -0.5, 0.92, 0.5, 0.06 },
+    },
+    slashes = {
+      { "seg", -0.95, -0.45, -0.25, 0.95, 0.06 },
+      { "seg", -0.35, -0.95, 0.35, 0.45, 0.06 },
+      { "seg", 0.25, -0.95, 0.95, 0.45, 0.06 },
+    },
+    weakcross = {
+      { "seg", -0.95, 0, -0.62, 0, 0.06 }, { "seg", -0.30, 0, 0.02, 0, 0.06 },
+      { "seg", 0.34, 0, 0.66, 0, 0.06 },   { "seg", 0, -0.95, 0, -0.62, 0.06 },
+      { "seg", 0, -0.30, 0, 0.02, 0.06 },  { "seg", 0, 0.34, 0, 0.66, 0.06 },
+    },
+  },
 }
 
--- Pick the mark shape for a state from the saved per-state style (markOK /
--- markDead / markFar), falling back to the classic mapping if the stored value is
--- missing or unknown (e.g. a user who still has the old saved db).
-local function StyleFor(state)
-  local style
-  if state == "OK" then      style = db.markOK
-  elseif state == "DEAD" then style = db.markDead
-  else                       style = db.markFar end
-  if not SHAPES[style] then
-    if state == "DEAD" then style = "x"
-    elseif state == "FAR" then style = "rings"
-    else style = "crosshair" end
+-- Dropdown order, and the fallback style per state (an older save may hold a
+-- style that belongs to a different state, or one that no longer exists).
+local STYLE_ORDER = {
+  OK   = { "crosshair", "brackets", "diamond", "chevrons", "ticks", "ringdot" },
+  DEAD = { "x", "block", "circle", "arrows", "bars", "burst" },
+  FAR  = { "rings", "dashed", "halo", "sides", "slashes", "weakcross" },
+}
+
+-- Texture pool: primitives are created once and reused, so switching style
+-- costs no allocations after the first draw.
+local pool, poolUsed = {}, 0
+
+local function NextTex()
+  poolUsed = poolUsed + 1
+  local t = pool[poolUsed]
+  if not t then
+    t = frame:CreateTexture(nil, "ARTWORK")
+    t:SetTexture(LINE_TEX)
+    t:SetBlendMode("ADD")
+    pool[poolUsed] = t
   end
-  return style
+  return t
 end
 
-ShowStyle = function(style)
-  for name, tex in pairs(SHAPES) do
-    if name == style then tex:Show() else tex:Hide() end
+local function DrawSeg(x1, y1, x2, y2, w, size, r, g, b)
+  local t = NextTex()
+  local dx, dy = (x2 - x1) * size / 2, (y2 - y1) * size / 2
+  t:ClearAllPoints()
+  t:SetSize(math.max(1, math.sqrt(dx * dx + dy * dy)), math.max(1, w * size))
+  t:SetPoint("CENTER", frame, "CENTER", (x1 + x2) * size / 4, (y1 + y2) * size / 4)
+  if t.SetRotation then t:SetRotation(atan2(dy, dx)) end
+  t:SetVertexColor(r, g, b, 1)
+  t:Show()
+end
+
+local function DrawRing(cx, cy, radius, w, size, r, g, b)
+  local step = (2 * math.pi) / RING_SEGMENTS
+  for i = 0, RING_SEGMENTS - 1 do
+    local a1, a2 = i * step, (i + 1) * step
+    DrawSeg(cx + radius * math.cos(a1), cy + radius * math.sin(a1),
+            cx + radius * math.cos(a2), cy + radius * math.sin(a2),
+            w, size, r, g, b)
   end
+end
+
+local function DrawDot(cx, cy, s, size, r, g, b)
+  local t = NextTex()
+  t:ClearAllPoints()
+  t:SetSize(math.max(1, s * size), math.max(1, s * size))
+  t:SetPoint("CENTER", frame, "CENTER", cx * size / 2, cy * size / 2)
+  if t.SetRotation then t:SetRotation(0) end
+  t:SetVertexColor(r, g, b, 1)
+  t:Show()
+end
+
+local function DrawStyle(prims, size, r, g, b)
+  for i = 1, poolUsed do pool[i]:Hide() end
+  poolUsed = 0
+  if not prims then return end
+  for _, p in ipairs(prims) do
+    if p[1] == "seg" then DrawSeg(p[2], p[3], p[4], p[5], p[6], size, r, g, b)
+    elseif p[1] == "ring" then DrawRing(p[2], p[3], p[4], p[5], size, r, g, b)
+    elseif p[1] == "dot" then DrawDot(p[2], p[3], p[4], size, r, g, b) end
+  end
+end
+
+local lastStyle = nil
+
+local function StyleFor(state)
+  local key
+  if state == "OK" then key = db.markOK
+  elseif state == "DEAD" then key = db.markDead
+  else key = db.markFar end
+  if STYLES[state] and STYLES[state][key] then return key end
+  return STYLE_ORDER[state][1]
+end
+
+-- Test/diagnostic surface: what is on screen, and what could be.
+function Range.CurrentStyle() return lastStyle end
+function Range.StyleNames(state) return STYLE_ORDER[state] or STYLE_ORDER.FAR end
+function Range.Primitives(state, name)
+  return STYLES[state] and STYLES[state][name]
+end
+function Range.VisibleShapes()
+  local n = 0
+  for i = 1, poolUsed do if pool[i]:IsShown() then n = n + 1 end end
+  return n
 end
 
 ApplyState = function(state)
   local c = COLORS[state] or COLORS.FAR
-  local r, g, b = c[1], c[2], c[3]
   local style = StyleFor(state)
-  -- Tint every shape the same state colour (only the visible one shows).
-  reticle:SetVertexColor(r, g, b, 1)
-  xMark:SetVertexColor(r, g, b, 1)
-  outlineMark:SetVertexColor(r, g, b, 1)
+  lastStyle = style
   frame:SetAlpha(1)
-  ShowStyle(style)
+  DrawStyle(STYLES[state] and STYLES[state][style], db.size or 60, c[1], c[2], c[3])
 
   if db.showLabel then
     label:SetText(LABELS[state] or "")
