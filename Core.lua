@@ -6,7 +6,7 @@
 
 local ADDON_NAME, HK = ...
 
-HK.version = "0.8.3"
+HK.version = "0.9.0"
 
 -- ---------------------------------------------------------------------------
 -- Defaults (schema). This is the source of truth for the options window and
@@ -14,7 +14,7 @@ HK.version = "0.8.3"
 -- ---------------------------------------------------------------------------
 HK.defaults = {
   enabled   = true,
-  dbVersion = 12,
+  dbVersion = 13,
   firstRun  = true,
 
   ui = {
@@ -43,9 +43,9 @@ HK.defaults = {
     parent       = "TargetFrame",
     moved        = false,          -- true once the user drags it (then pinned absolutely)
     showLabel    = false,
-    markOK       = "crosshair",    -- mark style for IN RANGE
-    markDead     = "x",            -- mark style for TOO CLOSE (the deadzone X)
-    markFar      = "rings",        -- mark style for OUT OF RANGE
+    markOK       = "plus",         -- mark style for IN RANGE (bold cross family)
+    markDead     = "cross",        -- mark style for TOO CLOSE (the loved cross)
+    markFar      = "broken",       -- mark style for OUT OF RANGE
   },
 
   sound = {
@@ -636,6 +636,19 @@ local function LoadDB()
   -- migration has a version to hang off.
   if db.dbVersion < 12 then
     db.dbVersion = 12
+  end
+
+  -- v12 -> v13: the bold outlined cross family (plus / cross / broken) is the new
+  -- default look, matching the TOO CLOSE cross the user liked. Users still on the
+  -- OLD *default* trio (crosshair / x / rings) are moved onto the matching bold
+  -- marks; anyone who deliberately picked a different style keeps it.
+  if db.dbVersion < 13 then
+    if db.range then
+      if db.range.markOK   == "crosshair" then db.range.markOK   = "plus"   end
+      if db.range.markDead == "x"         then db.range.markDead = "cross" end
+      if db.range.markFar  == "rings"     then db.range.markFar  = "broken" end
+    end
+    db.dbVersion = 13
   end
 
   db.dbVersion = HK.defaults.dbVersion

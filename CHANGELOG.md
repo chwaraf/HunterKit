@@ -3,6 +3,24 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.0] - 2026-09-02
+### Changed (Sniper Mark — the bold cross family)
+- **The mark you liked is now the house style.** The thick outlined TOO CLOSE
+  `cross` gets two siblings generated against it so the line work matches:
+  `plus` (IN RANGE — bold crosshair with centre dot) and `broken` (OUT OF RANGE —
+  the same cross split open with an empty middle). The trio is the new default, so
+  all three states now read as one family.
+- The restored classics (`crosshair` / `x` / `rings`) and the sci-fi set remain as
+  options; `aperture` (IN RANGE) and `hollow` (OUT OF RANGE) retired to keep six
+  per state.
+- **Migration (db v13):** saved values still on the *old default* trio
+  (`crosshair` / `x` / `rings`) are moved to the matching bold marks; any style you
+  deliberately chose is untouched.
+
+### Added (tests)
+- Fallback/reset expectations updated to the new defaults; suite still
+  139 + 54 + 36 + 40 = 269, all passing.
+
 ## [0.8.3] - 2026-09-02
 ### Fixed
 - **The master "Enable HunterKit" switch only hid the mend marker.** Range, Feed

@@ -36,6 +36,8 @@ MAP = [
     ("far-sides.png", "mark-far-sides.tga"),
     ("far-slashes.png", "mark-far-slashes.tga"),
     ("far-halo.png", "mark-far-halo.tga"),
+    ("ok-plus.png", "mark-ok-plus.tga"),
+    ("far-broken.png", "mark-far-broken.tga"),
 ]
 
 SIZE = 256

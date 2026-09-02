@@ -96,7 +96,7 @@ check("OUT OF RANGE uses the chosen shape", HK.Range.CurrentStyle() == "slashes"
 
 HK.db.range.markFar = "not-a-shape"
 HK.Range.RescanSettings()
-check("an unknown saved shape falls back", HK.Range.CurrentStyle() == "rings",
+check("an unknown saved shape falls back", HK.Range.CurrentStyle() == "broken",
   tostring(HK.Range.CurrentStyle()))
 
 -- every style draws at its own size
@@ -154,7 +154,7 @@ check("saved positions restored", HK.db.range.moved == false
   tostring(HK.db.range.moved) .. "/" .. tostring(HK.db.range.offsetX))
 check("the db slices the modules hold survived",
   HK.db.range == rangeSlice and HK.db.mend == mendSlice)
-check("the sniper mark re-read the reset", HK.Range.CurrentStyle() == "rings",
+check("the sniper mark re-read the reset", HK.Range.CurrentStyle() == "broken",
   tostring(HK.Range.CurrentStyle()))
 
 -- ---------------------------------------------------------------------------

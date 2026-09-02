@@ -204,13 +204,14 @@ local function art(path) return { { "art", MEDIA .. path } } end
 --   OUT OF RANGE broken, thin, hollow   — "no shot"
 -- Every style is bundled .tga art: the old crosshair marks plus a modern sci-fi
 -- set; the procedural primitives below remain as the engine's fallback but no
--- shipped style needs them. The first entry of each state is the classic mark,
--- restored as the default.
+-- shipped style needs them. The first entry of each state is the default: the
+-- bold outlined cross family (plus / cross / broken) that the user picked as the
+-- house style; the classic thin marks stay one click away.
 local STYLES = {
   OK = {
+    plus      = art("mark-ok-plus.tga"),
     crosshair = art("crosshair.tga"),
     reticle   = art("mark-ok-reticle.tga"),
-    aperture  = art("mark-ok-aperture.tga"),
     chevrons  = art("mark-ok-chevrons.tga"),
     diamond   = art("mark-ok-diamond.tga"),
     ticks     = art("mark-ok-ticks.tga"),
@@ -229,15 +230,15 @@ local STYLES = {
     halo    = art("mark-far-halo.tga"),
     sides   = art("mark-far-sides.tga"),
     slashes = art("mark-far-slashes.tga"),
-    hollow  = art("mark-far-hollow.tga"),
+    broken  = art("mark-far-broken.tga"),
   },
 }
 
 -- Dropdown order; first entry is the default (and the fallback for unknown saves).
 local STYLE_ORDER = {
-  OK   = { "crosshair", "reticle", "aperture", "chevrons", "diamond", "ticks" },
-  DEAD = { "x", "hexx", "cross", "block", "bars", "burst" },
-  FAR  = { "rings", "dashed", "halo", "sides", "slashes", "hollow" },
+  OK   = { "plus", "crosshair", "reticle", "chevrons", "diamond", "ticks" },
+  DEAD = { "cross", "x", "hexx", "block", "bars", "burst" },
+  FAR  = { "broken", "rings", "dashed", "halo", "sides", "slashes" },
 }
 
 -- Texture pool: primitives are created once and reused, so switching style
