@@ -559,6 +559,38 @@ do
     p and p[1] == "BOTTOM" and p[2] == _G["PetFrame"], p and tostring(p[1]))
 end
 
+-- Every registered draggable must have callbacks that actually RUN. This is
+-- what Options.SetLock/Reset invokes, and a closure that references a local
+-- declared later in the chunk compiles to a nil global — which is exactly how
+-- /htk reset produced "attempt to call a nil value" on the live client.
+for key, d in pairs(HK.draggables) do
+  local ok, err = pcall(function()
+    if d.apply then d.apply() end
+    if d.save then d.save(0, 0) end
+    if d.opts then
+      if d.opts.restore then d.opts.restore() end
+      if d.opts.onUpdate then d.opts.onUpdate() end
+      if d.opts.saveFromScreen then d.opts.saveFromScreen() end
+    end
+  end)
+  check("draggable '" .. key .. "' callbacks all run", ok, err)
+end
+check("saveFromScreen stored a pinned position",
+  HK.db.mend.moved == true and type(HK.db.mend.pinX) == "number",
+  tostring(HK.db.mend.pinX))
+HK.db.mend.moved = false
+HK.MendMark.Update()
+
+-- the real Reset path from Options.lua: iterate the draggables and call apply
+do
+  local ok, err = pcall(function()
+    for _, d in pairs(HK.draggables) do
+      if d.apply then d.apply() end
+    end
+  end)
+  check("Options-style Reset apply() loop runs", ok, err)
+end
+
 -- ---------------------------------------------------------------------------
 -- 6) Diagnostics + slash command must not error
 -- ---------------------------------------------------------------------------

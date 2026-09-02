@@ -66,9 +66,11 @@ local plateWait = 0          -- ticks since the last step (give the client a bea
 -- picked up without a /reload.
 local mendSpell = nil
 
--- Forward declarations: BuildFrame wires up OnUpdateAnchor, and the anchor code
--- is defined further down this chunk.
-local OnUpdateAnchor
+-- Forward declarations. BuildFrame runs before these bodies exist in the chunk,
+-- and a closure that references a local declared LATER compiles to a GLOBAL
+-- lookup (nil at runtime) — which is exactly the "attempt to call a nil value"
+-- that /htk reset hit when it invoked the registered apply().
+local OnUpdateAnchor, Update
 
 -- ---------------------------------------------------------------------------
 -- Small probes (all pcall-guarded: a missing API must never break the marker)
@@ -592,7 +594,7 @@ local function Hide()
   frame:SetShown(false)
 end
 
-local function Update()
+Update = function()
   if not frame then return end
   db = HK.db.mend
   if HK.db.enabled == false or not db.enabled or not HK.isHunter then

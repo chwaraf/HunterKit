@@ -3,6 +3,29 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.6.1] - 2026-09-02
+### Fixed (live client error: `/htk reset` and `/htk unlock`)
+- **`HunterKit/MendMark.lua:355: attempt to call a nil value`.** The draggable
+  registration sits inside `BuildFrame` (line 304), but `local function Update` was
+  declared at line 595 — so the closure `function() Update() end` compiled to a
+  **global** lookup (nil at runtime), not the local. `Options.Reset` calls `d.apply()`
+  on every registered draggable, which is where it surfaced; `Options.SetLock` would
+  have hit it the same way on lock.
+- **Fix:** forward-declare `local OnUpdateAnchor, Update` at the top (the file already
+  did exactly this for `OnUpdateAnchor`, for the same reason) and assign
+  `Update = function() ... end` where the body lives.
+
+### Added (regression coverage — the gap that let it ship)
+- The suite now **invokes every callback each draggable registers** — `apply`, `save`,
+  `opts.restore`, `opts.onUpdate`, `opts.saveFromScreen` — plus an Options-style
+  `Reset` loop. Previously it only checked the registration existed, which is why a
+  nil-callable slipped through.
+- **Proven, not assumed:** reverting the fix makes the suite fail with the client's own
+  message — `attempt to call a nil value (global 'Update')` — and restoring it passes.
+- Scanned all eight addon files for the same forward-reference bug class (a call to a
+  `local function` declared later in the chunk): all clean.
+
+
 ## [0.6.0] - 2026-09-02
 ### Measured on a live 1.15.9 client (via the 0.5.0 probe)
 ```
