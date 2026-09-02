@@ -663,6 +663,57 @@ HKTest.state.plate = nil
 HK.MendMark.Update()
 
 -- ---------------------------------------------------------------------------
+-- 5h) forcePlate gives up honestly instead of doing nothing forever
+-- ---------------------------------------------------------------------------
+-- Model a client where NO rung produces a pet plate: the friendly CVars exist
+-- (so the ladder can enable them) but nothing comes of it. The option must then
+-- restore the CVars, switch itself off and say so once -- not hold the player's
+-- nameplate settings hostage while silently doing nothing.
+do
+  local savedCVars = HKTest.state.cvars
+  HKTest.state.cvars = {
+    -- no nameplateShowFriendlyPets: this client does not have the pet-only rung
+    nameplateShowAll = "1", nameplateShowEnemies = "1", nameplateMaxDistance = "41",
+    nameplateShowFriends = "0", nameplateShowFriendlyMinions = "0",
+  }
+  HKTest.state.plate, HKTest.state.scanPlate = nil, nil
+  HKTest.state.pet = true
+  HKTest.state.combatLockdown = false
+  HK.db.mend.forcePlate = true
+  HK.MendMark.RescanSettings()
+  HKTest.prints = {}
+
+  HKTest.TickMarker(35)                  -- ~3.5s: the ladder has climbed
+  check("the ladder enabled the friendly rung",
+    HKTest.state.cvars.nameplateShowFriends == "1",
+    tostring(HKTest.state.cvars.nameplateShowFriends))
+  check("it stays on while it is still trying", HK.db.mend.forcePlate == true)
+
+  HKTest.TickMarker(85)                  -- the grace period after the last rung
+  check("forcePlate switched itself off when it could not help",
+    HK.db.mend.forcePlate == false, tostring(HK.db.mend.forcePlate))
+  check("the nameplate cvars were put back",
+    HKTest.state.cvars.nameplateShowFriends == "0"
+      and HKTest.state.cvars.nameplateShowFriendlyMinions == "0",
+    tostring(HKTest.state.cvars.nameplateShowFriends) .. "/"
+      .. tostring(HKTest.state.cvars.nameplateShowFriendlyMinions))
+  check("the saved cvar list was cleared", next(HK.db.mend.plateCVars) == nil)
+
+  local said = 0
+  for _, line in ipairs(HKTest.prints) do
+    if line:find("switched itself off") then said = said + 1 end
+  end
+  check("it explained itself", said == 1, tostring(said))
+  HKTest.TickMarker(100)
+  said = 0
+  for _, line in ipairs(HKTest.prints) do
+    if line:find("switched itself off") then said = said + 1 end
+  end
+  check("it says it once, not every tick", said == 1, tostring(said))
+  HKTest.state.cvars = savedCVars
+end
+
+-- ---------------------------------------------------------------------------
 -- 6) Diagnostics + slash command must not error
 -- ---------------------------------------------------------------------------
 HKTest.prints = {}

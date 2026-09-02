@@ -7,18 +7,42 @@ For **WoW Classic Era & Hardcore** (patch 1.15.x).
 A self-contained, dependency-free (no Ace3/LibDBIcon) addon built for the
 hardcore-first hunter. Every action is a deliberate click; nothing is automated.
 
-Current version: **0.7.1** — see [`CHANGELOG.md`](CHANGELOG.md).
+Current version: **0.8.0** — see [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Features
 
 | Feature | What it does |
 |---|---|
 | **Feed Pet button** | A one-click button beside the pet happiness icon. Always feeds the **best** food in your bags (max happiness tier, then smallest open stack). Respects your pins/excludes. Out-of-combat only (as Blizzard intends). |
-| **Sniper Mark** | A reticle by the target frame that reports **IN RANGE / TOO CLOSE / OUT OF RANGE**. You pick the shape per state (crosshair / rings / X); TOO CLOSE defaults to an X so it's colorblind-safe. Reflects state only — it never acts. |
+| **Sniper Mark** | A reticle by the target frame that reports **IN RANGE / TOO CLOSE / OUT OF RANGE** — and each state has **six shapes of its own** to choose from (18 in total), drawn procedurally so the states differ by silhouette, not just colour. Reflects state only — it never acts. |
 | **Pet Mend Marker** | A **Mend Pet icon floating above your pet's head, nameplate style**. Green + solid when the pet is inside Mend Pet range, faded and greyed when it isn't — so you know at a glance, without reading a bar. Goes **bigger and pulsing with an expanding red ring** at or below **30% pet HP**. **On by default**, and it works with nameplates turned off. |
 | **Gun sound** | Replaces the stock gunshot with a Star-Wars-style blaster pew. Respects guns-only, no-repeat, and mutes the stock sound. |
 | **Passive alert** | A big pulsing Ability Seal center-screen above your character while the pet is Passive, plus an optional glow on the passive button. Impossible to miss. |
-| **Options** | Draggable settings window — one rule per feature block, live numbers on every slider, wrapped tooltips. Minimap button, `/htk lock\|unlock`, `/htk reset`. |
+| **Options** | Draggable settings window — one rule per feature block, every slider's number centred above its bar, wrapped tooltips, and a two-click **Reset ALL settings** button. Minimap button, `/htk lock\|unlock`, `/htk reset`. |
+
+## Sniper Mark
+
+A reticle beside the target frame that answers one question: **can I shoot?**
+It reflects state only — it never fires, targets or casts.
+
+| State | Colour | Character of the shapes |
+|---|---|---|
+| **IN RANGE** (Auto Shot ready) | green | open and angular — the shot is available |
+| **TOO CLOSE** (inside the deadzone) | red | closed and heavy — back up |
+| **OUT OF RANGE** | grey | broken and hollow — no shot |
+
+Each state has **six shapes of its own**, and they are drawn procedurally from a
+1×1 Blizzard texture rather than from art files, so the silhouette changes with
+the choice (the states were previously three recolours of one icon):
+
+| State | Shapes (click the option to cycle) |
+|---|---|
+| IN RANGE | `crosshair` · `brackets` · `diamond` · `chevrons` · `ticks` · `ringdot` |
+| TOO CLOSE | `x` · `block` · `circle` · `arrows` · `bars` · `burst` |
+| OUT OF RANGE | `rings` · `dashed` · `halo` · `sides` · `slashes` · `weakcross` |
+
+The colour always carries the state as well, so the mark stays readable for
+colourblind players who pick a shape per state.
 
 ## Pet Mend Marker
 
@@ -77,6 +101,12 @@ between rungs so the client can react, and never touches CVars during combat
 **restored when you untick the option or log out**, so nothing is written to
 your config permanently. `/htk mend` marks every CVar it changed with a `*` and
 shows the value it replaced.
+
+**If it can't help, it says so and undoes itself.** Once every rung is on and
+your client still publishes no pet plate after a few seconds, the option
+switches itself off, restores your CVars and prints one line telling you head
+anchoring isn't available there — instead of quietly holding your nameplate
+settings for nothing.
 
 **3. Otherwise fall back to the pet unit frame — and look like a plate anyway.**
 The fallback draws a nameplate-style widget under the icon (pet name + a
@@ -247,12 +277,13 @@ test suite enforces part of it:
 `python3 tests/run_tests.py` runs the Lua tests: it loads the real addon files
 against a stub client (`tests/wow_stub.lua`) — no logic is re-implemented — and
 needs a Lua interpreter on `PATH` (`lua`/`lua5.1`/`luajit`) or `pip install lupa`.
-Add `--verbose` to echo the addon's chat output. **224 checks**, in three files:
+Add `--verbose` to echo the addon's chat output. **261 checks**, in four files:
 
 | File | Covers |
 |---|---|
-| `test_mendmark.lua` (132) | marker visibility, range/urgency styling, all four plate-discovery paths, the anchor modes, the force-plate CVar ladder, drag/lock, restricted-region safety |
-| `test_options_ui.lua` (52) | **builds the real settings window** and checks the layout: window/content size, one divider per section, slider values visible before interaction, no clipped or overlapping text, wrapped tooltips, no stray globals, no module `Init` that throws — plus the **real** `Positions.ToggleLock` round trip (edit mode hands you the movable marker, locking cleans up, a plate-anchored marker is never clamped) |
+| `test_mendmark.lua` (139) | marker visibility, range/urgency styling, all four plate-discovery paths, the anchor modes, the force-plate CVar ladder, drag/lock, restricted-region safety |
+| `test_options_ui.lua` (54) | **builds the real settings window** and checks the layout: window/content size, one divider per section, slider values visible before interaction, no clipped or overlapping text, wrapped tooltips, no stray globals, no module `Init` that throws — plus the **real** `Positions.ToggleLock` round trip (edit mode hands you the movable marker, locking cleans up, a plate-anchored marker is never clamped) |
+| `test_settings.lua` (28) | sniper-mark shapes: six distinct shapes per state, the shape on screen follows the dropdown, unknown saved values fall back — plus **Reset ALL settings** (defaults restored, the db slices the modules hold survive, the open window re-displays) and the reset button's two-click confirm |
 | `test_docs.lua` (40) | every file parses, the `.toc` matches disk, `.toc` version == `HK.version` == newest `CHANGELOG` entry, every `/htk` subcommand documented here |
 
 ## License

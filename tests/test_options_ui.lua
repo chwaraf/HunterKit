@@ -34,7 +34,10 @@ end
 -- Build the window
 -- ---------------------------------------------------------------------------
 HKTest.prints = {}
-local HK = HKTest.LoadAddon("../Core.lua", "../MendMark.lua", "../Options.lua")
+-- Load EVERY module, in .toc order, exactly as the client does: the settings
+-- window offers controls for all of them (the shape dropdowns read their style
+-- lists from Range), so a partial load would not be the real thing.
+local HK = HKTest.LoadAddon(unpack(HKTest.addonFiles))
 HK:Load()
 local loadLog = table.concat(HKTest.prints, "\n")
 
@@ -100,8 +103,8 @@ for _, t in ipairs(content.textures) do
   if t.height == 1 then rules[#rules + 1] = t end
 end
 -- Master, Feed Pet, Sniper Mark, Pet Mend Marker, Gun Sound, Passive Alert,
--- Positions.
-check("every section has a divider rule", #rules == 7, tostring(#rules))
+-- Positions, Reset.
+check("every section has a divider rule", #rules == 8, tostring(#rules))
 local spanning = 0
 for _, r in ipairs(rules) do
   local a, b = r.points[1], r.points[2]
@@ -124,13 +127,13 @@ check("the settings window built its sliders", #sliders >= 6, tostring(#sliders)
 
 local LABEL_ROW = 15   -- MakeSlider's SLIDER_LABEL_H
 
--- The value fontstring belonging to a slider: visible, right-aligned, showing
--- the slider's current number, on the row directly above the bar.
+-- The value fontstring belonging to a slider: visible, centred, showing the
+-- slider's current number, on the row directly above the bar.
 local function ValueTextFor(sl)
   local row = sl.points[1] and sl.points[1][5]
   local want = string.format("%d", sl:GetValue())
   for _, fs in ipairs(content.fontstrings) do
-    if fs:IsShown() and fs.justifyH == "RIGHT" and fs:GetText() == want then
+    if fs:IsShown() and fs.justifyH == "CENTER" and fs:GetText() == want then
       local py = fs.points[1] and fs.points[1][5]
       if row and py and math.abs((py - row) - LABEL_ROW) < 2 then return fs end
     end
@@ -150,27 +153,50 @@ for _, sl in ipairs(sliders) do
 end
 check("every slider shows its value before any interaction", noValue == 0,
   noValue .. " sliders had no visible value")
+
+-- the number is centred on the row, over the bar
+local offCentre = 0
+for _, sl in ipairs(sliders) do
+  local fs = ValueTextFor(sl)
+  local p = fs and fs.points[1]
+  if not p or p[1] ~= "TOP" or (p[4] or 0) ~= 0 then offCentre = offCentre + 1 end
+end
+check("slider values are centred", offCentre == 0, tostring(offCentre))
 check("the template's empty value text is hidden", templateTextVisible == 0,
   tostring(templateTextVisible))
 check("the clipped 'Low' labels are hidden", lowVisible == 0, tostring(lowVisible))
 check("the clipped 'High' labels are hidden", highVisible == 0, tostring(highVisible))
 
--- label (left) and value (right) must not share a column
+-- the label may only use the left half minus the value's centred column
 for _, sl in ipairs(sliders) do
   local row = sl.points[1] and sl.points[1][5]
   local lbl, val
   for _, fs in ipairs(content.fontstrings) do
     if fs:IsShown() and fs.points[1] and fs.points[1][5] == row then
-      if fs.justifyH == "LEFT" then lbl = fs elseif fs.justifyH == "RIGHT" then val = fs end
+      if fs.justifyH == "LEFT" then lbl = fs elseif fs.justifyH == "CENTER" then val = fs end
     end
   end
-  if lbl and val and (lbl.width + 8 > content.width - val.width) then
+  if lbl and val and (lbl.width > (content.width - val.width) / 2 - 8) then
     overlapping = overlapping + 1
-    valueWidths[#valueWidths + 1] = sl.name
+    valueWidths[#valueWidths + 1] = sl.name .. "(" .. lbl.width .. ">" ..
+      math.floor((content.width - val.width) / 2 - 8) .. ")"
   end
 end
-check("slider labels and values never overlap", overlapping == 0,
+check("slider labels stop before the centred value", overlapping == 0,
   table.concat(valueWidths, ","))
+
+-- ...which is only safe while the labels themselves stay short.
+local longLabel = {}
+for _, sl in ipairs(sliders) do
+  local row = sl.points[1] and sl.points[1][5]
+  for _, fs in ipairs(content.fontstrings) do
+    if fs:IsShown() and fs.justifyH == "LEFT" and fs.points[1] and fs.points[1][5] == row then
+      local t = tostring(fs:GetText() or "")
+      if #t > 24 then longLabel[#longLabel + 1] = t end
+    end
+  end
+end
+check("slider labels fit their column", #longLabel == 0, table.concat(longLabel, ","))
 
 -- The scroll area clips its children, so anything anchored left of x=0 in the
 -- content loses its first characters -- that is the "…ow" the user saw.

@@ -241,6 +241,23 @@ end
 -- ---------------------------------------------------------------------------
 -- Widget factories
 -- ---------------------------------------------------------------------------
+-- Shape lists come from the module that draws them; fall back to a plain list if
+-- that module failed to load, so a broken Range.lua can't take the window down.
+local function ShapeNames(state, fallback)
+  if HK.Range and HK.Range.StyleNames then
+    local ok, list = pcall(HK.Range.StyleNames, state)
+    if ok and type(list) == "table" and #list > 0 then return list end
+  end
+  return fallback
+end
+
+-- Every control registers how to re-display itself, so a settings reset can
+-- refresh the open window instead of leaving stale values on screen.
+local controlRefresh = {}
+function Options.RefreshControls()
+  for _, fn in ipairs(controlRefresh) do pcall(fn) end
+end
+
 -- One tooltip path for every control. AddLine's 5th argument is `wrap` — without
 -- it a long help string renders as one clipped line, which is what it did before.
 local function AttachTooltip(widget, title, body)
@@ -294,6 +311,9 @@ local function MakeCheckbox(parent, y, labelText, get, set, tooltip)
   txt:SetText(labelText)
   txt:SetTextColor(0.9, 0.9, 0.9)
   AttachTooltip(chk, labelText, tooltip)
+  controlRefresh[#controlRefresh + 1] = function()
+    chk:SetChecked(get() and true or false)
+  end
   return chk
 end
 
@@ -308,6 +328,7 @@ local sliderCount = 0
 -- three are hidden and replaced by our own row.
 local SLIDER_LABEL_H = 15
 local SLIDER_BAR_H   = 18
+local SLIDER_VALUE_W = 88
 local function MakeSlider(parent, y, labelText, min, max, step, get, set, tooltip)
   sliderCount = sliderCount + 1
   local name = "HunterKitOptSlider" .. sliderCount
@@ -318,18 +339,20 @@ local function MakeSlider(parent, y, labelText, min, max, step, get, set, toolti
   lbl:SetFontObject(GameFontNormal)
   lbl:SetJustifyH("LEFT")
   lbl:SetWordWrap(false)
-  lbl:SetWidth(math.max(120, w - 76))
+  -- The number sits dead centre of the row, so the label may only use the left
+  -- half minus that column, or a long label would run underneath the number.
+  lbl:SetWidth(math.max(80, math.floor((w - SLIDER_VALUE_W) / 2) - 8))
   lbl:SetText(labelText)
   lbl:SetTextColor(0.9, 0.9, 0.9)
 
-  -- Always visible, right-aligned, in its own column: it can never collide with
-  -- the label or with the row below.
+  -- Always visible and centred over the bar: the template's own value text is
+  -- empty until you drag, and a right-aligned column collided with long labels.
   local val = parent:CreateFontString(nil, "OVERLAY")
-  val:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -4, y)
+  val:SetPoint("TOP", parent, "TOP", 0, y)
   val:SetFontObject(GameFontHighlight)
-  val:SetJustifyH("RIGHT")
+  val:SetJustifyH("CENTER")
   val:SetWordWrap(false)
-  val:SetWidth(64)
+  val:SetWidth(SLIDER_VALUE_W)
   val:SetTextColor(0.35, 1, 0.35)
   val:SetText(tostring(get()))
 
@@ -349,13 +372,22 @@ local function MakeSlider(parent, y, labelText, min, max, step, get, set, toolti
   -- SetValue before the handler is attached: the client fires OnValueChanged
   -- from SetValue, and we don't want a write-back (and a refresh of every module)
   -- just for opening the window.
+  local syncing = true          -- our own SetValue is not a user edit
   sl:SetValue(get())
+  syncing = false
   sl:SetScript("OnValueChanged", function(self)
     val:SetText(string.format("%d", self:GetValue()))
+    if syncing then return end
     set(self:GetValue())
   end)
   val:SetText(string.format("%d", sl:GetValue()))   -- shown from the first frame
   AttachTooltip(sl, labelText, tooltip)
+  controlRefresh[#controlRefresh + 1] = function()
+    syncing = true
+    sl:SetValue(get())
+    syncing = false
+    val:SetText(string.format("%d", sl:GetValue()))
+  end
   return sl
 end
 
@@ -379,6 +411,7 @@ local function AddSection(content, y, name)
 end
 
 function BuildWindow()
+  controlRefresh = {}
   MakeWindow()
 
   local content = win.content
@@ -437,20 +470,20 @@ function BuildWindow()
   MakeSlider(content, y, "Mark size", 20, 96, 1, function() return db.range.size end,
     function(v) db.range.size = v; RefreshRange() end, "Size of the reticle, in pixels.")
   y = y - ROW
-  MakeDropdown(content, y, "IN RANGE mark", { "crosshair", "rings", "x" },
+  MakeDropdown(content, y, "IN RANGE shape", ShapeNames("OK", { "crosshair", "diamond", "brackets" }),
     function() return db.range.markOK or "crosshair" end,
     function(v) db.range.markOK = v; RefreshRange() end,
-    "Shape while Auto Shot is in range (green).")
+    "Shape while Auto Shot is in range (green). Click to cycle the six styles.")
   y = y - ROW
-  MakeDropdown(content, y, "TOO CLOSE mark", { "x", "crosshair", "rings" },
+  MakeDropdown(content, y, "TOO CLOSE shape", ShapeNames("DEAD", { "x", "block", "circle" }),
     function() return db.range.markDead or "x" end,
     function(v) db.range.markDead = v; RefreshRange() end,
-    "Shape when the target is too close (red).")
+    "Shape when the target is too close (red). Click to cycle the six styles.")
   y = y - ROW
-  MakeDropdown(content, y, "OUT OF RANGE mark", { "rings", "crosshair", "x" },
+  MakeDropdown(content, y, "OUT OF RANGE shape", ShapeNames("FAR", { "rings", "dashed", "halo" }),
     function() return db.range.markFar or "rings" end,
     function(v) db.range.markFar = v; RefreshRange() end,
-    "Shape when the target is out of range (grey).")
+    "Shape when the target is out of range (grey). Click to cycle the six styles.")
   y = y - ROW
   MakeCheckbox(content, y, "Show range label", function() return db.range.showLabel end,
     function(v) db.range.showLabel = v; RefreshRange() end, "Spell the state out under the mark.")
@@ -555,6 +588,34 @@ function BuildWindow()
   resetBtn:SetScript("OnClick", function() HK.Positions.Reset() end)
   y = y - ROW
 
+  -- Reset everything. Two-step so a stray click can't wipe the settings, and the
+  -- armed state expires on its own.
+  AddSection(content, y, "Reset")
+  y = y - HDR
+  local resetAll = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
+  resetAll:SetWidth(200); resetAll:SetHeight(24)
+  resetAll:SetPoint("TOPLEFT", content, "TOPLEFT", 0, y)
+  resetAll:SetText("Reset ALL settings")
+  local armed = false
+  local function Disarm()
+    armed = false
+    resetAll:SetText("Reset ALL settings")
+  end
+  resetAll:SetScript("OnClick", function()
+    if not armed then
+      armed = true
+      resetAll:SetText("Click again to CONFIRM")
+      C_Timer.After(5, function() if armed then Disarm() end end)
+      return
+    end
+    Disarm()
+    HK.ResetAll()
+    Options.RefreshControls()   -- bring this window back in line with the db
+  end)
+  AttachTooltip(resetAll, "Reset ALL settings",
+    "Restores every HunterKit setting — sizes, shapes, toggles and saved positions — to its default. Your key bindings and the game's own options are untouched.")
+  y = y - ROW
+
   content:SetHeight(math.max(1, -y))
   if win.UpdateScroll then win.UpdateScroll() end
   return win
@@ -585,6 +646,7 @@ function MakeDropdown(parent, y, labelText, options, get, set, tooltip)
   txt:SetText(labelText)
   txt:SetTextColor(0.9, 0.9, 0.9)
   AttachTooltip(row, labelText, tooltip)
+  controlRefresh[#controlRefresh + 1] = function() row:SetText(get() or "") end
   return row
 end
 

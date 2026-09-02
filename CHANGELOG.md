@@ -3,6 +3,77 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.8.0] - 2026-09-02
+### Fixed
+- **The sniper-mark shape options did nothing.** `Range.lua` built its shape table
+  at load time —
+  `local SHAPES = { crosshair = reticle, x = xMark, rings = outlineMark }` — but
+  those three textures are created later by `BuildFrame()`, so every value was
+  `nil` and the table was **empty**. Consequences: `StyleFor` never matched the
+  saved choice and always returned the hardcoded fallback, and `ShowStyle`
+  iterated nothing, so the mark kept whatever visibility it was built with. The
+  dropdowns were decorative. The shape is now drawn on demand and the saved
+  choice is honoured immediately.
+
+### Changed (Sniper Mark — 18 shapes, six per state)
+- **Each state has six shapes of its own**, and the states differ by *character*,
+  not just colour: IN RANGE is open/angular (`crosshair`, `brackets`, `diamond`,
+  `chevrons`, `ticks`, `ringdot`), TOO CLOSE is closed/blocking (`x`, `block`,
+  `circle`, `arrows`, `bars`, `burst`), OUT OF RANGE is broken/hollow (`rings`,
+  `dashed`, `halo`, `sides`, `slashes`, `weakcross`).
+- **Drawn procedurally** from `Interface\Buttons\WHITE8x8` (line segments, rings
+  approximated by 24 segments, dots) in a −1..1 unit box scaled to the mark size.
+  No art files, textures are pooled and reused, and a style switch costs no
+  allocations after the first draw.
+- `Media/crosshair.tga`, `crosshair-x.tga` and `crosshair-outline.tga` are
+  **removed** — nothing references them any more (~3 MB). They are still in git
+  history at `31d1ce4` if you want the old look back.
+- The three dropdowns now cycle their own state's six shapes (they all offered the
+  same three before), and say so in their tooltips.
+
+### Changed (Options)
+- **Slider numbers are centred** above the bar instead of right-aligned, and the
+  label column is capped at the left half minus the number's column so a long
+  label cannot run underneath it. A programmatic `SetValue` no longer writes back
+  to the db (`syncing` guard).
+- **Reset ALL settings button** (new *Reset* section): two clicks — the first arms
+  it ("Click again to CONFIRM"), the armed state expires after 5 s — then
+  `HK.ResetAll()` restores every default, including saved positions.
+- **The open window follows a reset.** Every control registers a refresher
+  (`Options.RefreshControls`), so checkboxes, sliders and dropdowns re-display the
+  restored values instead of showing what you had before.
+
+### Changed (MendMark)
+- **"Force pet name plate" now admits defeat.** Once every rung the client has is
+  on, the pet is out, and ~5 s later there is still no pet plate, the option
+  switches itself off, restores the CVars it changed, refreshes the checkbox and
+  prints one line saying head anchoring isn't available on this client. Before, it
+  left your nameplate CVars changed and appeared to do nothing.
+
+### Fixed (Core)
+- `HK.ResetAll` wipes and refills each db **sub-table in place** rather than
+  replacing it: every module holds its own local reference to its slice
+  (`db = HK.db.range`), so fresh tables would have left them all writing to
+  orphans that are never saved.
+
+### Added (tests)
+- **`tests/test_settings.lua` (28 checks)**: six distinct shapes per state (no two
+  identical), the shape on screen follows the dropdown for all three states,
+  unknown saved values fall back, `HK.ResetAll` restores defaults while keeping
+  the db slices the modules hold, and the reset button's two-click/expiry flow.
+- **The Options harness now loads every module in `.toc` order**, as the client
+  does — the shape dropdowns read their lists from `Range`. That immediately
+  surfaced two modules failing to initialise under the stub (`FeedPet`,
+  `PassivePulse`); the stub gained the tooltip, bag, sound and unit APIs they use,
+  plus `PetHasActionBar`, `CheckInteractDistance`, target state, `SetRotation` and
+  a queued `C_Timer.After` (`HKTest.RunDelayed`) so delayed callbacks are testable.
+- MendMark: the force-plate give-up path (ladder climbs, then restores, switches
+  off, prints once and not every tick).
+- Revert proofs: ignoring the saved shape → 4 failures; `HK.ResetAll` replacing
+  the db slices → the identity check fails; the force-plate give-up removed → 5
+  failures.
+- Suite: **139 + 54 + 28 + 40 = 261 checks**.
+
 ## [0.7.1] - 2026-09-02
 ### Changed
 - **`/htk unlock` shows the movable fallback, not the over-the-head marker.**

@@ -6,7 +6,7 @@
 
 local ADDON_NAME, HK = ...
 
-HK.version = "0.7.1"
+HK.version = "0.8.0"
 
 -- ---------------------------------------------------------------------------
 -- Defaults (schema). This is the source of truth for the options window and
@@ -342,6 +342,50 @@ end
 -- "pause" mechanism; call :Cancel() to stop it outright.
 function HK.Ticker(interval, fn)
   return C_Timer.NewTicker(interval, fn)
+end
+
+--- Restore EVERY setting to its default.
+---
+--- The sub-tables are wiped and refilled in place rather than replaced: each
+--- module keeps its own local reference to its slice (`db = HK.db.range`), so
+--- handing HK.db fresh tables would leave every module writing to orphans that
+--- are never saved. Identity must survive; only the contents change.
+local function ResetInto(dst, src)
+  for k in pairs(dst) do dst[k] = nil end
+  for k, v in pairs(src) do
+    if type(v) == "table" then
+      dst[k] = {}
+      ResetInto(dst[k], v)
+    else
+      dst[k] = v
+    end
+  end
+end
+
+function HK.ResetAll()
+  for k, v in pairs(HK.defaults) do
+    if type(v) == "table" then
+      if type(HK.db[k]) ~= "table" then HK.db[k] = {} end
+      ResetInto(HK.db[k], v)
+    else
+      HK.db[k] = v
+    end
+  end
+  -- Drop keys this version no longer knows about (older saves).
+  for k in pairs(HK.db) do
+    if HK.defaults[k] == nil and k ~= "dbVersion" then HK.db[k] = nil end
+  end
+  HK.db.dbVersion = HK.dbVersion
+
+  -- Re-apply everywhere. RescanSettings re-reads the db slice and rebuilds what
+  -- the setting controls; the mend marker also puts any forced nameplate CVar
+  -- back, because forcePlate is a default-off setting.
+  for _, name in ipairs({ "FeedPet", "Range", "Sounds", "PassivePulse", "MendMark" }) do
+    local m = HK[name]
+    if m and m.RescanSettings then pcall(m.RescanSettings) end
+  end
+  if HK.MendMark and HK.MendMark.Update then pcall(HK.MendMark.Update) end
+  print("|cff39ff14HunterKit|r all settings restored to their defaults.")
 end
 
 -- ---------------------------------------------------------------------------

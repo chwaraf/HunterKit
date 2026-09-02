@@ -53,6 +53,17 @@ function Frame:Hide() self.shown = false end
 function Frame:IsShown() return self.shown end
 function Frame:IsVisible() return self.shown end
 function Frame:SetAlpha(a) self.alpha = a end
+function Frame:SetRotation(r) self.rotation = r end
+function Frame:GetNormalTexture()
+  self.normalTex = self.normalTex or newFrame("Texture", nil, self)
+  return self.normalTex
+end
+function Frame:SetNormalTexture(t) self.normalTexture = t end
+function Frame:GetHighlightTexture() return self:GetNormalTexture() end
+function Frame:GetPushedTexture() return self:GetNormalTexture() end
+function Frame:GetScrollRange() return 0 end
+function Frame:GetRotation() return self.rotation or 0 end
+function Frame:SetBlendMode(m) self.blendMode = m end
 function Frame:GetAlpha() return self.alpha end
 function Frame:SetScale(s) self.scale = s end
 function Frame:GetScale() return self.scale end
@@ -75,6 +86,12 @@ function Frame:SetScript(h, fn) self.scripts[h] = fn end
 function Frame:GetScript(h) return self.scripts[h] end
 function Frame:SetAttribute(k, v) self.attrs[k] = v end
 function Frame:GetAttribute(k) return self.attrs[k] end
+function Frame:ClearAttribute(k) self.attrs[k] = nil end
+function Frame:GetFrameLevel() return self.frameLevel or 1 end
+function Frame:GetFrameStrata() return self.frameStrata or "MEDIUM" end
+function Frame:IsMouseEnabled() return self.mouse and true or false end
+function Frame:RegisterForClicks(...) self.clicks = { ... } end
+function Frame:UnregisterAllClicks() self.clicks = {} end
 function Frame:GetName() return self.name end
 function Frame:GetParent() return self.parent end
 function Frame:IsForbidden() return false end
@@ -155,6 +172,18 @@ function CreateFrame(kind, name, parent, template)
   local f = newFrame(kind, name, parent, template)
   -- OptionsSliderTemplate ships three fontstrings; the real client creates them
   -- with the frame, and their clipping/overlap is exactly what the tests assert on.
+  -- A scanning tooltip (FeedPet reads food tooltips through one). No lines means
+  -- "no food found", which is the honest answer for an empty stub bag.
+  if kind == "GameTooltip" then
+    f.tipLines = {}
+    function f:SetOwner() end
+    function f:ClearLines() self.tipLines = {} end
+    function f:NumLines() return #self.tipLines end
+    function f:SetBagItem() end
+    function f:SetHyperlink() end
+    function f:SetInventoryItem() end
+    function f:SetSpellByID() end
+  end
   if template == "OptionsSliderTemplate" and name then
     for _, suf in ipairs({ "Text", "Low", "High" }) do
       local fs = newFrame("FontString", name .. suf, f)
@@ -213,6 +242,11 @@ HKTest.state = {
   spellTexture = "Interface\\Icons\\Ability_Hunter_MendPet",
   plate = nil,
   scanPlate = nil,       -- only discoverable via C_NamePlate.GetNamePlates()
+  target = false,          -- a target exists (sniper mark tests turn this on)
+  targetDead = false,
+  targetAttackable = true,
+  targetSpellInRange = 1,  -- 1 = Auto Shot in range, 0/nil = not
+  targetTooClose = false,  -- inside the melee deadzone
   petPlateNeedsFriends = false,  -- models a client where the pet CVar alone is not enough
   combatLockdown = false,
   cvars = {
@@ -226,8 +260,38 @@ HKTest.state = {
   },
 }
 
+function PetHasActionBar() return true end
+function CheckInteractDistance(unit, dist)
+  if unit == "target" then return HKTest.state.targetTooClose and true or false end
+  return false
+end
+function GetPetActionInfo() return nil end
+function UnitIsDead(u)
+  if u == "target" then return HKTest.state.targetDead and true or false end
+  return false
+end
+function UnitLevel() return 60 end
+function UnitCanAttack(a, b)
+  if b == "target" then return HKTest.state.targetAttackable ~= false end
+  return false
+end
+function GetInventoryItemID() return nil end
+function GetItemInfo() return nil end
+function GetContainerNumSlots() return 0 end
+function GetContainerItemLink() return nil end
+function GetContainerItemInfo() return nil end
+function GetContainerItemID() return nil end
+function UseContainerItem() end
+function GetCursorPosition() return HKTest.cursorX or 0, HKTest.cursorY or 0 end
+function PlaySoundFile(f) HKTest.soundsPlayed[#HKTest.soundsPlayed + 1] = f end
+function MuteSoundFile(id) HKTest.mutedSounds[#HKTest.mutedSounds + 1] = id end
+
 function UnitClass() return "Testhunter", (HKTest.state.isHunter and "HUNTER" or "WARRIOR") end
-function UnitExists(u) return (u == "pet" and HKTest.state.pet) and true or false end
+function UnitExists(u)
+  if u == "pet" then return HKTest.state.pet and true or false end
+  if u == "target" then return HKTest.state.target and true or false end
+  return false
+end
 function UnitIsDeadOrGhost(u) return (u == "pet" and HKTest.state.petDead) and true or false end
 function UnitHealth(u) return (u == "pet") and HKTest.state.petHP or 1 end
 function UnitHealthMax(u) return (u == "pet") and HKTest.state.petHPMax or 1 end
@@ -236,12 +300,14 @@ function UnitAffectingCombat(u)
   return HKTest.state.playerCombat and true or false
 end
 function IsSpellInRange(spell, unit)
-  if spell == nil or unit ~= "pet" then return nil end
+  if spell == nil then return nil end
+  if unit == "target" then return HKTest.state.targetSpellInRange end
   if HKTest.state.spellName == nil then return nil end
   return HKTest.state.spellInRange
 end
 function GetSpellInfo(id)
   if id == 136 then return HKTest.state.spellName end
+  if id == 75 then return "Auto Shot" end
   return nil
 end
 function GetSpellTexture(id)
@@ -335,7 +401,11 @@ C_Timer = {
     t.Tick = function(self) if not self.cancelled then self.fn() end end
     return t
   end,
-  After = function(d, fn) fn() end,
+  -- Queued, not run inline: the real client fires these later, and a delayed
+  -- callback that runs immediately hides ordering bugs from the tests.
+  After = function(d, fn)
+    HKTest.delayed[#HKTest.delayed + 1] = { delay = d, fn = fn }
+  end,
 }
 
 local realPrint = print
@@ -358,6 +428,21 @@ end
 -- (the bug that produced "attempt to call a nil value (global 'Update')") shows
 -- up here as an accidental global assignment or read, so tests can fail on it
 -- instead of the client doing it mid-raid.
+-- Recorded for assertions.
+HKTest.soundsPlayed = {}
+HKTest.mutedSounds = {}
+
+-- C_Timer.After callbacks, which tests fire by hand.
+HKTest.delayed = {}
+
+--- Run (and clear) every queued C_Timer.After callback.
+function HKTest.RunDelayed()
+  local q = HKTest.delayed
+  HKTest.delayed = {}
+  for _, e in ipairs(q) do e.fn() end
+  return #q
+end
+
 HKTest.baselineGlobals = {}
 for k in pairs(_G) do HKTest.baselineGlobals[k] = true end
 

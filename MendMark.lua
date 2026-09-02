@@ -86,6 +86,8 @@ local PLATE_CVAR_CANDIDATES = {
 }
 local plateStep = 0          -- how many ladder rungs we've enabled
 local plateWait = 0          -- ticks since the last step (give the client a beat)
+local plateGiveUp = 0        -- ticks with every rung on and still no pet plate
+local plateVerdict = false   -- said once per session, not every tick
 
 -- Cached spell name. Cleared on SPELLS_CHANGED so learning Mend Pet later is
 -- picked up without a /reload.
@@ -318,9 +320,30 @@ local function MaintainPlateCVars()
     return
   end
   if PlateCVarsLocked() then return end
-  if plateStep >= #PLATE_CVAR_LADDER then return end
-  if PetPlate() then return end          -- already have one: stop escalating
+  if PetPlate() then plateGiveUp = 0; return end   -- it worked: keep them on
   if not PetIsOut() then return end      -- no pet out: no plate to wait for
+
+  if plateStep >= #PLATE_CVAR_LADDER then
+    -- Every rung this client has is on, the pet is out, and after a grace period
+    -- there is still no pet plate: the option cannot help here. Rather than hold
+    -- the player's nameplate CVars hostage for nothing (and silently appear to do
+    -- nothing), put them back, switch the option off and say so once.
+    plateGiveUp = plateGiveUp + 1
+    if plateGiveUp >= 50 then            -- ~5s at a 0.10s tick
+      plateGiveUp = 0
+      db.forcePlate = false
+      RestorePlateCVars()
+      if HK.Options and HK.Options.RefreshControls then
+        pcall(HK.Options.RefreshControls)
+      end
+      if not plateVerdict then
+        plateVerdict = true
+        print("|cffff0000HunterKit|r 'Force pet name plate' turned on every nameplate CVar your client has and it still publishes no pet plate, so it switched itself off and restored your settings. Head anchoring is not available here — the marker uses the draggable fallback (/htk unlock).")
+      end
+    end
+    return
+  end
+
   plateWait = plateWait + 1
   if plateWait >= 10 then ApplyPlateStep() end   -- ~1s per rung at a 0.10s tick
 end
