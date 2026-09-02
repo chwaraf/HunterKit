@@ -6,7 +6,7 @@
 
 local ADDON_NAME, HK = ...
 
-HK.version = "0.2.34"
+HK.version = "0.3.0"
 
 -- ---------------------------------------------------------------------------
 -- Defaults (schema). This is the source of truth for the options window and
@@ -14,7 +14,7 @@ HK.version = "0.2.34"
 -- ---------------------------------------------------------------------------
 HK.defaults = {
   enabled   = true,
-  dbVersion = 11,
+  dbVersion = 12,
   firstRun  = true,
 
   ui = {
@@ -81,6 +81,20 @@ HK.defaults = {
     rings             = true,
     label             = true,
     smallGlowOnPetBar = false,
+  },
+
+  mend = {
+    enabled     = true,
+    size        = 34,
+    offsetX     = 0,
+    offsetY     = 4,       -- gap above the anchor (name plate / pet frame) top edge
+    hpThreshold = 30,      -- % of max HP at or below which the marker goes urgent
+    urgentPulse = true,    -- grow + pulse + expanding ring while urgent
+    urgentCycle = 0.55,    -- seconds per urgent pulse
+    combatOnly  = true,    -- hide out of combat (a pet below the threshold still shows)
+    dimWhenFar  = true,    -- grey + fade when the pet is outside Mend Pet range
+    showLabel   = true,    -- "MEND!" when urgent, "TOO FAR" when out of range
+    anchor      = "auto",  -- auto | plate (world only) | petframe (always UI)
   },
 }
 HK.DBNAME = "HunterKitDB"
@@ -538,6 +552,16 @@ local function LoadDB()
     db.dbVersion = 11
   end
 
+  -- v11 -> v12: the Pet Mend Marker section (`mend`) was added. No field rewrite
+  -- is needed — HK.MergeDefaults fills a whole missing section from
+  -- HK.defaults, so existing users simply receive the new keys with their default
+  -- values (marker ON, 30% threshold, world/plate anchor with a pet-frame
+  -- fallback). The bump exists so the schema change is recorded and so a later
+  -- migration has a version to hang off.
+  if db.dbVersion < 12 then
+    db.dbVersion = 12
+  end
+
   db.dbVersion = HK.defaults.dbVersion
   HunterKitDB = db
   HK.db = db
@@ -587,9 +611,10 @@ end
 
 local function FeatureStatus()
   local d = HK.db or {}
-  return string.format("feed=%s range=%s sound=%s pulse=%s",
+  return string.format("feed=%s range=%s sound=%s pulse=%s mend=%s",
     tostring(d.feed and d.feed.enabled), tostring(d.range and d.range.enabled),
-    tostring(d.sound and d.sound.enabled), tostring(d.pulse and d.pulse.enabled))
+    tostring(d.sound and d.sound.enabled), tostring(d.pulse and d.pulse.enabled),
+    tostring(d.mend and d.mend.enabled))
 end
 
 local function PrintHelp()
@@ -600,6 +625,7 @@ local function PrintHelp()
   print("  /htk reset         — reset positions")
   print("  /htk sound         — preview pews")
   print("  /htk feed          — show the current feed macro + food")
+  print("  /htk mend          — pet mend marker diagnostics")
   print("  /htk selfcheck     — API diagnostics")
   print("  /htk gunlist       — list muted gun-sound FileDataIDs")
   print("  /htk debug         — toggle verbose logging")
@@ -626,6 +652,8 @@ SlashCmdList["HUNTERKIT"] = function(msg)
     if HK.Sounds then HK.Sounds.Preview() end
   elseif msg == "feed" then
     if HK.FeedPet then HK.FeedPet:PrintFeed() else print("HunterKit: FeedPet not initialised.") end
+  elseif msg == "mend" then
+    if HK.MendMark then HK.MendMark.PrintDiag() else print("HunterKit: MendMark not initialised.") end
   elseif msg == "gunlist" then
     if HK.Sounds then HK.Sounds.PrintGunList() end
   elseif msg == "selfcheck" then
@@ -680,6 +708,12 @@ function HK:SelfCheck()
   end)
   probe("sniper mark", function()
     return HK.Range and (HK.Range.IsFrameValid() and "VALID" or "missing") or "-"
+  end)
+  probe("mend marker", function()
+    return HK.MendMark and (HK.MendMark.IsShown() and "SHOWN" or "hidden") or "-"
+  end)
+  probe("mend diag", function()
+    return HK.MendMark and HK.MendMark.Diagnostic() or "-"
   end)
   probe("range diag", function()
     return HK.Range and HK.Range.Diagnostic() or "-"

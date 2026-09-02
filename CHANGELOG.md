@@ -3,6 +3,55 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.3.0] - 2026-09-02
+### Added (Pet Mend Marker)
+- **A Mend Pet icon above your pet's head.** Green box + solid icon when the pet is
+  inside Mend Pet range, so you can see at a glance — without reading a bar — that a
+  Mend will land. Out of range it gets a **red box**, a greyed icon faded to 45% and a
+  `TOO FAR` label, so "not in range" reads differently from "in range" at a glance.
+- **Urgent state at or below 30% pet HP.** The marker grows up to ~14%, pulses, throws
+  an expanding red ring and labels itself `MEND!`. The box colour keeps carrying the
+  range answer (green/red) so the two signals never fight. The threshold is a slider (5-100%,
+  default 30) and the pulse can be turned off.
+- **On by default**, with its own Options → Pet Mend Marker section: enable, icon size,
+  height above the head, urgent threshold, urgent pulse, only-in-combat, fade when out
+  of range, label, and the anchor mode.
+- **Visibility rules:** hidden with no pet, a dead pet, or Mend Pet untrained. *Only in
+  combat* is on by default, but a pet below the threshold always shows, combat or not.
+  `/htk unlock` force-shows it so the size/height sliders can be tuned out of combat.
+- **`/htk mend`** prints the live diagnostic (spell, range state, HP vs threshold,
+  anchor mode, shown/hidden) plus the nameplate CVars the client is reading.
+  `/htk selfcheck` gained `mend marker` and `mend diag` probes, and `/htk help` + the
+  `/htk` feature line list the new module.
+
+### Notes (anchoring, honestly)
+- Classic Era exposes a unit's world position **only while it has a name plate** —
+  there is no world-to-screen API, so no addon can float a frame over a pet the client
+  isn't drawing a plate for. The marker therefore uses the pet's name plate when one
+  exists (`mode=plate`) and **falls back to the pet unit frame** otherwise
+  (`mode=petframe`), so it still works with every nameplate turned off. Anchor = `plate`
+  makes it head-only (hidden with no plate); `petframe` makes the UI position permanent.
+- The pet-frame fallback is used **even when the pet frame is hidden in Edit Mode** (a
+  hidden frame keeps its layout), so the marker doesn't disappear for players who follow
+  the "hide the default frames" advice.
+- Nothing is automated: this is a readout. It never casts Mend Pet.
+
+### Changed (docs + schema)
+- **Options window is 60px taller** (392x520) so the new section doesn't push the
+  Positions buttons out of view; the window already scrolls (wheel + draggable bar).
+- **dbVersion 11 -> 12.** New `mend` section; existing users get the defaults via
+  `MergeDefaults` (no field rewrite). `HK.version` / `.toc` bumped to **0.3.0**.
+- **README rewritten to match the shipped addon**: the Pet Mend Marker section and its
+  anchoring rules, the per-state sniper mark styles shipped in 0.2.34, `/htk mend`, and a
+  Development section stating that README/CHANGELOG/.toc/Core are updated in the same
+  change as the code.
+- **New `tests/` harness.** `python3 tests/run_tests.py` loads the real `Core.lua` and
+  `MendMark.lua` against a stub client and asserts the marker's states, thresholds,
+  gating and anchoring (67 checks), then checks that every addon file parses, that the
+  `.toc` matches the files on disk, that the `.toc` and newest CHANGELOG entry match
+  `HK.version`, and that every `/htk` subcommand is documented in the README.
+
+
 ## [0.2.34] - 2026-09-02
 ### Changed
 - **Sniper mark: per-state style pickers.** The two old "Blink when too close" and

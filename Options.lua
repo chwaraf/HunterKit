@@ -103,7 +103,7 @@ end
 local function MakeWindow()
   -- BackdropTemplate is required for SetBackdrop on the modern ClassFrameXML.
   win = CreateFrame("Frame", "HunterKitOptions", UIParent, "BackdropTemplate")
-  win:SetSize(392, 460)
+  win:SetSize(392, 520)
   win:SetFrameStrata("DIALOG")
   win:SetPoint("CENTER")
   win:SetMovable(true)
@@ -416,6 +416,46 @@ function BuildWindow()
     "TargetFrame = beside the target frame (default). UIParent = free/drag position (use if a unit-frame addon hides the target frame).")
   y = y - ROW
 
+  -- Pet Mend Marker
+  AddSection(content, y, "Pet Mend Marker")
+  y = y - HDR
+  MakeCheckbox(content, y, "Enable mend marker", function() return db.mend.enabled end,
+    function(v) db.mend.enabled = v; RefreshMend() end,
+    "A Mend Pet icon above your pet's head. Green + solid when the pet is inside Mend Pet range, so you can see at a glance that a Mend will land; greyed and faded when the pet is too far.")
+  y = y - CHK
+  MakeSlider(content, y, "Icon size", 20, 72, 1, function() return db.mend.size end,
+    function(v) db.mend.size = v; RefreshMend() end, "Marker icon size in pixels.")
+  y = y - ROW
+  MakeSlider(content, y, "Height above head", -20, 80, 1, function() return db.mend.offsetY end,
+    function(v) db.mend.offsetY = v; RefreshMend() end,
+    "Extra gap above the anchor (the pet's name plate, or the pet unit frame when no plate exists).")
+  y = y - ROW
+  MakeSlider(content, y, "Urgent below % HP", 5, 100, 5, function() return db.mend.hpThreshold end,
+    function(v) db.mend.hpThreshold = v; RefreshMend() end,
+    "At or below this percent of the pet's max HP the marker grows, pulses and throws an expanding red ring.")
+  y = y - ROW
+  MakeCheckbox(content, y, "Urgent pulse", function() return db.mend.urgentPulse end,
+    function(v) db.mend.urgentPulse = v; RefreshMend() end,
+    "Grow, pulse and expanding ring while the pet is below the threshold.")
+  y = y - CHK
+  MakeCheckbox(content, y, "Only in combat", function() return db.mend.combatOnly end,
+    function(v) db.mend.combatOnly = v; RefreshMend() end,
+    "Hide the marker out of combat. A pet below the threshold is always shown, combat or not.")
+  y = y - CHK
+  MakeCheckbox(content, y, "Fade when out of range", function() return db.mend.dimWhenFar end,
+    function(v) db.mend.dimWhenFar = v; RefreshMend() end,
+    "Grey and fade the icon while the pet is outside Mend Pet range.")
+  y = y - CHK
+  MakeCheckbox(content, y, "Label", function() return db.mend.showLabel end,
+    function(v) db.mend.showLabel = v; RefreshMend() end,
+    "Shows 'MEND!' when the pet is low, and 'TOO FAR' when it is out of range.")
+  y = y - CHK
+  MakeDropdown(content, y, "Anchor", { "auto", "plate", "petframe" },
+    function() return db.mend.anchor end,
+    function(v) db.mend.anchor = v; RefreshMend() end,
+    "auto = over the pet's head when the client exposes a pet name plate, otherwise above the pet unit frame. plate = head only (hidden with every nameplate off). petframe = always above the pet unit frame.")
+  y = y - ROW
+
   -- Sound
   AddSection(content, y, "Gun Sound")
   y = y - HDR
@@ -510,13 +550,15 @@ function RefreshModules()
     if HK.FeedPet and HK.FeedPet.Refresh then HK.FeedPet.Refresh() end
     if HK.Range and HK.Range.Update then HK.Range.Update() end
     if HK.PassivePulse and HK.PassivePulse.Refresh then HK.PassivePulse.Refresh() end
+    if HK.MendMark and HK.MendMark.Update then HK.MendMark.Update() end
   else
-    RefreshFeed(); RefreshRange(); RefreshSound(); RefreshPulse()
+    RefreshFeed(); RefreshRange(); RefreshSound(); RefreshPulse(); RefreshMend()
   end
 end
 function RefreshFeed() if HK.FeedPet and HK.FeedPet.RescanSettings then HK.FeedPet.RescanSettings() end end
 function RefreshRange() if HK.Range and HK.Range.RescanSettings then HK.Range.RescanSettings() end end
 function RefreshPulse() if HK.PassivePulse and HK.PassivePulse.RescanSettings then HK.PassivePulse.RescanSettings() end end
+function RefreshMend() if HK.MendMark and HK.MendMark.RescanSettings then HK.MendMark.RescanSettings() end end
 function RefreshSound() if HK.Sounds and HK.Sounds.RescanSettings then HK.Sounds.RescanSettings() end end
 
 -- ---------------------------------------------------------------------------
@@ -745,6 +787,7 @@ function Positions.Reset()
   force("feed",  { "offsetX", "offsetY", "parent", "size" })
   force("range", { "offsetX", "offsetY", "parent", "size" })
   force("pulse", { "offsetX", "offsetY", "size" })
+  force("mend",  { "offsetX", "offsetY", "size" })
   -- Clear the "user dragged this" flag so each frame returns to its default
   -- anchor-frame position (rather than staying pinned to the absolute spot).
   for _, sec in ipairs({ "feed", "range", "pulse" }) do
@@ -757,5 +800,6 @@ function Positions.Reset()
   if HK.FeedPet then HK.FeedPet.RescanSettings() end
   if HK.Range then HK.Range.RescanSettings() end
   if HK.PassivePulse then HK.PassivePulse.RescanSettings() end
+  if HK.MendMark then HK.MendMark.RescanSettings() end
   print("|cff39ff14HunterKit|r positions reset to defaults.")
 end
