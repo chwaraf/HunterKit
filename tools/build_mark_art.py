@@ -65,7 +65,10 @@ def convert(src, dst):
     out = square.resize((SIZE, SIZE), Image.LANCZOS)
 
     os.makedirs(os.path.dirname(dst), exist_ok=True)
-    out.save(dst, "TGA", rle=True)
+    # Classic Era reliably reads only UNCOMPRESSED (type 2) 32-bit RGBA TGA -- the
+    # bundled originals are exactly that. RLE (type 10) decodes to a broken
+    # mosaic in-client, so never compress.
+    out.save(dst, "TGA", rle=False)
     return out
 
 

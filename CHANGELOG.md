@@ -25,10 +25,17 @@ All notable changes to HunterKit are documented here. Format follows
 - The shape dropdowns list the new names, and unknown saved values still fall back
   to the state's default (the classic mark), so old configurations stay valid.
 
+### Fixed
+- **The new marks rendered as a broken mosaic / were barely visible in-client.**
+  The first build wrote them as RLE-compressed TGA (type 10), but Classic Era's
+  loader only reads UNCOMPRESSED 32-bit RGBA TGA (type 2) -- exactly what the
+  known-good originals are. The converter now writes type 2 at 256 px, matching the
+  originals' format byte-for-byte (verified by header inspection).
+
 ### Tooling
 - `tools/build_mark_art.py` converts `art/*.png` into `Media/*.tga` and writes a
   human-viewable `art/preview.png`. Source PNGs are ignored via a new `.gitignore`
-  so only the small `.tga` ship.
+  so only the `.tga` ship.
 
 ### Known follow-up
 - A few *OUT OF RANGE* styles (`dashed`, `halo`, `sides`, `slashes`, `weakcross`)
