@@ -3,6 +3,33 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.21] - 2026-09-03
+
+### Changed
+- **Feed button dim/bright inverted to the requested logic**: the icon is
+  **bright** (full colour, no desaturation, coloured border) when the pet is
+  below happy AND out of combat, and **dim** (greyscale 0.6, no border) when
+  the pet is happy or you are in combat -- the button recedes exactly when
+  there is nothing to do.
+- **Art is 4x smaller: 7.08 MB -> 1.77 MB.** All 18 mark/crosshair textures
+  converted from uncompressed 32-bit TGA to BLP1/DXT5 -- the container and
+  compression Blizzard's own client art uses (TGA-RLE, the lossless option,
+  is known broken on this client; palette BLP was impossible: the marks have
+  369-1577 unique colours, palette caps at 256). Measured with a
+  decode-and-compare pass (`tools/tga_to_blp.py`, new): the three crosshairs
+  are mathematically lossless (max error 0); the marks measure 33.9-41.0 dB
+  PSNR, and through the ADD blend the marks actually ship with, the median
+  on-screen error is 1-2 out of 255 (p90 2.6-8.8) -- the same class of
+  compression every Blizzard UI texture you already look at uses.
+  `tools/build_mark_art.py` still produces the TGAs; run `tga_to_blp.py`
+  after it to re-ship.
+
+### Tests
+- 119 + 55 + 79 + 43 = **296 green** (dim/bright assertions inverted with
+  the logic).
+
+---
+
 ## [0.9.20] - 2026-09-03
 
 ### Changed
