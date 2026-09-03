@@ -27,6 +27,13 @@ local frame, icon, cross, label
 local lastWarn = -3600
 local lastVoice = -3600
 local shownUntil = 0
+-- Inventory-sync gate: right after login/reload BOTH GetInventoryItemID and
+-- GetInventorySlotLink transiently return nil while the client syncs. Reading
+-- that as "nothing equipped" fired a false "NO AMMO" warning (and voice) with
+-- a full quiver. Until the inventory has PROVABLY synced, a nil slot read
+-- means "unknown" -- never zero.
+local invReady = false
+local pewTicks = 0
 
 -- Voice cooldowns, scaled by the frequency option: 45 s is the user's floor
 -- for ANY voice (the icon may repeat more often; the voice must not spam).
@@ -80,7 +87,10 @@ local function AmmoCount()
       id = tonumber(link:match("item:(%d+)"))
     end
   end
-  if not id then return 0, nil end   -- slot exists but nothing equipped
+  if id then invReady = true end     -- a real read: the inventory has synced
+  if not id then
+    if not invReady then return nil, nil end  -- cold cache: no opinion, no warning
+    return 0, nil end                -- slot exists but nothing equipped
   local n = 0
   if GetItemCount then
     local ok, c = pcall(GetItemCount, id)
@@ -207,6 +217,12 @@ end
 -- ---------------------------------------------------------------------------
 local function Tick()
   if not frame then return end
+  -- Safety net for a genuinely EMPTY ammo slot: if no sync proof ever
+  -- arrives, believe the empty read after ~10 ticks so that case still warns.
+  if not invReady then
+    pewTicks = pewTicks + 1
+    if pewTicks > 10 then invReady = true end
+  end
   if HK.db.enabled == false or not db.enabled or not HK.isHunter then
     frame:SetShown(false)
     return
@@ -266,6 +282,8 @@ end
 function AmmoWarn.Rearm()
   lastWarn = -3600
   lastVoice = -3600
+  invReady = false   -- new world entry: inventory must prove itself again
+  pewTicks = 0
   Tick()
 end
 
@@ -282,7 +300,8 @@ function AmmoWarn.Init()
 
   BuildFrame()
 
-  HK.On("BAG_UPDATE_DELAYED", function() lastWarn = 0; Tick() end)
+  HK.On("BAG_UPDATE_DELAYED", function() invReady = true; lastWarn = 0; Tick() end)
+  HK.On("UNIT_INVENTORY_UPDATE", function() invReady = true end)
   HK.On("PLAYER_ENTERING_WORLD", AmmoWarn.Rearm)
 
   HK.Ticker(1, Tick)

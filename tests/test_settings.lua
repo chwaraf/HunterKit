@@ -436,8 +436,44 @@ ammoTicker:Tick()
 check("warmed item cache recovers the equipped ammo's icon",
   aw.textures[1].texture == "Interface\\Icons\\INV_Ammo_Arrow_02",
   tostring(aw.textures[1].texture))
-HKTest.state.items = nil
+-- False-alarm guard (the reported bug): at login/reload the inventory is
+-- transiently unsynced -- BOTH slot reads return nil -- and the old code read
+-- that as "nothing equipped", shouting NO AMMO (and firing the voice) at a
+-- full quiver. A cold read must mean "unknown", never zero.
+HK.db.ammo.sound = true
 HKTest.state.ammoID = nil
+HKTest.state.ammoLink = nil
+HKTest.state.items = { [2515] = 600 }   -- plenty of ammo, client hasn't synced
+HKTest.state.now = 5
+local s1 = #HKTest.soundsPlayed
+HK.AmmoWarn.Rearm()
+check("cold login: no false NO AMMO warning", not HK.AmmoWarn.IsShown(),
+  tostring(HK.AmmoWarn.IsShown()))
+check("cold login: no false voice", #HKTest.soundsPlayed == s1,
+  tostring(#HKTest.soundsPlayed - s1))
+HKTest.state.now = 50000                 -- /reload: GetTime() already large
+HK.AmmoWarn.Rearm()
+check("cold reload: no false NO AMMO warning either", not HK.AmmoWarn.IsShown(),
+  tostring(HK.AmmoWarn.IsShown()))
+-- inventory syncs: normal operation resumes, stocked stays quiet
+HKTest.state.ammoID = 2515
+ammoTicker:Tick()
+check("synced & stocked: still quiet", not HK.AmmoWarn.IsShown(),
+  tostring(HK.AmmoWarn.IsShown()))
+-- a genuinely empty slot still warns once synced
+HKTest.state.ammoID = nil
+HKTest.state.now = 50100
+ammoTicker:Tick()
+check("truly empty slot: NO AMMO still fires", HK.AmmoWarn.IsShown(),
+  tostring(HK.AmmoWarn.IsShown()))
+-- safety net: a session that NEVER syncs believes the empty read after ~10 ticks
+HK.AmmoWarn.Rearm()
+HKTest.state.now = 60000
+for i = 1, 11 do HKTest.state.now = HKTest.state.now + 1; ammoTicker:Tick() end
+check("never-synced fallback: warns after ~10 ticks", HK.AmmoWarn.IsShown(),
+  tostring(HK.AmmoWarn.IsShown()))
+HKTest.state.items = nil
+HKTest.state.ammoLink = nil
 HK.db.ammo.sound = false
 
 -- ---------------------------------------------------------------------------

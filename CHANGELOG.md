@@ -3,6 +3,26 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.23] - 2026-09-03
+
+### Fixed
+- **False "NO AMMO" warning on load with a full quiver** (the actual reported
+  bug -- 0.9.22 had it backwards): right after login/reload the client hasn't
+  synced inventory yet, so `GetInventoryItemID` AND `GetInventorySlotLink`
+  both transiently return nil. The code read that as "nothing equipped" and
+  fired the tier-4 NO AMMO warning and voice despite plenty of ammo. A nil
+  slot read now means **"unknown", never zero**, until the inventory has
+  provably synced (a real item read, `UNIT_INVENTORY_UPDATE`, or
+  `BAG_UPDATE_DELAYED`). Safety net: if no sync proof ever arrives, the empty
+  read is believed after ~10 ticks, so a genuinely empty slot still warns
+  within ~10 s of login. `AmmoWarn.Rearm` (zone/login) re-arms the gate.
+
+### Tests
+- 119 + 55 + 88 + 43 = **305 green** (cold login + cold reload stay silent,
+  synced stocked stays quiet, truly-empty still fires, never-synced fallback).
+
+---
+
 ## [0.9.22] - 2026-09-03
 
 ### Fixed
