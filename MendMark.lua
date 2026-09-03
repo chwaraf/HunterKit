@@ -71,6 +71,7 @@ local PLATE_CVAR_CANDIDATES = {
   "nameplateShowOnlyNames",
   "nameplateShowSelf",
   "nameplateMaxDistance",
+  "UnitNameFriendlyPetName",
 }
 
 -- Cached spell name. Cleared on SPELLS_CHANGED so learning Mend Pet later is
@@ -796,7 +797,8 @@ function MendMark.NameplateCVarDump()
   local function add(n)
     if type(n) ~= "string" then return end
     n = (n:gsub("^/", ""))
-    if n:lower():find("nameplate", 1, true) and not seen[n] then
+    if (n:lower():find("nameplate", 1, true) or n:lower():find("unitname", 1, true))
+      and not seen[n] then
       seen[n] = true
       names[#names + 1] = n
     end
@@ -868,8 +870,21 @@ function MendMark.PrintDiag()
   elseif rm == "screen" then
     print("  Anchored to the client's own screen position for the pet (no plate needed).")
   else
-    print("  This client publishes no pet plate right now, so the marker uses the UI")
-    print("  fallback. /htk unlock and drag it wherever you want it (the spot is saved).")
+    local un = GetCVar and (select(2, pcall(GetCVar, "UnitNameFriendlyPetName"))) or nil
+    if un == "1" or un == 1 then
+      -- The name the player sees is drawn by the UNIT-NAME system, which exposes
+      -- no frame and no screen position — unlike a name-only plate, which looks
+      -- almost the same but IS a frame and therefore anchorable.
+      print("  The name over your pet comes from the unit-name setting, not a name plate.")
+      print("  Unit names expose no frame or screen position, so nothing can anchor to")
+      print("  them. A NAME-ONLY plate looks the same but IS anchorable: turn on")
+      print("  nameplateShowFriendlyPets + nameplateShowOnlyNames (if your client has them).")
+      print("  Until then the marker uses the UI fallback:")
+      print("  /htk unlock and drag it wherever you want it (the spot is saved).")
+    else
+      print("  This client publishes no pet plate right now, so the marker uses the UI")
+      print("  fallback. /htk unlock and drag it wherever you want it (the spot is saved).")
+    end
   end
 end
 

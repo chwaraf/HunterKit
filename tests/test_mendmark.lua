@@ -461,6 +461,16 @@ do
   check("report never suggests the removed force-plate option",
     all:find("Force pet name plate") == nil and all:find("Tick Options") == nil, all)
 end
+
+-- the name over the pet via the UNIT-NAME system exposes nothing to anchor to;
+-- the report must say so and point at the anchorable name-only plate instead.
+HKTest.state.cvars.UnitNameFriendlyPetName = "1"
+HKTest.prints = {}
+pcall(SlashCmdList["HUNTERKIT"], "mend")
+local all2 = table.concat(HKTest.prints, "\n")
+check("report explains unit names expose nothing to anchor to",
+  all2:find("unit-name setting", 1, true) ~= nil, all2)
+check("report lists the unit-name cvar", all2:find("UnitNameFriendlyPetName=1") ~= nil, all2)
 HKTest.state.cvars = fullCVars
 
 -- ---------------------------------------------------------------------------

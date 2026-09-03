@@ -3,6 +3,21 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.4] - 2026-09-03
+### Fixed / explained
+- **"Name anchoring doesn't work when nameplates are off but the name shows."**
+  That name is drawn by the *unit-name* setting (`UnitNameFriendlyPetName`), which
+  exposes **no frame and no screen position** — unlike a name-only *plate*, which
+  looks almost identical but is a real frame and therefore anchorable. `/htk mend`
+  now detects this exact case (unit-name CVar on, no pet plate) and says so,
+  pointing at the anchorable name-only plate combo
+  (`nameplateShowFriendlyPets` + `nameplateShowOnlyNames`) instead of silently
+  falling back. The CVar dump now lists `UnitNameFriendlyPetName` too.
+
+### Added (tests)
+- Report checks for the unit-name explanation; suite now 117 + 54 + 38 + 40 = 249,
+  all passing.
+
 ## [0.9.3] - 2026-09-03
 ### Changed (correction: last round's feed changes belonged to the mend marker)
 - **Feed button restored to its old settings.** The 0.9.2 under-avatar default and

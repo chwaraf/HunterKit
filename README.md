@@ -7,7 +7,7 @@ For **WoW Classic Era & Hardcore** (patch 1.15.x).
 A self-contained, dependency-free (no Ace3/LibDBIcon) addon built for the
 hardcore-first hunter. Every action is a deliberate click; nothing is automated.
 
-Current version: **0.9.3** — see [`CHANGELOG.md`](CHANGELOG.md).
+Current version: **0.9.4** — see [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Features
 
@@ -127,10 +127,12 @@ drag there could neither be started nor kept. That is also why edit mode shows
 **one** marker, not two: there is no second, movable copy of the head marker to
 show, and showing the immovable one would leave you dragging nothing.
 
-When the client shows the pet's **name** (a full or name-only plate), that plate
-frame exists and `auto` anchors over the head/name — so yes, the marker follows
-the pet name exactly when it is displayed; with nameplates fully off there is no
-name object to attach to and it falls back under the avatar.
+When the client shows the pet's name via a **name-only plate**, that plate frame
+exists and `auto` anchors over the head/name — a name-only plate looks like "just
+the name" but IS anchorable. Careful with the lookalike: the *unit-name* setting
+(`UnitNameFriendlyPetName`) also draws the pet's name with all nameplates off, but
+it exposes **no frame and no screen position**, so nothing can anchor to it — there
+the marker falls back under the avatar and `/htk mend` explains the difference.
 
 Anchor modes: **`auto`** (default) = head/name when a plate exists, else under
 the avatar · **`plate`** = head only, hidden while there's no plate ·
