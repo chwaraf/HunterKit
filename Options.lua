@@ -329,7 +329,7 @@ local sliderCount = 0
 local SLIDER_LABEL_H = 15
 local SLIDER_BAR_H   = 18
 local SLIDER_VALUE_W = 88
-local function MakeSlider(parent, y, labelText, min, max, step, get, set, tooltip)
+local function MakeSlider(parent, y, labelText, min, max, step, get, set, tooltip, compact)
   sliderCount = sliderCount + 1
   local name = "HunterKitOptSlider" .. sliderCount
   local w = (parent:GetWidth() or 436)
@@ -339,27 +339,44 @@ local function MakeSlider(parent, y, labelText, min, max, step, get, set, toolti
   lbl:SetFontObject(GameFontNormal)
   lbl:SetJustifyH("LEFT")
   lbl:SetWordWrap(false)
-  -- The number sits dead centre of the row, so the label may only use the left
-  -- half minus that column, or a long label would run underneath the number.
-  lbl:SetWidth(math.max(80, math.floor((w - SLIDER_VALUE_W) / 2) - 8))
+  if compact then
+    -- Small slider on the RIGHT of the text: label keeps the left column.
+    lbl:SetWidth(200)
+  else
+    -- The number sits dead centre of the row, so the label may only use the left
+    -- half minus that column, or a long label would run underneath the number.
+    lbl:SetWidth(math.max(80, math.floor((w - SLIDER_VALUE_W) / 2) - 8))
+  end
   lbl:SetText(labelText)
   lbl:SetTextColor(0.9, 0.9, 0.9)
 
   -- Always visible and centred over the bar: the template's own value text is
   -- empty until you drag, and a right-aligned column collided with long labels.
   local val = parent:CreateFontString(nil, "OVERLAY")
-  val:SetPoint("TOP", parent, "TOP", 0, y)
+  if compact then
+    -- re-anchored next to the bar once the bar exists (below); kept on the same
+    -- horizontal line as the bar, right of it, for every row.
+    val:SetWidth(30)
+  else
+    val:SetPoint("TOP", parent, "TOP", 0, y)
+  end
   val:SetFontObject(GameFontHighlight)
   val:SetJustifyH("CENTER")
   val:SetWordWrap(false)
-  val:SetWidth(SLIDER_VALUE_W)
+  if not compact then val:SetWidth(SLIDER_VALUE_W) end
   val:SetTextColor(0.35, 1, 0.35)
   val:SetText(tostring(get()))
 
   local sl = CreateFrame("Slider", name, parent, "OptionsSliderTemplate")
-  sl:SetWidth(math.max(120, w - 16))
-  sl:SetHeight(SLIDER_BAR_H)
-  sl:SetPoint("TOPLEFT", parent, "TOPLEFT", 8, y - SLIDER_LABEL_H)
+  if compact then
+    sl:SetWidth(110)
+    sl:SetHeight(SLIDER_BAR_H)
+    sl:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -34, y - 2)
+  else
+    sl:SetWidth(math.max(120, w - 16))
+    sl:SetHeight(SLIDER_BAR_H)
+    sl:SetPoint("TOPLEFT", parent, "TOPLEFT", 8, y - SLIDER_LABEL_H)
+  end
   sl:SetMinMaxValues(min, max)
   sl:SetValueStep(step)
   sl:SetObeyStepOnDrag(true)
@@ -380,6 +397,10 @@ local function MakeSlider(parent, y, labelText, min, max, step, get, set, toolti
     if syncing then return end
     set(self:GetValue())
   end)
+  if compact then
+    val:ClearAllPoints()
+    val:SetPoint("LEFT", sl, "RIGHT", 4, 0)   -- number on the bar's line
+  end
   val:SetText(string.format("%d", sl:GetValue()))   -- shown from the first frame
   AttachTooltip(sl, labelText, tooltip)
   controlRefresh[#controlRefresh + 1] = function()
@@ -451,6 +472,10 @@ function BuildWindow()
     function(v) db.feed.hungryOnly = v; RefreshFeed() end,
     "Hide the button once the pet is content.")
   y = y - CHK
+  MakeCheckbox(content, y, "Use default Feed Pet icon", function() return db.feed.useSpellIcon end,
+    function(v) db.feed.useSpellIcon = v; RefreshFeed() end,
+    "Replace the chosen food's icon on the button with the default Feed Pet spell icon. The count of available food stays on the button either way.")
+  y = y - CHK
   MakeSlider(content, y, "Button size", 24, 48, 1, function() return db.feed.size end,
     function(v) db.feed.size = v; RefreshFeed() end, "Size of the feed button, in pixels.")
   y = y - ROW
@@ -470,21 +495,63 @@ function BuildWindow()
   MakeSlider(content, y, "Mark size", 20, 96, 1, function() return db.range.size end,
     function(v) db.range.size = v; RefreshRange() end, "Size of the reticle, in pixels.")
   y = y - ROW
-  MakeDropdown(content, y, "IN RANGE shape", ShapeNames("OK", { "crosshair", "diamond", "brackets" }),
-    function() return db.range.markOK or "crosshair" end,
+  -- Shape/brightness grid (user sketch): SHAPE cycle-buttons on the left with the
+  -- state name beside them, BRIGHTNESS sliders on the right, one row per state.
+  local function ShapeRow(labelText, options, get, set, tip, bGet, bSet)
+    local row = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
+    row:SetSize(150, 22)
+    row:SetPoint("TOPLEFT", content, "TOPLEFT", 0, y - 4)
+    row:SetText(get() or "")
+    row:SetScript("OnClick", function()
+      local cur = get()
+      local idx = 1
+      for i, o in ipairs(options) do if o == cur then idx = i end end
+      local nxt = options[(idx % #options) + 1]
+      set(nxt)
+      row:SetText(nxt)
+    end)
+    AttachTooltip(row, labelText .. " shape", tip)
+    controlRefresh[#controlRefresh + 1] = function() row:SetText(get() or "") end
+    local st = content:CreateFontString(nil, "OVERLAY")
+    st:SetPoint("LEFT", row, "RIGHT", 10, 0)
+    st:SetFontObject(GameFontNormal)
+    st:SetJustifyH("LEFT")
+    st:SetWordWrap(false)
+    st:SetText(labelText)
+    st:SetTextColor(0.9, 0.9, 0.9)
+    MakeSlider(content, y, "", 0, 200, 5, bGet, bSet,
+      "Glow intensity of the " .. labelText .. " mark.", true)
+    y = y - CHK
+  end
+  local hShape = content:CreateFontString(nil, "OVERLAY")
+  hShape:SetPoint("TOPLEFT", content, "TOPLEFT", 0, y)
+  hShape:SetFontObject(GameFontNormal)
+  hShape:SetJustifyH("LEFT")
+  hShape:SetText("SHAPE")
+  local hBright = content:CreateFontString(nil, "OVERLAY")
+  hBright:SetPoint("TOPRIGHT", content, "TOPRIGHT", -34, y)
+  hBright:SetFontObject(GameFontNormal)
+  hBright:SetJustifyH("LEFT")
+  hBright:SetText("BRIGHTNESS")
+  y = y - 20
+  ShapeRow("IN RANGE", ShapeNames("OK", { "crosshair", "diamond", "brackets" }),
+    function() return db.range.markOK or "plus" end,
     function(v) db.range.markOK = v; RefreshRange() end,
-    "Shape while Auto Shot is in range (green). Click to cycle the six styles.")
-  y = y - ROW
-  MakeDropdown(content, y, "TOO CLOSE shape", ShapeNames("DEAD", { "x", "block", "circle" }),
-    function() return db.range.markDead or "x" end,
+    "Shape while Auto Shot is in range (green). Click to cycle the six styles.",
+    function() return db.range.brightOK or 100 end,
+    function(v) db.range.brightOK = v; RefreshRange() end)
+  ShapeRow("TOO CLOSE", ShapeNames("DEAD", { "x", "block", "circle" }),
+    function() return db.range.markDead or "cross" end,
     function(v) db.range.markDead = v; RefreshRange() end,
-    "Shape when the target is too close (red). Click to cycle the six styles.")
-  y = y - ROW
-  MakeDropdown(content, y, "OUT OF RANGE shape", ShapeNames("FAR", { "rings", "dashed", "halo" }),
-    function() return db.range.markFar or "rings" end,
+    "Shape when the target is too close (red). Click to cycle the six styles.",
+    function() return db.range.brightDead or 100 end,
+    function(v) db.range.brightDead = v; RefreshRange() end)
+  ShapeRow("OUT OF RANGE", ShapeNames("FAR", { "rings", "dashed", "halo" }),
+    function() return db.range.markFar or "ban" end,
     function(v) db.range.markFar = v; RefreshRange() end,
-    "Shape when the target is out of range (grey). Click to cycle the six styles.")
-  y = y - ROW
+    "Shape when the target is out of range (grey). Click to cycle the six styles.",
+    function() return db.range.brightFar or 100 end,
+    function(v) db.range.brightFar = v; RefreshRange() end)
   MakeCheckbox(content, y, "Show range label", function() return db.range.showLabel end,
     function(v) db.range.showLabel = v; RefreshRange() end, "Spell the state out under the mark.")
   y = y - CHK
@@ -512,6 +579,10 @@ function BuildWindow()
     function(v) db.mend.hpThreshold = v; RefreshMend() end,
     "At or below this HP the marker grows, pulses and shows a red ring.")
   y = y - ROW
+  MakeCheckbox(content, y, "Show only below threshold", function() return db.mend.onlyBelow end,
+    function(v) db.mend.onlyBelow = v; RefreshMend() end,
+    "Hide the marker entirely while the pet is above the HP threshold, instead of showing it calm.")
+  y = y - CHK
   MakeCheckbox(content, y, "Urgent pulse", function() return db.mend.urgentPulse end,
     function(v) db.mend.urgentPulse = v; RefreshMend() end,
     "Grow, pulse and red ring while the pet is low.")
@@ -533,13 +604,29 @@ function BuildWindow()
     function(v) db.mend.anchor = v; RefreshMend() end,
     "auto = over the head when a pet plate exists, else above the pet frame. plate = head only. petframe = UI frame only.")
   y = y - ROW
-  MakeCheckbox(content, y, "Force pet name plate", function() return db.mend.forcePlate end,
-    function(v) db.mend.forcePlate = v; RefreshMend() end,
-    "No pet-only setting exists: the finest the client offers is friendly + minions, which also shows other players' pets. Ticking it turns the least it can on and restores your values on untick or logout. /htk mend reports what your client allows.")
-  y = y - CHK
   MakeCheckbox(content, y, "Nameplate style bar", function() return db.mend.plateStyle end,
     function(v) db.mend.plateStyle = v; RefreshMend() end,
     "Pet name + HP bar under the icon, only when no real plate is there.")
+  y = y - CHK
+
+  -- Ammo
+  AddSection(content, y, "Ammo")
+  y = y - HDR
+  MakeCheckbox(content, y, "Enable low ammo warning", function() return db.ammo.enabled end,
+    function(v) db.ammo.enabled = v; RefreshAmmo() end,
+    "Periodic on-screen warning (right of the passive alert) when your equipped ammo runs low: the equipped projectile icon under a red X. The less ammo, the more often and the longer it shows.")
+  y = y - CHK
+  MakeSlider(content, y, "Warn below", 10, 500, 10, function() return db.ammo.threshold or 200 end,
+    function(v) db.ammo.threshold = v; RefreshAmmo() end,
+    "Warn when the equipped ammo count drops to this or lower.", true)
+  y = y - CHK
+  MakeSlider(content, y, "Warn frequency", 1, 4, 1, function() return db.ammo.frequency or 1 end,
+    function(v) db.ammo.frequency = v; RefreshAmmo() end,
+    "How often the warnings repeat: 1x is the default rhythm (low ~90 s, empty ~10 s), 4x repeats four times as often. Voice cooldowns scale with it.", true)
+  y = y - CHK
+  MakeCheckbox(content, y, "Warning sound", function() return db.ammo.sound end,
+    function(v) db.ammo.sound = v end,
+    "Voice only -- no game sounds. Bundled clips speak the situation: \"Low arrows!\"/\"Low ammo!\" while low (at most once a minute), \"No arrows!\"/\"No ammo!\" when the slot is empty (at most once every 30 s); the frequency option scales both. Off by default.")
   y = y - CHK
 
   -- Sound
@@ -553,9 +640,13 @@ function BuildWindow()
     end,
     "Pew on each shot, stock gunshot muted. Untick to restore it at once.")
   y = y - CHK
+  MakeCheckbox(content, y, "Pew on special shots", function() return db.sound.specials end,
+    function(v) db.sound.specials = v end,
+    "Arcane Shot, Multi-Shot and Aimed Shot pew too. Untick for auto shot only.")
+  y = y - CHK
 
   -- Pulse
-  AddSection(content, y, "Passive Alert")
+  AddSection(content, y, "Passive pet alert")
   y = y - HDR
   MakeCheckbox(content, y, "Enable passive alert", function() return db.pulse.enabled end,
     function(v) db.pulse.enabled = v; RefreshPulse() end,
@@ -661,7 +752,7 @@ function RefreshModules()
     if HK.PassivePulse and HK.PassivePulse.Refresh then HK.PassivePulse.Refresh() end
     if HK.MendMark and HK.MendMark.Update then HK.MendMark.Update() end
   else
-    RefreshFeed(); RefreshRange(); RefreshSound(); RefreshPulse(); RefreshMend()
+    RefreshFeed(); RefreshRange(); RefreshSound(); RefreshPulse(); RefreshAmmo(); RefreshMend()
   end
 end
 function RefreshFeed() if HK.FeedPet and HK.FeedPet.RescanSettings then HK.FeedPet.RescanSettings() end end
@@ -669,6 +760,7 @@ function RefreshRange() if HK.Range and HK.Range.RescanSettings then HK.Range.Re
 function RefreshPulse() if HK.PassivePulse and HK.PassivePulse.RescanSettings then HK.PassivePulse.RescanSettings() end end
 function RefreshMend() if HK.MendMark and HK.MendMark.RescanSettings then HK.MendMark.RescanSettings() end end
 function RefreshSound() if HK.Sounds and HK.Sounds.RescanSettings then HK.Sounds.RescanSettings() end end
+function RefreshAmmo() if HK.AmmoWarn and HK.AmmoWarn.RescanSettings then HK.AmmoWarn.RescanSettings() end end
 
 -- ---------------------------------------------------------------------------
 -- Minimap button

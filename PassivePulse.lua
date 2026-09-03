@@ -244,7 +244,7 @@ Refresh = function()
     return
   end
   local on = PetPassiveInfo()
-  local show = on and db.enabled and HK.isHunter
+  local show = on and db.enabled and HK.isHunter and HK.db.enabled ~= false
   alert:SetShown(show and true or false)
   if show then
     -- Always show the Ability_Seal icon (the pet Passive stance icon), as

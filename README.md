@@ -7,18 +7,19 @@ For **WoW Classic Era & Hardcore** (patch 1.15.x).
 A self-contained, dependency-free (no Ace3/LibDBIcon) addon built for the
 hardcore-first hunter. Every action is a deliberate click; nothing is automated.
 
-Current version: **0.8.0** — see [`CHANGELOG.md`](CHANGELOG.md).
+Current version: **0.9.24** — see [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Features
 
 | Feature | What it does |
 |---|---|
-| **Feed Pet button** | A one-click button beside the pet happiness icon. Always feeds the **best** food in your bags (max happiness tier, then smallest open stack). Respects your pins/excludes. Out-of-combat only (as Blizzard intends). |
-| **Sniper Mark** | A reticle by the target frame that reports **IN RANGE / TOO CLOSE / OUT OF RANGE** — and each state has **six shapes of its own** to choose from (18 in total), drawn procedurally so the states differ by silhouette, not just colour. Reflects state only — it never acts. |
+| **Feed Pet button** | A one-click button beside the pet happiness icon. Always feeds the **best** food in your bags (max happiness tier, then smallest open stack), shown as the food icon (or the **default Feed Pet icon** via the *Use default Feed Pet icon* option) with a **count of that food** (all its stacks) on it like an action button. The highlight glows only when the pet is **below happy and you are out of combat**. Respects your pins/excludes. Out-of-combat only (as Blizzard intends). |
+| **Sniper Mark** | A reticle by the target frame that reports **IN RANGE / TOO CLOSE / OUT OF RANGE** — six art styles per state in the bold outlined cross family (the new defaults), the classics and a modern sci-fi set, tinted by state. Reflects state only — it never acts. |
 | **Pet Mend Marker** | A **Mend Pet icon floating above your pet's head, nameplate style**. Green + solid when the pet is inside Mend Pet range, faded and greyed when it isn't — so you know at a glance, without reading a bar. Goes **bigger and pulsing with an expanding red ring** at or below **30% pet HP**. **On by default**, and it works with nameplates turned off. |
-| **Gun sound** | Replaces the stock gunshot with a Star-Wars-style blaster pew. Respects guns-only, no-repeat, and mutes the stock sound. |
+| **Gun sound** | Replaces the stock gunshot with a Star-Wars-style blaster pew. Arcane Shot, Multi-Shot and Aimed Shot pew too (toggle in Options). Respects guns-only, no-repeat, and mutes the stock sound. |
 | **Passive alert** | A big pulsing Ability Seal center-screen above your character while the pet is Passive, plus an optional glow on the passive button. Impossible to miss. |
-| **Options** | Draggable settings window — one rule per feature block, every slider's number centred above its bar, wrapped tooltips, and a two-click **Reset ALL settings** button. Minimap button, `/htk lock\|unlock`, `/htk reset`. |
+| **Low ammo warning** | Periodic on-screen alert when your equipped arrows/bullets run low — the **equipped projectile's own icon under a red X**, right of the passive alert. The less ammo, the more often and the longer it shows. Optional voice warnings (**off by default**, voice only — no game sounds): bundled clips say "Low arrows!"/"Low ammo!" while low (at most once a minute) and "No arrows!"/"No ammo!" when the slot is empty (at most once every 45 s — 45 s is the floor for any voice). The warning icon **pulses** while shown, and the first warning of an episode fires the moment the threshold is reached. A **Warn frequency** slider (1×–4×) scales how often everything repeats. Threshold configurable (default 200). |
+| **Options** | Draggable settings window — a master **Enable HunterKit** switch that pauses *every* feature at once, one rule per feature block, wrapped tooltips, and a two-click **Reset ALL settings** button. The Sniper Mark block is a grid per state: **SHAPE** cycle-button + state name on the left, short **BRIGHTNESS** slider (0–200%, 100% at the bar's middle, overdrive stacks a second additive pass) on the right. Minimap button, `/htk lock\|unlock`, `/htk reset`. |
 
 ## Sniper Mark
 
@@ -29,20 +30,28 @@ It reflects state only — it never fires, targets or casts.
 |---|---|---|
 | **IN RANGE** (Auto Shot ready) | green | open and angular — the shot is available |
 | **TOO CLOSE** (inside the deadzone) | red | closed and heavy — back up |
-| **OUT OF RANGE** | grey | broken and hollow — no shot |
+| **OUT OF RANGE** | grey | a prohibition sign — no shot |
 
-Each state has **six shapes of its own**, and they are drawn procedurally from a
-1×1 Blizzard texture rather than from art files, so the silhouette changes with
-the choice (the states were previously three recolours of one icon):
+Each state has **six shapes of its own**, and each one is a real piece of art, not
+a recolour of a single icon. The defaults are the **bold outlined cross family** —
+the TOO CLOSE cross you liked, plus a matching circled IN RANGE plus and a matching
+prohibition-sign OUT OF RANGE, generated against the cross itself so the line work matches.
+The restored classic crosshair / X / ring marks and the sci-fi set remain one click
+away. All marks ship as white-on-alpha `.tga` so the state colour tints them:
 
-| State | Shapes (click the option to cycle) |
+| State | Shapes (click the option to cycle), **bold** = default |
 |---|---|
-| IN RANGE | `crosshair` · `brackets` · `diamond` · `chevrons` · `ticks` · `ringdot` |
-| TOO CLOSE | `x` · `block` · `circle` · `arrows` · `bars` · `burst` |
-| OUT OF RANGE | `rings` · `dashed` · `halo` · `sides` · `slashes` · `weakcross` |
+| IN RANGE | **`plus`** · `crosshair` · `reticle` · `chevrons` · `diamond` · `ticks` |
+| TOO CLOSE | **`cross`** · `x` · `hexx` · `block` · `bars` · `burst` |
+| OUT OF RANGE | **`ban`** · `rings` · `dashed` · `halo` · `sides` · `slashes` |
 
-The colour always carries the state as well, so the mark stays readable for
-colourblind players who pick a shape per state.
+The new art is generated on a black field and luminance-keyed to alpha by
+`tools/build_mark_art.py` (black → transparent, mark → white), cropped, squared and
+resized to 256px, and **every** style is now art (the whole OUT OF RANGE and
+TOO CLOSE sets included), and each state has its own compact **brightness slider** in Options (10–100%,
+sitting small on the right of its label).
+The colour always carries the state as well, so the mark stays
+readable for colourblind players who pick a shape per state.
 
 ## Pet Mend Marker
 
@@ -55,7 +64,7 @@ The marker answers one question mid-fight: **can I Mend right now?**
 | At or below 30% HP | **Grows (up to ~14%), pulses, expanding red ring**, `MEND!` label |
 | No pet / dead pet / Mend Pet not learned | Hidden |
 
-- **Toggle:** Options → Pet Mend Marker → *Enable mend marker* — **on by default**.
+- **Toggle:** Options → Pet Mend Marker → *Enable mend marker* — **on by default**. *Show only below threshold* makes it appear only at/below the HP threshold.
 - **Out of combat:** hidden once the pet is healthy (*Only in combat*, on by
   default). A pet below the threshold always shows, combat or not.
 - **Threshold** is a slider (5–100%, default **30**).
@@ -90,26 +99,18 @@ over-the-head anchoring.
 CVar API offers is *friendly pets / minions* — enabling it publishes plates for
 **other players' pets and minions too**. There is nothing narrower to choose.
 
-Tick **Force pet name plate** (opt-in, off by default). HunterKit then walks a
-ladder of nameplate CVars from the least invasive up —
-`nameplateShowFriendlyPets` → `nameplateShowFriendlyMinions` →
-`nameplateShowFriends` → `nameplateShowAll` — skipping any the client doesn't
-have, and **stops at the first rung that actually produces a pet plate**. (On
-Classic Era the friendly + minions pair is what publishes one.) It waits ~1s
-between rungs so the client can react, and never touches CVars during combat
-(the client locks them). Your previous values are stored in SavedVariables and
-**restored when you untick the option or log out**, so nothing is written to
-your config permanently. `/htk mend` marks every CVar it changed with a `*` and
-shows the value it replaced.
+Earlier builds shipped an opt-in **Force pet name plate** CVar ladder here.
+Real-world testing showed clients that publish **no** pet plate even with every
+nameplate CVar turned on — there the option only held the player's nameplate
+settings hostage, so it was **removed in 0.9.1**. Head anchoring now happens only
+when the client itself publishes a pet plate; otherwise the marker uses the
+pet-frame fallback. Any CVar an older build changed is still restored on
+load/logout, and `/htk mend` marks those with a `*`.
 
-**If it can't help, it says so and undoes itself.** Once every rung is on and
-your client still publishes no pet plate after a few seconds, the option
-switches itself off, restores your CVars and prints one line telling you head
-anchoring isn't available there — instead of quietly holding your nameplate
-settings for nothing.
-
-**3. Otherwise fall back to the pet unit frame — and look like a plate anyway.**
-The fallback draws a nameplate-style widget under the icon (pet name + a
+**3. Otherwise fall back to the pet unit frame — under the avatar, looking like
+a plate anyway.** The fallback sits centred on the avatar's vertical axis with a
+clear gap below the frame (never overlapping it) and draws a nameplate-style
+widget under the icon (pet name + a
 green→red health bar), so it still reads like a plate rather than a stray icon.
 The pet unit frame is used **even when you've hidden it in Edit Mode** (a hidden
 frame keeps its layout), so the marker doesn't vanish for players following the
@@ -117,7 +118,7 @@ UIParent advice below.
 
 **4. Otherwise the UI fallback is yours to place.** `/htk unlock`, drag the
 marker wherever you read it best, lock again — the spot is saved per character
-(`/htk reset` returns it above the pet frame).
+(`/htk reset` returns it under the pet avatar).
 
 **In edit mode you always drag the fallback — even when the head anchor is live.**
 `/htk unlock` switches the marker to the UI fallback widget while frames are
@@ -129,9 +130,16 @@ drag there could neither be started nor kept. That is also why edit mode shows
 **one** marker, not two: there is no second, movable copy of the head marker to
 show, and showing the immovable one would leave you dragging nothing.
 
-Anchor modes: **`auto`** (default) = head when a plate exists, else the pet
-frame · **`plate`** = head only, hidden while there's no plate · **`petframe`** =
-always the UI widget.
+When the client shows the pet's name via a **name-only plate**, that plate frame
+exists and `auto` anchors over the head/name — a name-only plate looks like "just
+the name" but IS anchorable. Careful with the lookalike: the *unit-name* setting
+(`UnitNameFriendlyPetName`) also draws the pet's name with all nameplates off, but
+it exposes **no frame and no screen position**, so nothing can anchor to it — there
+the marker falls back under the avatar and `/htk mend` explains the difference.
+
+Anchor modes: **`auto`** (default) = head/name when a plate exists, else under
+the avatar · **`plate`** = head only, hidden while there's no plate ·
+**`petframe`** = always the UI widget under the avatar.
 
 ### What 1.15.9 actually offers (measured, not assumed)
 
@@ -205,9 +213,9 @@ than described here, that output says exactly why.
 read the `anchor would be:` line. `plate` = it's over the pet's head. `petframe` =
 the client publishes no position for your pet, so it's on the UI fallback. With no
 pet plate of any kind — no screen-position API either — that's all there is: use
-`/htk unlock` and drag it where you want it. **Force pet name plate** makes head
-anchoring work with your own nameplates off and restores them afterwards; note it
-is *not* pet-only (see above), and there is no pet-only setting to ask for.
+`/htk unlock` and drag it where you want it. (An opt-in CVar ladder that tried to
+force a pet plate into existence was removed in 0.9.1 — on such clients it could
+never work.)
 
 > Earlier versions of this README said the friendly-plate CVars were "gone" on
 > 1.15.9. That was a bad measurement, not a client fact: the diagnostic listed
@@ -254,10 +262,10 @@ ship copyrighted recordings.
 ## Compatibility
 
 - **Edit Mode (1.15.9)** — supported via the `UIParent` anchor option.
-- **Nameplate addons / nameplates off** — the mend marker still works: tick
-  **Force pet name plate** for head anchoring, or let it use the nameplate-style
-  fallback widget. A nameplate addon that replaces Blizzard's plates is fine too —
-  the marker anchors to the plate frame, it doesn't restyle it.
+- **Nameplate addons / nameplates off** — the mend marker still works: it anchors
+  over the head when the client publishes a pet plate, otherwise it uses the
+  nameplate-style fallback widget. A nameplate addon that replaces Blizzard's
+  plates is fine too — the marker anchors to the plate frame, it doesn't restyle it.
 - **MuteSoundFile (`/msf`) addon** — both manage mutes; last writer wins per ID. If
   you use `/msf`, remove overlapping gunshot IDs from one of the two.
 - **Unit-frame addons** — set Feed/Mark parent to `UIParent`.

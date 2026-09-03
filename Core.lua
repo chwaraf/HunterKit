@@ -6,7 +6,7 @@
 
 local ADDON_NAME, HK = ...
 
-HK.version = "0.8.0"
+HK.version = "0.9.24"
 
 -- ---------------------------------------------------------------------------
 -- Defaults (schema). This is the source of truth for the options window and
@@ -14,7 +14,7 @@ HK.version = "0.8.0"
 -- ---------------------------------------------------------------------------
 HK.defaults = {
   enabled   = true,
-  dbVersion = 12,
+  dbVersion = 20,
   firstRun  = true,
 
   ui = {
@@ -33,6 +33,14 @@ HK.defaults = {
     exclude        = {},
     rule           = "best",
     hungryOnly     = false,        -- show the button only when the pet is hungry (<3)
+    useSpellIcon   = false,        -- show the Feed Pet spell icon instead of the food's
+  },
+
+  ammo = {
+    enabled   = true,
+    threshold = 200,   -- warn at or below this many arrows/bullets left
+    sound     = false, -- voice warnings (user: off by default)
+    frequency = 1,     -- warn-frequency multiplier (1x..4x), user option
   },
 
   range = {
@@ -43,9 +51,12 @@ HK.defaults = {
     parent       = "TargetFrame",
     moved        = false,          -- true once the user drags it (then pinned absolutely)
     showLabel    = false,
-    markOK       = "crosshair",    -- mark style for IN RANGE
-    markDead     = "x",            -- mark style for TOO CLOSE (the deadzone X)
-    markFar      = "rings",        -- mark style for OUT OF RANGE
+    markOK       = "plus",         -- mark style for IN RANGE (bold cross family)
+    markDead     = "cross",        -- mark style for TOO CLOSE (the loved cross)
+    markFar      = "ban",          -- mark style for OUT OF RANGE
+    brightOK     = 100,            -- per-state mark brightness, percent
+    brightDead   = 100,
+    brightFar    = 100,
   },
 
   sound = {
@@ -55,6 +66,10 @@ HK.defaults = {
     -- its place via the combat log. (The mute is applied with MuteSoundFile,
     -- which is session-wide in C++ — see Sounds.lua for the caveat.)
     muteOriginal = true,
+    -- Special shots (Arcane Shot / Multi-Shot / Aimed Shot) pew too; the
+    -- option lives under Options > Gun Sound for anyone who wants the pew
+    -- strictly on the auto shot.
+    specials     = true,
     minInterval  = 0.15,
     channel      = "SFX",
     noRepeat     = true,
@@ -92,6 +107,7 @@ HK.defaults = {
     pinY        = 0,
     moved       = false,   -- true once dragged; then the UI fallback is pinned
     hpThreshold = 30,      -- % of max HP at or below which the marker goes urgent
+    onlyBelow   = false,   -- show the marker ONLY at/below the threshold
     urgentPulse = true,    -- grow + pulse + expanding ring while urgent
     urgentCycle = 0.55,    -- seconds per urgent pulse
     combatOnly  = true,    -- hide out of combat (a pet below the threshold still shows)
@@ -104,8 +120,7 @@ HK.defaults = {
     -- plate and the marker can anchor over the pet's head with the player's own
     -- nameplate settings left alone. Previous values are stored here and restored
     -- on disable/logout, so nothing is written to the config permanently.
-    forcePlate  = false,
-    plateCVars  = {},      -- name -> value before HunterKit changed it
+    plateCVars  = {},      -- leftover CVar values older builds changed; restored
   },
 }
 HK.DBNAME = "HunterKitDB"
@@ -177,17 +192,25 @@ end
 -- are also Y-up (positive = up). So the X/Y here are directly compatible with
 -- SetPoint offsets — no sign flip is needed.
 function HK.AbsRect(f)
-  local ok, l, b, w, h = pcall(function() return f:GetRect() end)
-  if not ok then
-    l = f:GetLeft() or 0; b = f:GetBottom() or 0
-    w = f:GetWidth() or 0; h = f:GetHeight() or 0
+  -- Every measurement is pcall-guarded: a frame anchored into a restricted
+  -- region (e.g. a name plate) makes GetRect/GetLeft HARD-error with "Can't
+  -- measure restricted regions", which used to blow up lock/unlock mid-toggle.
+  local ok, l, b, w, h = pcall(f.GetRect, f)
+  if not ok or l == nil then
+    l, b, w, h = 0, 0, 0, 0
+    local v
+    ok, v = pcall(f.GetLeft, f);   if ok and v then l = v end
+    ok, v = pcall(f.GetBottom, f); if ok and v then b = v end
+    ok, v = pcall(f.GetWidth, f);  if ok and v then w = v end
+    ok, v = pcall(f.GetHeight, f); if ok and v then h = v end
   end
   local p = f:GetParent()
   while p and p ~= UIParent and p.GetLeft do
-    local pl = p:GetLeft()
-    if not pl then break end
+    local okp, pl = pcall(p.GetLeft, p)
+    if not okp or not pl then break end
+    local okb, pb = pcall(p.GetBottom, p)
     l = l + pl
-    b = b + (p:GetBottom() or 0)
+    b = b + ((okb and pb) or 0)
     p = p:GetParent()
   end
   return l, b, w, h
@@ -234,7 +257,10 @@ end
 function HK.GetBagItemCount(bag, slot)
   if CCont and CCont.GetContainerItemInfo then
     local ok, info = pcall(CCont.GetContainerItemInfo, bag, slot)
-    if ok and info then return info.itemCount end
+    -- The live ContainerItemInfo field is stackCount (NOT itemCount -- that
+    -- name never existed on the struct and silently made every stack read
+    -- as 1 on C_Container clients).
+    if ok and info then return info.stackCount or info.itemCount end
   end
   if GetContainerItemInfo then return select(2, GetContainerItemInfo(bag, slot)) end
   return nil
@@ -378,9 +404,9 @@ function HK.ResetAll()
   HK.db.dbVersion = HK.dbVersion
 
   -- Re-apply everywhere. RescanSettings re-reads the db slice and rebuilds what
-  -- the setting controls; the mend marker also puts any forced nameplate CVar
-  -- back, because forcePlate is a default-off setting.
-  for _, name in ipairs({ "FeedPet", "Range", "Sounds", "PassivePulse", "MendMark" }) do
+  -- the setting controls; the mend marker also puts any leftover forced
+  -- nameplate CVar back.
+  for _, name in ipairs({ "FeedPet", "Range", "Sounds", "PassivePulse", "AmmoWarn", "MendMark" }) do
     local m = HK[name]
     if m and m.RescanSettings then pcall(m.RescanSettings) end
   end
@@ -636,6 +662,80 @@ local function LoadDB()
   -- migration has a version to hang off.
   if db.dbVersion < 12 then
     db.dbVersion = 12
+  end
+
+  -- v12 -> v13: the bold outlined cross family (plus / cross / broken) is the new
+  -- default look, matching the TOO CLOSE cross the user liked. Users still on the
+  -- OLD *default* trio (crosshair / x / rings) are moved onto the matching bold
+  -- marks; anyone who deliberately picked a different style keeps it.
+  if db.dbVersion < 13 then
+    if db.range then
+      if db.range.markOK   == "crosshair" then db.range.markOK   = "plus"   end
+      if db.range.markDead == "x"         then db.range.markDead = "cross" end
+      if db.range.markFar  == "rings"     then db.range.markFar  = "broken" end
+    end
+    db.dbVersion = 13
+  end
+
+  -- v13 -> v14: "Force pet name plate" was removed (0.9.1) — on clients that
+  -- publish no pet plate even with every nameplate CVar on it could never work,
+  -- and it held the player's nameplate settings hostage. Leftover CVars an older
+  -- build changed are still restored by MendMark on load/logout. The OUT OF
+  -- RANGE default also moves from the broken-cross to the clearer ban sign.
+  if db.dbVersion < 14 then
+    if db.range and db.range.markFar == "broken" then db.range.markFar = "ban" end
+    if db.mend then db.mend.forcePlate = nil end
+    db.dbVersion = 14
+  end
+
+  -- v14 -> v15: the feed button's default moved from right-of-happiness to
+  -- centred under the pet avatar (the old spot could sit off-screen and read as
+  -- detached). Anyone who never dragged it gets the new spot; dragged/pinned
+  -- positions are untouched.
+  if db.dbVersion < 15 then
+    db.dbVersion = 15
+  end
+
+  -- v15 -> v16: the 0.9.2 feed-button experiment (under-avatar default + "follow
+  -- pet name") was meant for the MEND marker, not the feed button. Restore the
+  -- old feed defaults (right of the happiness icon) for anyone who never dragged
+  -- it, and drop the short-lived followName key.
+  if db.dbVersion < 16 then
+    if db.feed then
+      db.feed.followName = nil
+      if not db.feed.moved then
+        db.feed.offsetX = 12
+        db.feed.offsetY = 0
+      end
+    end
+    db.dbVersion = 16
+  end
+
+  -- v16 -> v17: the ammo warning section and the mend "only below threshold"
+  -- option were added; MergeDefaults fills the new keys with their defaults.
+  if db.dbVersion < 17 then
+    db.dbVersion = 17
+  end
+
+  if db.dbVersion < 20 then
+    -- 0.9.16: warn-frequency multiplier + feed spell-icon option.
+    if db.ammo and db.ammo.frequency == nil then db.ammo.frequency = 1 end
+    if db.feed and db.feed.useSpellIcon == nil then db.feed.useSpellIcon = false end
+    db.dbVersion = 20
+  end
+
+  if db.dbVersion < 19 then
+    -- 0.9.15: voice warnings are opt-in now; force the new default once so
+    -- it reaches existing profiles too (the checkbox re-enables it).
+    if db.ammo then db.ammo.sound = false end
+    db.dbVersion = 19
+  end
+
+  if db.dbVersion < 18 then
+    -- 0.9.8: ammo warning default raised 100 -> 200. Only move the value if it
+    -- is still the OLD default -- a user-chosen threshold is never rewritten.
+    if db.ammo and db.ammo.threshold == 100 then db.ammo.threshold = 200 end
+    db.dbVersion = 18
   end
 
   db.dbVersion = HK.defaults.dbVersion

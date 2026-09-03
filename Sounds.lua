@@ -12,8 +12,10 @@
  muzzle flash by the projectile travel time — that is why the pew used to lag
  the gun fire by up to ~1s. UNIT_SPELLCAST_SUCCEEDED for Auto Shot fires at the
  moment the missile leaves the weapon, keeping the pew locked to the shot.
- Only Auto Shot (75) is used, so Multi-Shot / Arcane Shot keep their own audible
- spell sounds and are never overridden by the pew.
+ Auto Shot (75) always pews. The ammo-spending special shots -- Arcane Shot,
+ Multi-Shot, Aimed Shot -- pew too when `db.sound.specials` is on (default,
+ toggle in Options > Gun Sound). Volley is channeled (no SUCCEEDED event) and
+ stays with its own sound.
 ==============================================================================]]
 local _, HK = ...
 
@@ -30,6 +32,25 @@ local castsSeen, pewsPlayed = 0, 0   -- spell-cast diagnostics
 local OnSpellCastSucceeded, NextVariant
 
 local AUTO_SHOT = 75                  -- spellID for Auto Shot (launch moment)
+
+-- Ammo-spending special shots, every rank the client knows. IDs are the
+-- fast path; the localized-name fallback below covers any rank missing here
+-- (a miss only means "no pew", never a wrong pew -- unknown IDs are ignored).
+local SPECIAL_IDS = {
+  -- Arcane Shot (ranks 1-9)
+  [3044] = true, [14281] = true, [14282] = true, [14283] = true,
+  [14284] = true, [14285] = true, [14286] = true, [14287] = true, [27019] = true,
+  -- Multi-Shot (ranks 1-8)
+  [2643] = true, [14288] = true, [14289] = true, [14290] = true,
+  [14323] = true, [14324] = true, [14325] = true, [25294] = true,
+  -- Aimed Shot (ranks 1-7)
+  [19434] = true, [20900] = true, [20901] = true, [20902] = true,
+  [20903] = true, [20904] = true, [27068] = true,
+}
+-- English name fallback (event carries spellName on this client).
+local SPECIAL_NAMES = {
+  ["arcane shot"] = true, ["multi-shot"] = true, ["aimed shot"] = true,
+}
 
 -- ---------------------------------------------------------------------------
 -- Init + events
@@ -79,10 +100,24 @@ end
 -- the Auto Shot (spellID 75) — the gun-shot launch moment. Multi-Shot, Arcane
 -- Shot, Aimed Shot etc. use different spellIDs, so they pass through untouched
 -- and keep their own audible spell sounds (we never override them).
-OnSpellCastSucceeded = function(unit, castGUID, spellID)
+OnSpellCastSucceeded = function(unit, castGUID, spellID, ...)
   if not HK.db.enabled or not db.enabled then return end      -- master + feature off
   if unit ~= "player" then return end                         -- only our own shots
-  if spellID ~= AUTO_SHOT then return end                     -- 75 = Auto Shot launch
+  if spellID ~= AUTO_SHOT then
+    -- Special shots (Arcane Shot / Multi-Shot / Aimed Shot): optional pew.
+    if not db.specials then return end
+    local hit = SPECIAL_IDS[spellID] == true
+    if not hit then
+      -- Name fallback: event args after the GUID include spellName on this
+      -- client. Only strings that exactly match a known shot can hit, so a
+      -- unit name or rank string passing through here is harmless.
+      for i = 1, select("#", ...) do
+        local a = select(i, ...)
+        if type(a) == "string" and SPECIAL_NAMES[a:lower()] then hit = true break end
+      end
+    end
+    if not hit then return end
+  end
   castsSeen = castsSeen + 1
 
   local wt = RangedWeaponInfo()

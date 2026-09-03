@@ -3,6 +3,640 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.24] - 2026-09-03
+
+### Added
+- **Special shots pew too**: Arcane Shot, Multi-Shot and Aimed Shot now play
+  the pew on release, exactly like the auto shot -- every rank, matched by
+  spellID with a spell-name fallback so a rank missing from the table still
+  pews. New checkbox **Options > Gun Sound > "Pew on special shots"**
+  (default ON) turns them back to their stock sounds while keeping the pew
+  on the auto shot. Volley stays out (channeled -- no release event) and so
+  do non-ammo spells like Serpent Sting. The same guns-only filter and the
+  0.15 s spam guard apply, so an Arcane+Multi macro pews once, not twice.
+
+### Tests
+- 119 + 55 + 99 + 43 = **316 green** (new section 12: auto shot, all three
+  specials, foreign spells, pet casts, option off, name fallback, spam
+  guard).
+
+---
+
+## [0.9.23] - 2026-09-03
+
+### Fixed
+- **False "NO AMMO" warning on load with a full quiver** (the actual reported
+  bug -- 0.9.22 had it backwards): right after login/reload the client hasn't
+  synced inventory yet, so `GetInventoryItemID` AND `GetInventorySlotLink`
+  both transiently return nil. The code read that as "nothing equipped" and
+  fired the tier-4 NO AMMO warning and voice despite plenty of ammo. A nil
+  slot read now means **"unknown", never zero**, until the inventory has
+  provably synced (a real item read, `UNIT_INVENTORY_UPDATE`, or
+  `BAG_UPDATE_DELAYED`). Safety net: if no sync proof ever arrives, the empty
+  read is believed after ~10 ticks, so a genuinely empty slot still warns
+  within ~10 s of login. `AmmoWarn.Rearm` (zone/login) re-arms the gate.
+
+### Tests
+- 119 + 55 + 88 + 43 = **305 green** (cold login + cold reload stay silent,
+  synced stocked stays quiet, truly-empty still fires, never-synced fallback).
+
+---
+
+## [0.9.22] - 2026-09-03
+
+### Fixed
+- **No ammo warning on first load** (the reported bug): `lastWarn`/`lastVoice`
+  started at 0 while `GetTime()` counts from client start -- on a fresh login
+  `now >= 0 + period` stays false, so a player who logged in already low saw
+  no icon and heard no voice for up to 90 s. Both now start (and reset on
+  `PLAYER_ENTERING_WORLD`, via the new `AmmoWarn.Rearm`) deeply negative:
+  the first warning fires on the very first tick.
+- **Cold item cache no longer poisons the session**: at login
+  `GetItemInfo(id)` can return nil ("lacking info"); the memo kept that miss
+  forever, pinning arrows to the generic icon and the wrong voice variant.
+  Unresolved lookups are now retried next tick instead of cached.
+
+### Performance (audited + measured in the harness, µs/call)
+- **Range stopped redrawing 10x per second**: `Update()` (10 Hz) re-ran the
+  full primitive redraw -- twice under brightness overdrive -- even when
+  state/style/size/brightness were unchanged. A change signature now skips
+  no-op redraws; the signature resets whenever the mark hides.
+- Audit of every recurring path: AmmoWarn tick (1 Hz) 0.4 µs, MendMark
+  Update (10 Hz) 0.8 µs, Range Update (10 Hz, no target) 0.2 µs, FeedPet
+  per-event refresh 9.4 µs (full bag rescan only on real bag/pet/login/
+  options changes since 0.9.16). OnUpdate scripts (ammo pulse, mend anchor,
+  passive pulse) run only while their frame is shown. No leaks found: all
+  frames are created once at Init; no per-tick table churn in hot paths.
+
+### Tests
+- 119 + 55 + 82 + 43 = **299 green** (fresh-load warn + voice, cold-cache
+  recovery).
+
+---
+
+## [0.9.21] - 2026-09-03
+
+### Changed
+- **Feed button dim/bright inverted to the requested logic**: the icon is
+  **bright** (full colour, no desaturation, coloured border) when the pet is
+  below happy AND out of combat, and **dim** (greyscale 0.6, no border) when
+  the pet is happy or you are in combat -- the button recedes exactly when
+  there is nothing to do.
+- **Art is 4x smaller: 7.08 MB -> 1.77 MB.** All 18 mark/crosshair textures
+  converted from uncompressed 32-bit TGA to BLP1/DXT5 -- the container and
+  compression Blizzard's own client art uses (TGA-RLE, the lossless option,
+  is known broken on this client; palette BLP was impossible: the marks have
+  369-1577 unique colours, palette caps at 256). Measured with a
+  decode-and-compare pass (`tools/tga_to_blp.py`, new): the three crosshairs
+  are mathematically lossless (max error 0); the marks measure 33.9-41.0 dB
+  PSNR, and through the ADD blend the marks actually ship with, the median
+  on-screen error is 1-2 out of 255 (p90 2.6-8.8) -- the same class of
+  compression every Blizzard UI texture you already look at uses.
+  `tools/build_mark_art.py` still produces the TGAs; run `tga_to_blp.py`
+  after it to re-ship.
+
+### Tests
+- 119 + 55 + 79 + 43 = **296 green** (dim/bright assertions inverted with
+  the logic).
+
+---
+
+## [0.9.20] - 2026-09-03
+
+### Changed
+- **Feed button highlight now dims every icon identically.** The highlight
+  logic was always the same for the food icon and the default Feed Pet icon
+  (one texture, one tint) -- but a vertex tint MULTIPLIES the artwork, so
+  bright food icons barely changed while the dark spell icon visibly darkened
+  ("food icon doesn't darken, spell icon does"). The hungry dim is now
+  desaturate-then-darken (0.75x happiness colour on greyscale art), which
+  reads the same on any icon; the coloured border is unchanged. Rule
+  unchanged: only when the pet is below happy AND out of combat.
+
+### Tests
+- 119 + 55 + 79 + 43 = **296 green** (dim/restore assertions now cover the
+  desaturation flag).
+
+---
+
+## [0.9.19] - 2026-09-03
+
+### Fixed
+- **"Use default Feed Pet icon" showed a semi-transparent blank with only
+  the count**: the hardcoded path `Interface\Icons\Ability_Hunter_FeedPet`
+  does not exist -- Feed Pet's actual icon file is
+  `ability_hunter_beasttraining`. A nonexistent path renders nothing, so all
+  that was left was the button's translucent background plate. The icon is
+  now resolved through the spell API (`C_Spell.GetSpellTexture` /
+  `GetSpellTexture` on spell 6991, memoised), with the correct file as the
+  last-resort constant -- it can no longer depend on a guessed name.
+
+### Tests
+- 119 + 55 + 79 + 43 = **296 green** (spell-icon check now asserts the
+  API-resolved texture).
+
+---
+
+## [0.9.18] - 2026-09-03
+
+### Changed
+- **Voice floor raised to 45 s** (user: the icon may repeat often, the voice
+  must not spam): empty-tier voice cooldown 30 -> 45 s; low tiers stay at
+  60 s. The icon's own warn periods are untouched.
+- **First warning of an episode fires the moment the threshold is reached**:
+  crossing back above the threshold now also clears the warn timer, so the
+  next drop below warns (and speaks) on that very tick instead of waiting
+  out a period left over from the previous episode -- important at the
+  rarer frequency settings.
+- **The low/no ammo warning icon now pulses** (~1 Hz scale breathing) while
+  shown; the OnUpdate only runs while the frame is visible.
+- Feed option renamed for findability: "Feed Pet spell icon" ->
+  **"Use default Feed Pet icon"** (it swaps the food icon for the Feed Pet
+  spell icon; the food count stays on the button). A test now asserts the
+  option is physically present in the built options window.
+
+### Tests
+- 119 + 55 + 79 + 43 = **296 green**.
+
+---
+
+## [0.9.17] - 2026-09-03
+
+### Added
+- **Ammo id fallback via the inventory slot link**: if
+  `GetInventoryItemID` comes back empty on a client, the item id is parsed
+  from `GetInventorySlotLink` instead. Without it, such a client reads as
+  "nothing equipped" (tier 4) and the warning shouts "No ammo!" while the
+  quiver is still half full.
+
+### Changed
+- Options section renamed: **"Passive Alert" -> "Passive pet alert"**.
+
+---
+
+## [0.9.16] - 2026-09-03
+
+### Added
+- **Warn frequency option** (Ammo section, 1×–4× compact slider): divides the
+  warn periods (low 90/45/15 s, empty 10 s) and the voice cooldowns. Default
+  1× keeps the old rhythm.
+- **Feed Pet spell icon option** (Feed section): the button shows the Feed
+  Pet spell icon instead of the chosen food's own icon. The food count stays
+  on the button either way.
+
+### Fixed
+- **The low-ammo voice is now guaranteed**: it no longer depends on catching
+  the exact tick the tier worsens (that edge was swallowed live by
+  bag-update-driven re-warns) -- the low clips speak on a 60 s cooldown
+  (empty: 30 s) for as long as the situation lasts, scaled by the frequency
+  option.
+
+### Changed (CPU)
+- **Feed button no longer rescans all bags on every pet health tick.** The
+  full `PickFood` scan (5 bags x every slot x item-info/tooltip lookups) used
+  to run on every `UNIT_HEALTH`/`UNIT_HAPPINESS` event -- i.e. per damage
+  event in combat. It now runs only on real changes (bag update, pet change,
+  login, combat end, options); the per-event path is just visibility +
+  highlight math.
+- **Ammo tick is allocation-free**: `GetItemInfo` (the only non-trivial call)
+  is memoised per equipped item id; the 1 s tick otherwise touches three
+  cheap inventory APIs.
+
+### Tests
+- dbVersion 20. 119 + 54 + 75 + 43 = **291 green** (voice-cooldown repeats,
+  frequency x4 periods, spell-icon option, count persistence).
+
+---
+
+## [0.9.15] - 2026-09-03
+
+### Changed
+- **Voice warnings are opt-in: OFF by default** (dbVersion 19 forces the new
+  default once for existing profiles; the checkbox re-enables).
+- **Voice only — no game sounds at all.** The quest-failed sting fallback is
+  gone; if a clip is missing, the warning is simply silent.
+- **Clips shortened to the first sentence** ("No ammo, lad!" — the second
+  sentence was still getting cut in game): 1.7–1.9 s, four clips matching the
+  situation AND the projectile: `voice_lowarrows.ogg`, `voice_lowammo.ogg`,
+  `voice_noarrows.ogg`, `voice_noammo.ogg`.
+
+### Fixed
+- **"Low ammo" was never heard**: `lastTier` was updated on EVERY tick, so by
+  the time the warn period elapsed the tier had already "caught up" and the
+  escalation voice was skipped. It now updates only when a warn actually
+  fires, so the first warning and every escalation speaks.
+
+### Tests
+- 119 + 54 + 68 + 43 = **284 green** (voice-only assertion: no sound outside
+  the addon's Media folder is ever played; default-off default; low-arrows
+  clip path).
+
+---
+
+## [0.9.14] - 2026-09-03
+
+### Changed
+- **Voice clips ship as .ogg, and speak the situation.** Every mp3 take --
+  including untouched generator output -- stopped mid-word on the live
+  client; the classic-era engine's mp3 decoder is the flaky part, so all
+  three clips are re-encoded to ogg vorbis (44.1 kHz mono, the format addon
+  sounds universally ship as). New clip set (long-form render, trimmed at
+  the detected silence gaps with 0.3 s tails):
+  - `voice_lowammo.ogg` — "Low ammo, lad! The quiver's running light!"
+    (3.5 s) — plays when the count gets WORSE (first entry / escalation)
+  - `voice_noarrows.ogg` — "No arrows, lad! The quiver's empty!" (3.2 s)
+  - `voice_noammo.ogg` — "No ammo, lad! We're out of ammo!" (2.8 s),
+    at most once every 30 s
+  The quest-failed sting is now only the fallback for a missing clip.
+
+### Tests
+- 119 + 54 + 66 + 43 = **282 green** (low-tier voice path asserted).
+
+---
+
+## [0.9.13] - 2026-09-03
+
+### Fixed
+- **Feed button food count showed 1 instead of the real stack size** on live
+  clients: `HK.GetBagItemCount` read `info.itemCount` from
+  `C_Container.GetContainerItemInfo`, but the live struct field is
+  **`stackCount`** — the count was always nil, and every stack fell back to
+  "1". Now reads `stackCount` (with `itemCount` as fallback), and the test
+  stub gained a live-shaped `C_Container` (stackCount/itemID/hyperlink) so
+  the suite runs the SAME code path as 1.15.x — reintroducing the bug now
+  fails the suite (verified: it reports the stacks-of-1 total).
+- **Feed button highlight made unmistakable**: the food icon itself now tints
+  happiness-orange/red alongside the border (thickened 1px -> 2px), and the
+  border is created BEFORE the fontstring work in `BuildButton` so nothing
+  downstream can leave the button permanently dull. Rule unchanged: ON only
+  when the pet is below happy AND out of combat.
+- **"No ammo" voice no longer nags**: it speaks at most once every 30 s
+  (was: every 10 s warn). The visual re-warns keep their period.
+- **Clips no longer cut off the last word**: re-recorded and re-trimmed with
+  a 0.3 s tail of the detected silence gap after the final word (the old cut
+  started the fade AT the silence boundary, clipping the release), plus a
+  trimmed leading silence. 3.2 s / 3.0 s.
+
+### Tests
+- 119 + 54 + 66 + 43 = **282 green**.
+
+---
+
+## [0.9.12] - 2026-09-03
+
+### Changed
+- **Voice clips (fifth take) re-recorded with a British-accented voice**
+  (`en-GB` candidate pool instead of the generic `en` pool, whose takes kept
+  reading generic no matter the text). Same production as 0.9.11: long-form
+  dwarfy line rendered first, first two sentences cut at the silencedetect
+  boundaries with a fade. `voice_noarrows.mp3` 3.0 s, `voice_noammo.mp3`
+  3.0 s. A pitch-shifted (-3 semitones) variant can be produced on request.
+
+---
+
+## [0.9.11] - 2026-09-03
+
+### Fixed
+- **Voice clips (fourth take) finally match the dwarfy audition.** The
+  generator only holds the voice's character in long-form text, so the clips
+  are now produced the same way the audition is: the picked voice reads the
+  full dwarfy line ("No arrows, lad! The quiver's empty! Back to the vendor
+  we go..."), and the first two sentences are cut out at the detected silence
+  boundaries (ffmpeg `silencedetect`) with a 50 ms fade. In game you hear
+  only the short warning — rendered in the long-form voice the user approved.
+  `voice_noarrows.mp3` 2.3 s, `voice_noammo.mp3` 2.5 s, 48 kbps mono.
+
+---
+
+## [0.9.10] - 2026-09-03
+
+### Fixed
+- **Voice clips re-recorded (third take) with the user-picked voice.** The
+  previous takes auditioned a long paragraph but generated three-word
+  exclamations, and the voice model drifts to a generic read on inputs that
+  short. The clips now say exactly the auditioned phrases, lengthened to two
+  short sentences so the voice stays in character:
+  `voice_noarrows.mp3` — "No arrows, lad! The quiver's empty!",
+  `voice_noammo.mp3` — "No ammo, lad! We're out of ammo!"
+
+---
+
+## [0.9.9] - 2026-09-03
+
+### Fixed
+- **Feed button was stuck on the "?" icon with no count** (regression from
+  0.9.8): `countText:SetFontObject(NumberFontNormalSmallOutline)` referenced a
+  font object that does not exist on all classic builds — the nil global broke
+  the rest of `BuildButton` (border, tooltip, drag), and `UpdateState` then
+  died on the nil border before `RefreshMacro` ever ran. The count font is now
+  set with `SetFont("Fonts\ARIALN.TTF", 11, "OUTLINE")` + a `GameFontHighlightSmall`
+  fallback, the icon/count refresh runs **before** the highlight, and the
+  border write is nil-guarded.
+- **Feed button count now counts the PICKED food** (all of its stacks), not
+  every edible food in the bags — the icon shows the food that will be fed,
+  the number shows how much of it you have.
+- **Voice clips re-recorded** with the voice the user picked (the first batch
+  did not match the audition) and re-phrased to full sentences ("No arrows,
+  lad!" / "No ammo, lad!") so the playback no longer cuts off mid-word.
+
+### Tests
+- 119 + 54 + 62 + 43 = **278 green** (new: picked-food icon texture, count =
+  picked food's total across stacks, count font set via SetFont+OUTLINE).
+
+---
+
+## [0.9.8] - 2026-09-03
+
+### Added
+- **Ammo warning icon**: the warning now shows the *equipped projectile's own
+  icon* (arrows or bullets, resolved via `GetItemInfo`) under a big **red X**
+  — "no arrows"/"no ammo" readable at a glance. The empty-tier label matches
+  (`NO ARROWS!` vs `NO AMMO!`).
+- **Bundled dwarf-style voice clips** (`Media/voice_noarrows.mp3`,
+  `Media/voice_noammo.mp3`): the empty tier *speaks* on every warn. The client
+  has no TTS API, so the clips ship with the addon; the sting is the fallback
+  if a clip is ever missing.
+- **Feed button food count**: the icon now carries the **total edible food**
+  in your bags (all stacks, not just the one the click will feed), gold like
+  an action-button count, red `0` when the bags hold nothing edible.
+
+### Changed
+- **Ammo sound policy is distinct AND rare**: the sting (now
+  `igQuestFailed.ogg`, deliberately not the common RaidWarning) fires only
+  when the situation gets **worse** — first entry into warning or a tier
+  escalation. Periodic re-warns are visual-only; the empty tier speaks.
+- **Ammo threshold default raised 100 → 200** (migration only moves values
+  still at the old default; user-chosen thresholds are never rewritten).
+
+### Fixed
+- **Feed button highlight is now consistent**: it glows only when the pet is
+  **below happy (content/unhappy) AND you are out of combat** — previously it
+  glowed green even for a happy pet. `PLAYER_REGEN_DISABLED` re-runs the
+  update so the glow dies the moment combat starts.
+- The ammo warning icon used to show a generic arrow whenever *anything* was
+  equipped (inverted condition); it now follows the real item.
+
+### Tests
+- `dbVersion` 18; stub bag/item-info/pet-happiness APIs made state-driven.
+- 119 + 54 + 60 + 43 = **276 green**.
+
+---
+
+## [0.9.7] - 2026-09-03
+
+### Added
+- **Low ammo warning** (`AmmoWarn.lua`, new): periodic on-screen alert +
+  raid-warning sound when the ammo on your ranged weapon runs low. The less
+  ammo, the smarter it gets: below threshold a brief nudge every 90 s, below
+  half that every 45 s, critical every 15 s with a 12 s display, `NO AMMO!`
+  every 10 s for 20 s. Re-arms on bag updates; sits **right of the passive
+  alert** when both are displayed. Options: threshold (10..500, default 100),
+  sound toggle. (No TTS API exists on this client — the raid-warning sound is
+  the audible channel.)
+
+### Changed
+- **Shorter, aligned brightness sliders**: the compact bars shrank 150→110 px,
+  all rows share one left edge, and each slider's value now reads on the bar's
+  own line instead of below it.
+- **Brightness is 0–200%** with 100% at the bar's **middle**: past 100% the
+  sniper mark draws a second additive pass (overdrive) — vertex colours clamp
+  at full, so overdrive is what actually gets brighter. Default 100.
+- **Mend Pet Marker** gained *Show only below threshold*: the marker only
+  appears at/below the "Urgent below % HP" line, instead of always showing.
+
+### Fixed
+- `dbVersion` 17 (ammo settings, mend `onlyBelow`; migration is a no-op).
+
+### Tests
+- 119 + 54 + 50 + 43 = **266 green**.
+
+---
+
+## [0.9.6] - 2026-09-03
+### Changed (Options — Sniper Mark reworked per sketch)
+- The Sniper Mark block is now the sketched grid: column headers **SHAPE** and
+  **BRIGHTNESS** on one level; one row per state with the shape cycle-button on
+  the left, the state name (**IN RANGE / TOO CLOSE / OUT OF RANGE**) beside it,
+  and that state's brightness slider on the right. The word "shape" is gone from
+  the row labels; the state texts stay.
+
+### Added (tests)
+- Existing options-window geometry tests cover the new grid (compact sliders,
+  labels, no clipping); suite still 117 + 54 + 40 + 40 = 251, all passing.
+
+## [0.9.5] - 2026-09-03
+### Fixed
+- **Ticking "Enable HunterKit" in combat threw `ADDON_ACTION_BLOCKED`** on
+  `HunterKitFeedButton:SetSize()`. The feed button is a secure action button, and
+  SetSize/SetPoint on it are protected actions in combat. Both now defer to
+  `PLAYER_REGEN_ENABLED`; regression-tested (no resize while in combat, applied on
+  regen).
+- **Mend fallback no longer overlaps the pet frame.** It now sits a clear 6px gap
+  below the frame bottom, centred on the avatar's vertical axis (the portrait
+  centre is measured out of combat; a stock-frame constant otherwise).
+
+### Changed
+- **Brightness sliders are compact** — small bars on the right of their label
+  instead of full-width rows, as requested.
+
+### Added (tests)
+- Combat-defer resize checks; options-window tests taught the compact slider
+  class; suite now 117 + 54 + 40 + 40 = 251, all passing.
+
+## [0.9.4] - 2026-09-03
+### Fixed / explained
+- **"Name anchoring doesn't work when nameplates are off but the name shows."**
+  That name is drawn by the *unit-name* setting (`UnitNameFriendlyPetName`), which
+  exposes **no frame and no screen position** — unlike a name-only *plate*, which
+  looks almost identical but is a real frame and therefore anchorable. `/htk mend`
+  now detects this exact case (unit-name CVar on, no pet plate) and says so,
+  pointing at the anchorable name-only plate combo
+  (`nameplateShowFriendlyPets` + `nameplateShowOnlyNames`) instead of silently
+  falling back. The CVar dump now lists `UnitNameFriendlyPetName` too.
+
+### Added (tests)
+- Report checks for the unit-name explanation; suite now 117 + 54 + 38 + 40 = 249,
+  all passing.
+
+## [0.9.3] - 2026-09-03
+### Changed (correction: last round's feed changes belonged to the mend marker)
+- **Feed button restored to its old settings.** The 0.9.2 under-avatar default and
+  "Follow pet name" option are gone; the button is back beside the happiness icon
+  and un-dragged installs migrate their offsets back (db v16).
+- **Mend marker fallback now sits under the pet avatar.** When no plate/screen
+  position exists (or a plate anchor fails), the marker centres just below the
+  portrait circle instead of hovering above the frame — attached to the pet,
+  never off-screen.
+- **Mend follows the pet name when it's displayed.** That was already true and is
+  now documented + relied upon: a shown name (full or name-only plate) means a
+  plate frame exists, and `auto` anchors over it; with nameplates fully off there
+  is no name object to attach to and the under-avatar fallback applies.
+- **IN RANGE brightness trimmed** (plus ×1.4, the rest ×1.2 at build time) after
+  0.9.2's boost read too hot.
+- **New: a brightness slider per mark state** (IN RANGE / TOO CLOSE / OUT OF
+  RANGE, 10–100%) in Options → Sniper Mark. With the ADD blend, scaling the
+  vertex colour scales the glow exactly; defaults 100%.
+
+### Added (tests)
+- Brightness slider checks (50% halves the drawn green channel, 100% restores);
+  feed-anchor checks removed with the reverted feature; suite now
+  115 + 54 + 38 + 40 = 247, all passing.
+
+## [0.9.2] - 2026-09-03
+### Changed
+- **Brighter IN RANGE marks.** The generated IN RANGE art read dim next to the
+  cross; the converter now applies a per-art intensity boost (plus ×1.6, the rest
+  of the IN RANGE set ×1.35) on top of the gamma curve, so the green state reads
+  as bold as the others.
+- **Feed button default moved under the pet avatar.** The old right-of-happiness
+  spot could sit off-screen and read as detached; the default (and Reset ALL) now
+  centre it just below the pet frame. Saved positions you dragged are untouched;
+  un-dragged installs migrate (db v15).
+- **New option: "Follow pet name when shown" (on by default).** When the client
+  publishes the pet's name — a full or name-only plate — the feed button hangs
+  just below it, re-anchoring on plate add/remove and after combat; with no plate
+  it falls back to under the avatar. So yes: the pet name is anchorable exactly
+  when it is displayed, because the name text is drawn by the plate frame; when
+  nothing is displayed there is no name object to attach to.
+
+### Added (tests)
+- Feed-anchor checks (plate shown → under the name; no plate → under the avatar);
+  suite now 115 + 54 + 38 + 40 = 247, all passing.
+
+## [0.9.1] - 2026-09-03
+### Changed (Sniper Mark)
+- **IN RANGE `plus` gained its circles** — redrawn as the bold plus with a centre
+  dot inside two concentric rings, same outlined style as the TOO CLOSE cross.
+- **OUT OF RANGE default is now `ban`** — a prohibition sign (circle + diagonal
+  bar) in the same family style, because the broken-cross read too much like its
+  siblings. Clearly distinct silhouette; `broken` retired (saved `broken` values
+  fall forward to `ban` via the v14 migration).
+
+### Fixed
+- **`/htk lock` / `/htk unlock` crashed with "Can't measure restricted regions".**
+  The geometry helper's fallback called `GetLeft()` unguarded, which hard-errors
+  for frames anchored into restricted regions (name plates). Every measurement in
+  `HK.AbsRect` is now pcall-guarded, so locking/unlocking can never blow up on a
+  restricted frame again.
+
+### Removed
+- **"Force pet name plate" is gone**, answering the open question with yes: the
+  self-disable diagnostic proved the client publishes no pet plate even with
+  every nameplate CVar on, so the option could never enable head anchoring and
+  only held the player's nameplate settings hostage. The checkbox, the CVar
+  ladder and the self-disable logic are removed (db v14). Any CVar an older build
+  changed is still restored on load/logout, and `/htk mend` keeps its honest
+  capability report pointing at the draggable fallback.
+
+### Added (tests)
+- Removal + leftover-restore checks (blocked SetCVar retry, restore-once path),
+  lock-safety expectations; suite now 115 + 54 + 36 + 40 = 245, all passing.
+
+## [0.9.0] - 2026-09-02
+### Changed (Sniper Mark — the bold cross family)
+- **The mark you liked is now the house style.** The thick outlined TOO CLOSE
+  `cross` gets two siblings generated against it so the line work matches:
+  `plus` (IN RANGE — bold crosshair with centre dot) and `broken` (OUT OF RANGE —
+  the same cross split open with an empty middle). The trio is the new default, so
+  all three states now read as one family.
+- The restored classics (`crosshair` / `x` / `rings`) and the sci-fi set remain as
+  options; `aperture` (IN RANGE) and `hollow` (OUT OF RANGE) retired to keep six
+  per state.
+- **Migration (db v13):** saved values still on the *old default* trio
+  (`crosshair` / `x` / `rings`) are moved to the matching bold marks; any style you
+  deliberately chose is untouched.
+
+### Added (tests)
+- Fallback/reset expectations updated to the new defaults; suite still
+  139 + 54 + 36 + 40 = 269, all passing.
+
+## [0.8.3] - 2026-09-02
+### Fixed
+- **The master "Enable HunterKit" switch only hid the mend marker.** Range, Feed
+  and PassivePulse checked only their own per-feature toggle, so unchecking the
+  master left the sniper mark, feed button and passive alert running. All three
+  now honour `HK.db.enabled` (hide + self-pause), matching MendMark and Sounds.
+  Covered by new regression checks (master off hides mark + feed button; master on
+  restores them).
+- **Generated marks were barely visible in-game.** Two causes, both fixed: the art
+  was drawn with `BLEND`, while the known-good classic marks use `ADD` — the mark
+  now renders with `ADD` exactly like the originals, so the black surround adds
+  nothing and the white art adds its tint at full strength; and the converter now
+  gamma-boosts the keyed alpha so strokes are solid instead of a faint wash. The
+  build preview now composites additively over grey, i.e. it predicts what the
+  client shows, and every mark reads bright and bold in it.
+
+### Added (tests)
+- Master-switch regression checks; suite now 139 + 54 + 36 + 40 = 269, all passing.
+
+## [0.8.2] - 2026-09-02
+### Fixed
+- **`reticle` was almost invisible.** Its generated strokes were hairline-thin; it
+  has been redrawn with heavy, chunky strokes and re-keyed, and now reads clearly
+  at in-game size.
+- **A one-tick OUT OF RANGE flash when crossing from TOO CLOSE into IN RANGE.**
+  The range probes can lag the server's position for a single tick while you move,
+  and the most visible false reading was a momentary OUT OF RANGE. Entering FAR now
+  requires two consecutive agreeing ticks (0.2 s); every other state change still
+  applies instantly so the mark never feels laggy. Covered by a new regression test
+  (a lone FAR tick must not change what is on screen).
+
+### Changed (Sniper Mark — complete art set)
+- The last procedural styles are gone: TOO CLOSE `burst` and the whole OUT OF RANGE
+  set (`dashed`, `halo`, `sides`, `slashes`, `hollow`) are now bundled bold art, so
+  **every** style in **every** state is a detailed graphic mark. The old
+  `weakcross` procedural is retired and renamed `hollow` (its art); unknown saved
+  values still fall back to the state default.
+- Art regenerated bolder across the board and shipped uncompressed (type-2) 256px.
+
+### Added (tests)
+- Three new checks for the FAR debounce plus a confirming-tick update; suite now
+  139 + 54 + 31 + 40 = 264, all passing.
+
+## [0.8.1] - 2026-09-02
+### Changed (Sniper Mark — graphic styles, classic marks restored)
+- **The classic marks are back as the defaults.** `Media/crosshair.tga` (IN RANGE),
+  `crosshair-x.tga` (TOO CLOSE) and `crosshair-outline.tga` (OUT OF RANGE) — the art
+  removed in 0.8.0 — are restored and set as each state's first/default style.
+  They were dropped because 0.8.0's procedural engine replaced them, which traded
+  "always works" for "looks simple"; the user asked for graphic styles, so the
+  answer is real art, not fewer primitives.
+- **A new modern sci-fi art set.** Nine `.tga` marks were generated (glowing white
+  on black), luminance-keyed to alpha by `tools/build_mark_art.py` (black →
+  transparent, mark → white so the state colour tints them), cropped, squared and
+  resized to 256 px: `reticle`, `aperture`, `chevrons`, `diamond`, `ticks` (IN
+  RANGE) and `hexx`, `cross`, `block`, `bars` (TOO CLOSE). Each state now has six
+  art-or-vector styles; the new ones total ~0.5 MB versus the old 3 × 1 MB.
+- **New renderer primitive** `{"art", path}` draws a full-frame tinted texture;
+  procedural `seg`/`ring`/`dot` primitives are kept for the crisp fallbacks
+  (`burst`, and the OUT OF RANGE set whose art is still being generated) and set
+  their blend mode explicitly so a pooled texture reused after an art draw stays
+  correct.
+- The shape dropdowns list the new names, and unknown saved values still fall back
+  to the state's default (the classic mark), so old configurations stay valid.
+
+### Fixed
+- **The new marks rendered as a broken mosaic / were barely visible in-client.**
+  The first build wrote them as RLE-compressed TGA (type 10), but Classic Era's
+  loader only reads UNCOMPRESSED 32-bit RGBA TGA (type 2) -- exactly what the
+  known-good originals are. The converter now writes type 2 at 256 px, matching the
+  originals' format byte-for-byte (verified by header inspection).
+
+### Tooling
+- `tools/build_mark_art.py` converts `art/*.png` into `Media/*.tga` and writes a
+  human-viewable `art/preview.png`. Source PNGs are ignored via a new `.gitignore`
+  so only the `.tga` ship.
+
+### Known follow-up
+- A few *OUT OF RANGE* styles (`dashed`, `halo`, `sides`, `slashes`, `weakcross`)
+  and TOO CLOSE `burst` remain procedural until the image-generation allowance
+  resets; they will be swapped for matching art. Everything else is already art.
+
+### Added (tests)
+- The existing shape tests now run against art-backed styles: six distinct
+  silhouettes per state, defaults equal the classic marks, and the on-screen style
+  follows the dropdown. 139 + 54 + 28 + 40 = 261 checks.
+
 ## [0.8.0] - 2026-09-02
 ### Fixed
 - **The sniper-mark shape options did nothing.** `Range.lua` built its shape table
