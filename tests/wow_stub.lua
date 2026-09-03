@@ -275,7 +275,16 @@ function UnitCanAttack(a, b)
   if b == "target" then return HKTest.state.targetAttackable ~= false end
   return false
 end
-function GetInventoryItemID() return nil end
+function GetInventorySlotInfo(n) return n == "AmmoSlot" and 100 or nil end
+function GetInventoryItemID(unit, slot)
+  if slot == 100 then return HKTest.state.ammoID or nil end
+  return nil
+end
+function GetInventoryItemCount(unit, slot)
+  if slot == 100 then return HKTest.state.ammoEquipped or 0 end
+  return 0
+end
+function GetItemCount(id) return (HKTest.state.items or {})[id] or 0 end
 function GetItemInfo() return nil end
 function GetContainerNumSlots() return 0 end
 function GetContainerItemLink() return nil end

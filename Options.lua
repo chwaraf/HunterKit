@@ -354,7 +354,8 @@ local function MakeSlider(parent, y, labelText, min, max, step, get, set, toolti
   -- empty until you drag, and a right-aligned column collided with long labels.
   local val = parent:CreateFontString(nil, "OVERLAY")
   if compact then
-    val:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -2, y - 2)
+    -- re-anchored next to the bar once the bar exists (below); kept on the same
+    -- horizontal line as the bar, right of it, for every row.
     val:SetWidth(30)
   else
     val:SetPoint("TOP", parent, "TOP", 0, y)
@@ -368,9 +369,9 @@ local function MakeSlider(parent, y, labelText, min, max, step, get, set, toolti
 
   local sl = CreateFrame("Slider", name, parent, "OptionsSliderTemplate")
   if compact then
-    sl:SetWidth(150)
+    sl:SetWidth(110)
     sl:SetHeight(SLIDER_BAR_H)
-    sl:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -36, y - 2)
+    sl:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -34, y - 2)
   else
     sl:SetWidth(math.max(120, w - 16))
     sl:SetHeight(SLIDER_BAR_H)
@@ -396,6 +397,10 @@ local function MakeSlider(parent, y, labelText, min, max, step, get, set, toolti
     if syncing then return end
     set(self:GetValue())
   end)
+  if compact then
+    val:ClearAllPoints()
+    val:SetPoint("LEFT", sl, "RIGHT", 4, 0)   -- number on the bar's line
+  end
   val:SetText(string.format("%d", sl:GetValue()))   -- shown from the first frame
   AttachTooltip(sl, labelText, tooltip)
   controlRefresh[#controlRefresh + 1] = function()
@@ -510,7 +515,7 @@ function BuildWindow()
     st:SetWordWrap(false)
     st:SetText(labelText)
     st:SetTextColor(0.9, 0.9, 0.9)
-    MakeSlider(content, y, "", 10, 100, 5, bGet, bSet,
+    MakeSlider(content, y, "", 0, 200, 5, bGet, bSet,
       "Glow intensity of the " .. labelText .. " mark.", true)
     y = y - CHK
   end
@@ -520,7 +525,7 @@ function BuildWindow()
   hShape:SetJustifyH("LEFT")
   hShape:SetText("SHAPE")
   local hBright = content:CreateFontString(nil, "OVERLAY")
-  hBright:SetPoint("TOPRIGHT", content, "TOPRIGHT", -36, y)
+  hBright:SetPoint("TOPRIGHT", content, "TOPRIGHT", -34, y)
   hBright:SetFontObject(GameFontNormal)
   hBright:SetJustifyH("LEFT")
   hBright:SetText("BRIGHTNESS")
@@ -570,6 +575,10 @@ function BuildWindow()
     function(v) db.mend.hpThreshold = v; RefreshMend() end,
     "At or below this HP the marker grows, pulses and shows a red ring.")
   y = y - ROW
+  MakeCheckbox(content, y, "Show only below threshold", function() return db.mend.onlyBelow end,
+    function(v) db.mend.onlyBelow = v; RefreshMend() end,
+    "Hide the marker entirely while the pet is above the HP threshold, instead of showing it calm.")
+  y = y - CHK
   MakeCheckbox(content, y, "Urgent pulse", function() return db.mend.urgentPulse end,
     function(v) db.mend.urgentPulse = v; RefreshMend() end,
     "Grow, pulse and red ring while the pet is low.")
@@ -594,6 +603,22 @@ function BuildWindow()
   MakeCheckbox(content, y, "Nameplate style bar", function() return db.mend.plateStyle end,
     function(v) db.mend.plateStyle = v; RefreshMend() end,
     "Pet name + HP bar under the icon, only when no real plate is there.")
+  y = y - CHK
+
+  -- Ammo
+  AddSection(content, y, "Ammo")
+  y = y - HDR
+  MakeCheckbox(content, y, "Enable low ammo warning", function() return db.ammo.enabled end,
+    function(v) db.ammo.enabled = v; RefreshAmmo() end,
+    "Periodic on-screen warning (right of the passive alert) plus sound when your equipped ammo runs low. The less ammo, the more often and the longer it shows.")
+  y = y - CHK
+  MakeSlider(content, y, "Warn below", 10, 500, 10, function() return db.ammo.threshold or 100 end,
+    function(v) db.ammo.threshold = v; RefreshAmmo() end,
+    "Warn when the equipped ammo count drops to this or lower.", true)
+  y = y - CHK
+  MakeCheckbox(content, y, "Warning sound", function() return db.ammo.sound end,
+    function(v) db.ammo.sound = v end,
+    "Play the raid-warning sound with each warning. This client has no TTS API, so sound is the audible half.")
   y = y - CHK
 
   -- Sound
@@ -715,7 +740,7 @@ function RefreshModules()
     if HK.PassivePulse and HK.PassivePulse.Refresh then HK.PassivePulse.Refresh() end
     if HK.MendMark and HK.MendMark.Update then HK.MendMark.Update() end
   else
-    RefreshFeed(); RefreshRange(); RefreshSound(); RefreshPulse(); RefreshMend()
+    RefreshFeed(); RefreshRange(); RefreshSound(); RefreshPulse(); RefreshAmmo(); RefreshMend()
   end
 end
 function RefreshFeed() if HK.FeedPet and HK.FeedPet.RescanSettings then HK.FeedPet.RescanSettings() end end
@@ -723,6 +748,7 @@ function RefreshRange() if HK.Range and HK.Range.RescanSettings then HK.Range.Re
 function RefreshPulse() if HK.PassivePulse and HK.PassivePulse.RescanSettings then HK.PassivePulse.RescanSettings() end end
 function RefreshMend() if HK.MendMark and HK.MendMark.RescanSettings then HK.MendMark.RescanSettings() end end
 function RefreshSound() if HK.Sounds and HK.Sounds.RescanSettings then HK.Sounds.RescanSettings() end end
+function RefreshAmmo() if HK.AmmoWarn and HK.AmmoWarn.RescanSettings then HK.AmmoWarn.RescanSettings() end end
 
 -- ---------------------------------------------------------------------------
 -- Minimap button

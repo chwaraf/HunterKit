@@ -6,7 +6,7 @@
 
 local ADDON_NAME, HK = ...
 
-HK.version = "0.9.6"
+HK.version = "0.9.7"
 
 -- ---------------------------------------------------------------------------
 -- Defaults (schema). This is the source of truth for the options window and
@@ -14,7 +14,7 @@ HK.version = "0.9.6"
 -- ---------------------------------------------------------------------------
 HK.defaults = {
   enabled   = true,
-  dbVersion = 16,
+  dbVersion = 17,
   firstRun  = true,
 
   ui = {
@@ -33,6 +33,12 @@ HK.defaults = {
     exclude        = {},
     rule           = "best",
     hungryOnly     = false,        -- show the button only when the pet is hungry (<3)
+  },
+
+  ammo = {
+    enabled   = true,
+    threshold = 100,   -- warn at or below this many arrows/bullets left
+    sound     = true,  -- raid-warning sound with each warning
   },
 
   range = {
@@ -95,6 +101,7 @@ HK.defaults = {
     pinY        = 0,
     moved       = false,   -- true once dragged; then the UI fallback is pinned
     hpThreshold = 30,      -- % of max HP at or below which the marker goes urgent
+    onlyBelow   = false,   -- show the marker ONLY at/below the threshold
     urgentPulse = true,    -- grow + pulse + expanding ring while urgent
     urgentCycle = 0.55,    -- seconds per urgent pulse
     combatOnly  = true,    -- hide out of combat (a pet below the threshold still shows)
@@ -390,7 +397,7 @@ function HK.ResetAll()
   -- Re-apply everywhere. RescanSettings re-reads the db slice and rebuilds what
   -- the setting controls; the mend marker also puts any leftover forced
   -- nameplate CVar back.
-  for _, name in ipairs({ "FeedPet", "Range", "Sounds", "PassivePulse", "MendMark" }) do
+  for _, name in ipairs({ "FeedPet", "Range", "Sounds", "PassivePulse", "AmmoWarn", "MendMark" }) do
     local m = HK[name]
     if m and m.RescanSettings then pcall(m.RescanSettings) end
   end
@@ -693,6 +700,12 @@ local function LoadDB()
       end
     end
     db.dbVersion = 16
+  end
+
+  -- v16 -> v17: the ammo warning section and the mend "only below threshold"
+  -- option were added; MergeDefaults fills the new keys with their defaults.
+  if db.dbVersion < 17 then
+    db.dbVersion = 17
   end
 
   db.dbVersion = HK.defaults.dbVersion

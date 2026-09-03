@@ -7,7 +7,7 @@ For **WoW Classic Era & Hardcore** (patch 1.15.x).
 A self-contained, dependency-free (no Ace3/LibDBIcon) addon built for the
 hardcore-first hunter. Every action is a deliberate click; nothing is automated.
 
-Current version: **0.9.6** — see [`CHANGELOG.md`](CHANGELOG.md).
+Current version: **0.9.7** — see [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Features
 
@@ -18,7 +18,8 @@ Current version: **0.9.6** — see [`CHANGELOG.md`](CHANGELOG.md).
 | **Pet Mend Marker** | A **Mend Pet icon floating above your pet's head, nameplate style**. Green + solid when the pet is inside Mend Pet range, faded and greyed when it isn't — so you know at a glance, without reading a bar. Goes **bigger and pulsing with an expanding red ring** at or below **30% pet HP**. **On by default**, and it works with nameplates turned off. |
 | **Gun sound** | Replaces the stock gunshot with a Star-Wars-style blaster pew. Respects guns-only, no-repeat, and mutes the stock sound. |
 | **Passive alert** | A big pulsing Ability Seal center-screen above your character while the pet is Passive, plus an optional glow on the passive button. Impossible to miss. |
-| **Options** | Draggable settings window — a master **Enable HunterKit** switch that pauses *every* feature at once, one rule per feature block, wrapped tooltips, and a two-click **Reset ALL settings** button. The Sniper Mark block is a grid per state: **SHAPE** cycle-button + state name on the left, **BRIGHTNESS** slider on the right. Minimap button, `/htk lock\|unlock`, `/htk reset`. |
+| **Low ammo warning** | Periodic on-screen + raid-warning-sound alert when your equipped arrows/bullets run low — the less ammo, the more often and the longer it shows; `NO AMMO!` when empty. Sits right of the passive alert when both are up. Threshold configurable (default 100, like the community ammo trackers). |
+| **Options** | Draggable settings window — a master **Enable HunterKit** switch that pauses *every* feature at once, one rule per feature block, wrapped tooltips, and a two-click **Reset ALL settings** button. The Sniper Mark block is a grid per state: **SHAPE** cycle-button + state name on the left, short **BRIGHTNESS** slider (0–200%, 100% at the bar's middle, overdrive stacks a second additive pass) on the right. Minimap button, `/htk lock\|unlock`, `/htk reset`. |
 
 ## Sniper Mark
 
@@ -63,7 +64,7 @@ The marker answers one question mid-fight: **can I Mend right now?**
 | At or below 30% HP | **Grows (up to ~14%), pulses, expanding red ring**, `MEND!` label |
 | No pet / dead pet / Mend Pet not learned | Hidden |
 
-- **Toggle:** Options → Pet Mend Marker → *Enable mend marker* — **on by default**.
+- **Toggle:** Options → Pet Mend Marker → *Enable mend marker* — **on by default**. *Show only below threshold* makes it appear only at/below the HP threshold.
 - **Out of combat:** hidden once the pet is healthy (*Only in combat*, on by
   default). A pet below the threshold always shows, combat or not.
 - **Threshold** is a slider (5–100%, default **30**).

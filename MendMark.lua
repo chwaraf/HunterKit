@@ -650,6 +650,13 @@ Update = function()
   local hp = PetHPPercent()
   urgentNow = (hp ~= nil) and (hp <= (db.hpThreshold or 30))
 
+  -- Optional: the marker exists ONLY at/below the threshold (user preference);
+  -- a hurt pet is exactly when it earns its screen space.
+  if db.onlyBelow and not urgentNow and not editing then
+    Hide()
+    return
+  end
+
   -- "Only in combat" is the default; a hurt pet is always worth showing.
   if db.combatOnly and not InFight() and not urgentNow and not editing then
     Hide()

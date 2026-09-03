@@ -3,6 +3,36 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.7] - 2026-09-03
+
+### Added
+- **Low ammo warning** (`AmmoWarn.lua`, new): periodic on-screen alert +
+  raid-warning sound when the ammo on your ranged weapon runs low. The less
+  ammo, the smarter it gets: below threshold a brief nudge every 90 s, below
+  half that every 45 s, critical every 15 s with a 12 s display, `NO AMMO!`
+  every 10 s for 20 s. Re-arms on bag updates; sits **right of the passive
+  alert** when both are displayed. Options: threshold (10..500, default 100),
+  sound toggle. (No TTS API exists on this client — the raid-warning sound is
+  the audible channel.)
+
+### Changed
+- **Shorter, aligned brightness sliders**: the compact bars shrank 150→110 px,
+  all rows share one left edge, and each slider's value now reads on the bar's
+  own line instead of below it.
+- **Brightness is 0–200%** with 100% at the bar's **middle**: past 100% the
+  sniper mark draws a second additive pass (overdrive) — vertex colours clamp
+  at full, so overdrive is what actually gets brighter. Default 100.
+- **Mend Pet Marker** gained *Show only below threshold*: the marker only
+  appears at/below the "Urgent below % HP" line, instead of always showing.
+
+### Fixed
+- `dbVersion` 17 (ammo settings, mend `onlyBelow`; migration is a no-op).
+
+### Tests
+- 119 + 54 + 50 + 43 = **266 green**.
+
+---
+
 ## [0.9.6] - 2026-09-03
 ### Changed (Options — Sniper Mark reworked per sketch)
 - The Sniper Mark block is now the sketched grid: column headers **SHAPE** and

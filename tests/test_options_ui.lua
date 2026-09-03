@@ -69,7 +69,7 @@ local KNOWN_GLOBALS = {
   BuildMendPlate = true, BuildMinimapButton = true, BuildWindow = true,
   MakeDropdown = true, RangedWeaponInfo = true, RefreshFeed = true,
   RefreshMend = true, RefreshModules = true, RefreshPulse = true,
-  RefreshRange = true, RefreshSound = true,
+  RefreshRange = true, RefreshSound = true, RefreshAmmo = true,
 }
 local stray = {}
 for _, n in ipairs(HKTest.StrayGlobals()) do
@@ -104,7 +104,7 @@ for _, t in ipairs(content.textures) do
 end
 -- Master, Feed Pet, Sniper Mark, Pet Mend Marker, Gun Sound, Passive Alert,
 -- Positions, Reset.
-check("every section has a divider rule", #rules == 8, tostring(#rules))
+check("every section has a divider rule", #rules == 9, tostring(#rules))
 local spanning = 0
 for _, r in ipairs(rules) do
   local a, b = r.points[1], r.points[2]

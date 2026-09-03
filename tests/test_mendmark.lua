@@ -47,7 +47,7 @@ check("db.mend defaults merged", HK.db.mend ~= nil and HK.db.mend.enabled == tru
   HK.db.mend and tostring(HK.db.mend.enabled))
 check("default low-HP threshold is 30%", HK.db.mend.hpThreshold == 30)
 check("default anchor is auto", HK.db.mend.anchor == "auto")
-check("db version migrated to 16", HK.db.dbVersion == 16, tostring(HK.db.dbVersion))
+check("db version migrated to 17", HK.db.dbVersion == 17, tostring(HK.db.dbVersion))
 check("new installs default to the bold cross family",
   HK.db.range.markOK == "plus" and HK.db.range.markDead == "cross"
   and HK.db.range.markFar == "ban",
@@ -617,6 +617,23 @@ end
 check("help lists /htk mend", foundHelpLine)
 
 -- ---------------------------------------------------------------------------
+-- ---------------------------------------------------------------------------
+-- 7) "Show only below threshold" hides the calm marker
+-- ---------------------------------------------------------------------------
+HK.db.mend.onlyBelow = true
+HKTest.state.pet = true
+HKTest.state.petHP = 900
+HKTest.state.playerCombat, HKTest.state.petCombat = true, true
+HK.MendMark.Update()
+check("only-below hides the marker above the threshold", not HK.MendMark.IsShown(),
+  tostring(HK.MendMark.IsShown()))
+HKTest.state.petHP = 200
+HK.MendMark.Update()
+check("only-below shows it at/below the threshold", HK.MendMark.IsShown(),
+  tostring(HK.MendMark.IsShown()))
+HK.db.mend.onlyBelow = false
+HK.MendMark.Update()
+
 say(string.format("\n%d passed, %d failed", passes, #failures))
 if #failures > 0 then
   for _, f in ipairs(failures) do say("  - " .. f) end

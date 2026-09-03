@@ -304,9 +304,11 @@ local function DrawDot(cx, cy, s, size, r, g, b)
   t:Show()
 end
 
-local function DrawStyle(prims, size, r, g, b)
-  for i = 1, poolUsed do pool[i]:Hide() end
-  poolUsed = 0
+local function DrawStyle(prims, size, r, g, b, keep)
+  if not keep then
+    for i = 1, poolUsed do pool[i]:Hide() end
+    poolUsed = 0
+  end
   if not prims then return end
   for _, p in ipairs(prims) do
     if p[1] == "seg" then DrawSeg(p[2], p[3], p[4], p[5], p[6], size, r, g, b)
@@ -350,8 +352,16 @@ ApplyState = function(state)
   -- vertex colour scales the glow exactly.
   local key = state == "OK" and "brightOK" or state == "DEAD" and "brightDead" or "brightFar"
   local br = (db[key] or 100) / 100
-  lastR, lastG, lastB = c[1] * br, c[2] * br, c[3] * br
-  DrawStyle(STYLES[state] and STYLES[state][style], db.size or 60, lastR, lastG, lastB)
+  local base = math.min(br, 1)
+  local over = math.max(0, br - 1)
+  lastR, lastG, lastB = c[1] * base, c[2] * base, c[3] * base
+  local prims = STYLES[state] and STYLES[state][style]
+  DrawStyle(prims, db.size or 60, lastR, lastG, lastB)
+  -- Overdrive above 100%: a second additive pass. Vertex colour cannot exceed 1,
+  -- so extra intensity is stacked, not scaled.
+  if over > 0 then
+    DrawStyle(prims, db.size or 60, c[1] * over, c[2] * over, c[3] * over, true)
+  end
 
   if db.showLabel then
     label:SetText(LABELS[state] or "")

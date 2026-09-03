@@ -267,6 +267,58 @@ HK.Range.RescanSettings()
 local r2, g2 = HK.Range.DrawnColor()
 check("brightness 100 restores full glow", math.abs(g2 - 1) <= 0.01, tostring(g2))
 
+-- ---------------------------------------------------------------------------
+-- 5) Brightness overdrive stacks a second additive pass
+-- ---------------------------------------------------------------------------
+SetState("OK")
+HK.db.range.brightOK = 150
+HK.Range.RescanSettings()
+local _, g = HK.Range.DrawnColor()
+check("overdrive clamps the base colour at full", math.abs(g - 1) <= 0.01, tostring(g))
+check("overdrive draws a second additive pass", HK.Range.VisibleShapes() == 2,
+  tostring(HK.Range.VisibleShapes()))
+HK.db.range.brightOK = 100
+HK.Range.RescanSettings()
+check("100% is a single pass", HK.Range.VisibleShapes() == 1,
+  tostring(HK.Range.VisibleShapes()))
+
+-- ---------------------------------------------------------------------------
+-- 6) Low ammo warning: periodic, more persistent as ammo drops, with sound
+-- ---------------------------------------------------------------------------
+local ammoTicker
+for _, t in ipairs(HKTest.tickers) do
+  if t.interval == 1 then ammoTicker = t end
+end
+check("ammo ticker running", ammoTicker ~= nil)
+HKTest.state.ammoID = 2515
+HKTest.state.items = { [2515] = 800 }
+HKTest.state.now = 1000
+ammoTicker:Tick()
+check("no warning while stocked", not HK.AmmoWarn.IsShown(),
+  tostring(HK.AmmoWarn.IsShown()))
+HKTest.state.items[2515] = 60
+HKTest.state.now = 2000
+ammoTicker:Tick()
+check("warns when low", HK.AmmoWarn.IsShown(), tostring(HK.AmmoWarn.IsShown()))
+check("warning sound played", #HKTest.soundsPlayed > 0, tostring(#HKTest.soundsPlayed))
+local s1 = #HKTest.soundsPlayed
+HKTest.state.now = 2010
+ammoTicker:Tick()
+check("periodic: no re-warn inside the period", #HKTest.soundsPlayed == s1,
+  tostring(#HKTest.soundsPlayed))
+HKTest.state.items[2515] = 10
+HKTest.state.now = 3000
+ammoTicker:Tick()
+check("critical tier warns again", #HKTest.soundsPlayed > s1,
+  tostring(#HKTest.soundsPlayed))
+HKTest.state.items[2515] = 0
+HKTest.state.now = 4000
+ammoTicker:Tick()
+check("empty ammo is the most persistent tier", HK.AmmoWarn.IsShown(),
+  tostring(HK.AmmoWarn.IsShown()))
+HKTest.state.items = nil
+HKTest.state.ammoID = nil
+
 say(string.format("\n%d passed, %d failed", passes, #failures))
 if #failures > 0 then
   for _, f in ipairs(failures) do say("  - " .. f) end
