@@ -96,10 +96,13 @@ check("README documents the pet mend marker", readme:find("Pet Mend Marker", 1, 
 check("CHANGELOG documents the pet mend marker",
   changelog:find("Pet Mend Marker", 1, true) ~= nil)
 
--- Texture guard: the client only ever rendered the uncompressed 32-bit TGAs
--- reliably (BLP1 showed green squares, and hand-rolled BLP2 did not render
--- either -- 0.9.21-0.9.26). Every shipped texture must be an uncompressed
--- true-colour TGA: image type 2, 32 bits per pixel.
+-- Texture guard: shipped art is PNG (as of 0.9.28) -- lossless, 9x smaller
+-- than the old TGAs, and the format addons universally use on this client.
+-- The BLP detour (0.9.21-0.9.27) failed twice: BLP1 showed green squares
+-- and a hand-rolled BLP2 used the wrong 156-byte header (working BLPs use
+-- 148: width at byte 12, mip offsets at byte 20, 1024-byte palette gap
+-- before mip0, full mip chain -- see the autopsy in tools/tga_to_blp.py).
+-- Every shipped texture must exist as a PNG and carry the PNG magic.
 do
   local textures = {
     "crosshair", "crosshair-x", "crosshair-outline",
@@ -111,17 +114,17 @@ do
     "mark-dead-hexx",
   }
   for _, n in ipairs(textures) do
-    local fh = io.open("../Media/" .. n .. ".tga", "rb")
-    check("texture " .. n .. ".tga exists", fh ~= nil)
+    local fh = io.open("../Media/" .. n .. ".png", "rb")
+    check("texture " .. n .. ".png exists", fh ~= nil)
     if fh then
-      local hdr = fh:read(18)
+      local magic = fh:read(8)
       fh:close()
-      local imgType, bpp = hdr:byte(3), hdr:byte(17)
-      check("texture " .. n .. ".tga is uncompressed 32-bit RGBA",
-        imgType == 2 and bpp == 32,
-        string.format("type=%s bpp=%s", tostring(imgType), tostring(bpp)))
+      check("texture " .. n .. ".png carries the PNG magic",
+        magic == "\137PNG\r\n\26\n", tostring(magic))
     end
   end
+  check("no stray .tga files ship",
+    io.open("../Media/mark-ok-plus.tga", "rb") == nil)
   check("no stray .blp files ship",
     io.open("../Media/mark-ok-plus.blp", "rb") == nil)
 end

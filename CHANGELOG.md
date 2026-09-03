@@ -3,6 +3,30 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.28] - 2026-09-03
+
+### Changed
+- **Art is PNG now: 7.08 MB -> 783 KB (9.0x smaller) and provably lossless**
+  -- the format most addons ship and the client renders natively. Every file
+  was decoded back after conversion and compared pixel-for-pixel with the
+  TGA source (`tools/tga_to_png.py`, new); `Range.lua` points at `.png`.
+  This is smaller than the failed BLP attempt (1.77 MB) AND touches no
+  pixel values, unlike DXT5.
+- **BLP autopsy** (per the user's suggestion to diff against working addon
+  BLPs): byte-comparison with WeakAuras2/DBM textures shows real BLP2 uses
+  a 148-byte header (byte-sized flag fields, width at byte 12, mip offsets
+  at byte 20, 1024-byte palette gap before mip0, full mip chains) -- my
+  0.9.26 files used BLP1's 156-byte u32 layout, so the client read
+  width/height/offsets from the wrong bytes and rendered nothing. Full
+  findings recorded in tools/tga_to_blp.py; the tool stays experimental.
+- The docs-test guard now enforces PNG: all 18 textures must exist with the
+  PNG magic, and no `.tga`/`.blp` strays may ship.
+
+### Tests
+- 119 + 55 + 102 + 81 = **357 green**.
+
+---
+
 ## [0.9.27] - 2026-09-03
 
 ### Changed

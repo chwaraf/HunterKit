@@ -1,11 +1,22 @@
 #!/usr/bin/env python3
-"""EXPERIMENTAL -- DO NOT SHIP THE OUTPUT (as of 0.9.27).
+"""EXPERIMENTAL -- DO NOT SHIP THE OUTPUT (the addon ships PNG since 0.9.28).
 
 Both hand-rolled containers failed on the user's 1.15.9 client: BLP1 showed
 neon-green "unreadable texture" squares, and the BLP2/DXT5 rewrite did not
-render either. The addon ships the uncompressed 32-bit TGAs instead; the
-docs test enforces that. This tool stays as a reference/experiment only --
-if you ever make it render in-game, update tests/test_docs.lua first.
+render either.
+
+AUTOPSY (0.9.28, byte-diffed against client-proven BLPs from WeakAuras2
+Statusbar_Clean.blp and DBM alert_circle.blp): the BLP2 rewrite used BLP1's
+156-byte header (compression/alphaDepth/alphaEncoding/mips as full u32s,
+width at byte 20, mip offsets at byte 28). Real BLP2s use a 148-byte
+header: magic, u32=1, then BYTE-sized fields (0x02, alphaDepth, encoding,
+hasMips), width at byte 12, height at byte 16, mip offsets at byte 20,
+mip sizes at byte 84; a 1024-byte palette gap follows the header even for
+DXT (mip0 offset 1172), and working files carry a full mip chain. With the
+156-byte header the client reads width/height/offsets from the wrong bytes
+and renders nothing. Fixing all of this would still lose to PNG, which is
+lossless and 2.2x smaller than these DXT5 files -- so this tool stays as a
+reference only. If you ever revive it, update tests/test_docs.lua first.
 
 Convert the mark art Media/*.tga -> Media/*.blp (BLP2 / DXT5), losslessly
 for anything DXT5 can represent exactly and visually-lossless otherwise.

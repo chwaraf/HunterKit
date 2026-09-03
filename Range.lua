@@ -202,35 +202,35 @@ local function art(path) return { { "art", MEDIA .. path } } end
 --   IN RANGE    open, angular, centred  — "the shot is available"
 --   TOO CLOSE   closed, heavy, blocking — "back up"
 --   OUT OF RANGE broken, thin, hollow   — "no shot"
--- Every style is bundled .tga art: the old crosshair marks plus a modern sci-fi
+-- Every style is bundled .png art: the old crosshair marks plus a modern sci-fi
 -- set; the procedural primitives below remain as the engine's fallback but no
 -- shipped style needs them. The first entry of each state is the default: the
 -- bold outlined cross family (plus / cross / broken) that the user picked as the
 -- house style; the classic thin marks stay one click away.
 local STYLES = {
   OK = {
-    plus      = art("mark-ok-plus.tga"),
-    crosshair = art("crosshair.tga"),
-    reticle   = art("mark-ok-reticle.tga"),
-    chevrons  = art("mark-ok-chevrons.tga"),
-    diamond   = art("mark-ok-diamond.tga"),
-    ticks     = art("mark-ok-ticks.tga"),
+    plus      = art("mark-ok-plus.png"),
+    crosshair = art("crosshair.png"),
+    reticle   = art("mark-ok-reticle.png"),
+    chevrons  = art("mark-ok-chevrons.png"),
+    diamond   = art("mark-ok-diamond.png"),
+    ticks     = art("mark-ok-ticks.png"),
   },
   DEAD = {
-    x     = art("crosshair-x.tga"),
-    hexx  = art("mark-dead-hexx.tga"),
-    cross = art("mark-dead-cross.tga"),
-    block = art("mark-dead-block.tga"),
-    bars  = art("mark-dead-bars.tga"),
-    burst = art("mark-dead-burst.tga"),
+    x     = art("crosshair-x.png"),
+    hexx  = art("mark-dead-hexx.png"),
+    cross = art("mark-dead-cross.png"),
+    block = art("mark-dead-block.png"),
+    bars  = art("mark-dead-bars.png"),
+    burst = art("mark-dead-burst.png"),
   },
   FAR = {
-    rings = art("crosshair-outline.tga"),
-    dashed  = art("mark-far-dashring.tga"),
-    halo    = art("mark-far-halo.tga"),
-    sides   = art("mark-far-sides.tga"),
-    slashes = art("mark-far-slashes.tga"),
-    ban     = art("mark-far-ban.tga"),
+    rings = art("crosshair-outline.png"),
+    dashed  = art("mark-far-dashring.png"),
+    halo    = art("mark-far-halo.png"),
+    sides   = art("mark-far-sides.png"),
+    slashes = art("mark-far-slashes.png"),
+    ban     = art("mark-far-ban.png"),
   },
 }
 
