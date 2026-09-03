@@ -600,10 +600,21 @@ UpdateState = function()
   if h and h < 3 and not InCombatLockdown() then
     local c = HAPPINESS_COLOR[h] or {1, 1, 1}
     if border then border:SetVertexColor(c[1], c[2], c[3], 1) end
-    if iconTex then iconTex:SetVertexColor(c[1], c[2], c[3], 1) end
+    if iconTex then
+      -- Uniform "needs food" dim: DESATURATE first, then darken-tint. A bare
+      -- vertex tint multiplies the art -- bright food icons barely changed
+      -- while dark ones went visibly dark (the "food icon doesn't darken but
+      -- the spell icon does" report). Desaturating first makes every icon
+      -- dim the same way, whatever its palette.
+      if iconTex.SetDesaturated then pcall(iconTex.SetDesaturated, iconTex, true) end
+      iconTex:SetVertexColor(c[1] * 0.75, c[2] * 0.75, c[3] * 0.75, 1)
+    end
   else
     if border then border:SetVertexColor(0, 0, 0, 0) end
-    if iconTex then iconTex:SetVertexColor(1, 1, 1, 1) end
+    if iconTex then
+      if iconTex.SetDesaturated then pcall(iconTex.SetDesaturated, iconTex, false) end
+      iconTex:SetVertexColor(1, 1, 1, 1)
+    end
   end
 end
 

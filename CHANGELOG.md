@@ -3,6 +3,24 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.20] - 2026-09-03
+
+### Changed
+- **Feed button highlight now dims every icon identically.** The highlight
+  logic was always the same for the food icon and the default Feed Pet icon
+  (one texture, one tint) -- but a vertex tint MULTIPLIES the artwork, so
+  bright food icons barely changed while the dark spell icon visibly darkened
+  ("food icon doesn't darken, spell icon does"). The hungry dim is now
+  desaturate-then-darken (0.75x happiness colour on greyscale art), which
+  reads the same on any icon; the coloured border is unchanged. Rule
+  unchanged: only when the pet is below happy AND out of combat.
+
+### Tests
+- 119 + 55 + 79 + 43 = **296 green** (dim/restore assertions now cover the
+  desaturation flag).
+
+---
+
 ## [0.9.19] - 2026-09-03
 
 ### Fixed

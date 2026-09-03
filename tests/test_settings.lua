@@ -446,14 +446,19 @@ check("count font does not depend on a possibly-missing font object",
 check("highlight on: below happy, out of combat",
   fb.textures[2].color[2] == 0.8 and fb.textures[2].color[4] == 1,
   table.concat(fb.textures[2].color, ","))
-check("icon tint doubles as the highlight when hungry",
-  fb.textures[1].color[2] == 0.8, table.concat(fb.textures[1].color, ","))
+check("icon dims uniformly when hungry (desaturated + darkened)",
+  fb.textures[1].desaturated == true and
+  math.abs(fb.textures[1].color[1] - 0.75) < 0.01 and
+  math.abs(fb.textures[1].color[2] - 0.6) < 0.01,
+  tostring(fb.textures[1].desaturated) .. "/" .. table.concat(fb.textures[1].color, ","))
 HKTest.state.happiness = 3
 HK.FeedPet.Refresh()
 check("highlight off when the pet is happy", fb.textures[2].color[4] == 0,
   table.concat(fb.textures[2].color, ","))
-check("icon untinted when happy", fb.textures[1].color[1] == 1 and
-  fb.textures[1].color[2] == 1, table.concat(fb.textures[1].color, ","))
+check("icon restored when happy (full colour, no desaturation)",
+  fb.textures[1].desaturated == false and fb.textures[1].color[1] == 1 and
+  fb.textures[1].color[2] == 1,
+  tostring(fb.textures[1].desaturated) .. "/" .. table.concat(fb.textures[1].color, ","))
 HKTest.state.happiness = 2
 HKTest.state.combatLockdown = true
 HK.FeedPet.Refresh()

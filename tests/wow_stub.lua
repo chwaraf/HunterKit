@@ -100,6 +100,7 @@ function Frame:SetBackdrop() end
 function Frame:SetBackdropColor() end
 function Frame:SetBackdropBorderColor() end
 function Frame:SetTexture(t) self.texture = t; self:Record("SetTexture", t) end
+function Frame:SetDesaturated(d) self.desaturated = d end
 function Frame:SetTexCoord(...) self:Record("SetTexCoord", ...) end
 function Frame:SetBlendMode(m) self.blend = m end
 function Frame:SetVertexColor(r, g, b, a)
