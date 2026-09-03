@@ -445,11 +445,7 @@ function BuildWindow()
   y = y - HDR
   MakeCheckbox(content, y, "Enable feed button", function() return db.feed.enabled end,
     function(v) db.feed.enabled = v; RefreshFeed() end,
-    "One-click Feed Pet under the pet avatar (or just below the pet's name when shown). Right-click to pick food.")
-  y = y - CHK
-  MakeCheckbox(content, y, "Follow pet name when shown", function() return db.feed.followName ~= false end,
-    function(v) db.feed.followName = v; RefreshFeed() end,
-    "When the client shows the pet's name (a full or name-only plate), hang the button just below it; otherwise it sits centred under the pet avatar.")
+    "One-click Feed Pet beside the happiness icon. Right-click to pick food.")
   y = y - CHK
   MakeCheckbox(content, y, "Only when hungry", function() return db.feed.hungryOnly end,
     function(v) db.feed.hungryOnly = v; RefreshFeed() end,
@@ -461,7 +457,7 @@ function BuildWindow()
   MakeDropdown(content, y, "Anchor", { "PetFrame", "UIParent" },
     function() return db.feed.parent end,
     function(v) db.feed.parent = v; RefreshFeed() end,
-    "PetFrame = under the pet avatar. UIParent = free/drag, for when an addon hides the pet frame.")
+    "PetFrame = by the happiness icon. UIParent = free/drag, for when an addon hides the pet frame.")
   y = y - ROW
 
   -- Range
@@ -473,6 +469,15 @@ function BuildWindow()
   y = y - CHK
   MakeSlider(content, y, "Mark size", 20, 96, 1, function() return db.range.size end,
     function(v) db.range.size = v; RefreshRange() end, "Size of the reticle, in pixels.")
+  y = y - ROW
+  MakeSlider(content, y, "IN RANGE brightness", 10, 100, 5, function() return db.range.brightOK or 100 end,
+    function(v) db.range.brightOK = v; RefreshRange() end, "Glow intensity of the IN RANGE mark.")
+  y = y - ROW
+  MakeSlider(content, y, "TOO CLOSE brightness", 10, 100, 5, function() return db.range.brightDead or 100 end,
+    function(v) db.range.brightDead = v; RefreshRange() end, "Glow intensity of the TOO CLOSE mark.")
+  y = y - ROW
+  MakeSlider(content, y, "OUT OF RANGE brightness", 10, 100, 5, function() return db.range.brightFar or 100 end,
+    function(v) db.range.brightFar = v; RefreshRange() end, "Glow intensity of the OUT OF RANGE mark.")
   y = y - ROW
   MakeDropdown(content, y, "IN RANGE shape", ShapeNames("OK", { "crosshair", "diamond", "brackets" }),
     function() return db.range.markOK or "crosshair" end,

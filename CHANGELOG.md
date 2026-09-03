@@ -3,6 +3,30 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.3] - 2026-09-03
+### Changed (correction: last round's feed changes belonged to the mend marker)
+- **Feed button restored to its old settings.** The 0.9.2 under-avatar default and
+  "Follow pet name" option are gone; the button is back beside the happiness icon
+  and un-dragged installs migrate their offsets back (db v16).
+- **Mend marker fallback now sits under the pet avatar.** When no plate/screen
+  position exists (or a plate anchor fails), the marker centres just below the
+  portrait circle instead of hovering above the frame — attached to the pet,
+  never off-screen.
+- **Mend follows the pet name when it's displayed.** That was already true and is
+  now documented + relied upon: a shown name (full or name-only plate) means a
+  plate frame exists, and `auto` anchors over it; with nameplates fully off there
+  is no name object to attach to and the under-avatar fallback applies.
+- **IN RANGE brightness trimmed** (plus ×1.4, the rest ×1.2 at build time) after
+  0.9.2's boost read too hot.
+- **New: a brightness slider per mark state** (IN RANGE / TOO CLOSE / OUT OF
+  RANGE, 10–100%) in Options → Sniper Mark. With the ADD blend, scaling the
+  vertex colour scales the glow exactly; defaults 100%.
+
+### Added (tests)
+- Brightness slider checks (50% halves the drawn green channel, 100% restores);
+  feed-anchor checks removed with the reverted feature; suite now
+  115 + 54 + 37 + 40 = 246, all passing.
+
 ## [0.9.2] - 2026-09-03
 ### Changed
 - **Brighter IN RANGE marks.** The generated IN RANGE art read dim next to the

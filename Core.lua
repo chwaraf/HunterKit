@@ -6,7 +6,7 @@
 
 local ADDON_NAME, HK = ...
 
-HK.version = "0.9.2"
+HK.version = "0.9.3"
 
 -- ---------------------------------------------------------------------------
 -- Defaults (schema). This is the source of truth for the options window and
@@ -14,7 +14,7 @@ HK.version = "0.9.2"
 -- ---------------------------------------------------------------------------
 HK.defaults = {
   enabled   = true,
-  dbVersion = 15,
+  dbVersion = 16,
   firstRun  = true,
 
   ui = {
@@ -25,10 +25,9 @@ HK.defaults = {
   feed = {
     enabled        = true,
     size           = 28,
-    offsetX        = 0,            -- centred under the pet avatar
-    offsetY        = -4,
+    offsetX        = 12,           -- clear gap to the right of the happiness icon
+    offsetY        = 0,
     parent         = "PetFrame",
-    followName     = true,         -- hang below the pet's name when a plate shows it
     moved          = false,        -- true once the user drags it (then pinned absolutely)
     preferredFoods = {},
     exclude        = {},
@@ -47,6 +46,9 @@ HK.defaults = {
     markOK       = "plus",         -- mark style for IN RANGE (bold cross family)
     markDead     = "cross",        -- mark style for TOO CLOSE (the loved cross)
     markFar      = "ban",          -- mark style for OUT OF RANGE
+    brightOK     = 100,            -- per-state mark brightness, percent
+    brightDead   = 100,
+    brightFar    = 100,
   },
 
   sound = {
@@ -675,11 +677,22 @@ local function LoadDB()
   -- detached). Anyone who never dragged it gets the new spot; dragged/pinned
   -- positions are untouched.
   if db.dbVersion < 15 then
-    if db.feed and not db.feed.moved then
-      db.feed.offsetX = 0
-      db.feed.offsetY = -4
-    end
     db.dbVersion = 15
+  end
+
+  -- v15 -> v16: the 0.9.2 feed-button experiment (under-avatar default + "follow
+  -- pet name") was meant for the MEND marker, not the feed button. Restore the
+  -- old feed defaults (right of the happiness icon) for anyone who never dragged
+  -- it, and drop the short-lived followName key.
+  if db.dbVersion < 16 then
+    if db.feed then
+      db.feed.followName = nil
+      if not db.feed.moved then
+        db.feed.offsetX = 12
+        db.feed.offsetY = 0
+      end
+    end
+    db.dbVersion = 16
   end
 
   db.dbVersion = HK.defaults.dbVersion

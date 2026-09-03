@@ -317,6 +317,7 @@ local function DrawStyle(prims, size, r, g, b)
 end
 
 local lastStyle = nil
+local lastR, lastG, lastB = 1, 1, 1
 
 local function StyleFor(state)
   local key
@@ -329,6 +330,7 @@ end
 
 -- Test/diagnostic surface: what is on screen, and what could be.
 function Range.CurrentStyle() return lastStyle end
+function Range.DrawnColor() return lastR, lastG, lastB end
 function Range.StyleNames(state) return STYLE_ORDER[state] or STYLE_ORDER.FAR end
 function Range.Primitives(state, name)
   return STYLES[state] and STYLES[state][name]
@@ -344,7 +346,12 @@ ApplyState = function(state)
   local style = StyleFor(state)
   lastStyle = style
   frame:SetAlpha(1)
-  DrawStyle(STYLES[state] and STYLES[state][style], db.size or 60, c[1], c[2], c[3])
+  -- Per-state brightness slider (10..100%): with the ADDitive blend, scaling the
+  -- vertex colour scales the glow exactly.
+  local key = state == "OK" and "brightOK" or state == "DEAD" and "brightDead" or "brightFar"
+  local br = (db[key] or 100) / 100
+  lastR, lastG, lastB = c[1] * br, c[2] * br, c[3] * br
+  DrawStyle(STYLES[state] and STYLES[state][style], db.size or 60, lastR, lastG, lastB)
 
   if db.showLabel then
     label:SetText(LABELS[state] or "")

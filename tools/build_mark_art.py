@@ -35,7 +35,7 @@ MAP = [
     ("far-sides.png", "mark-far-sides.tga"),
     ("far-slashes.png", "mark-far-slashes.tga"),
     ("far-halo.png", "mark-far-halo.tga"),
-    ("ok-plus.png", "mark-ok-plus.tga", 1.6),
+    ("ok-plus.png", "mark-ok-plus.tga", 1.4),
     ("far-ban.png", "mark-far-ban.tga"),
 ]
 

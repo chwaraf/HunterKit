@@ -236,20 +236,18 @@ check("master on restores the mark", HK.Range.IsFrameValid(),
   tostring(HK.Range.IsFrameValid()))
 
 -- ---------------------------------------------------------------------------
--- 4) Feed button anchor: under the pet's name when shown, else the avatar
+-- 4) Per-state brightness sliders scale the drawn glow
 -- ---------------------------------------------------------------------------
-HK.db.feed.followName = true
-local feedPlate = CreateFrame("Frame", "FeedTestPlate", UIParent)
-feedPlate:SetSize(100, 30)
-feedPlate.namePlateUnitToken = "pet"
-HKTest.state.scanPlate = feedPlate
-HK.FeedPet.RescanSettings()
-check("feed button hangs under the pet's name when shown",
-  HK.FeedPet.AnchorKind() == "plate", tostring(HK.FeedPet.AnchorKind()))
-HKTest.state.scanPlate = nil
-HK.FeedPet.RescanSettings()
-check("feed button defaults to under the pet avatar",
-  HK.FeedPet.AnchorKind() == "frame", tostring(HK.FeedPet.AnchorKind()))
+SetState("OK")
+HK.db.range.brightOK = 50
+HK.Range.RescanSettings()
+local r, g, b = HK.Range.DrawnColor()
+check("brightness slider dims the IN RANGE mark", math.abs(g - 0.5) <= 0.01,
+  tostring(g))
+HK.db.range.brightOK = 100
+HK.Range.RescanSettings()
+local r2, g2 = HK.Range.DrawnColor()
+check("brightness 100 restores full glow", math.abs(g2 - 1) <= 0.01, tostring(g2))
 
 say(string.format("\n%d passed, %d failed", passes, #failures))
 if #failures > 0 then

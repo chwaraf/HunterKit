@@ -446,6 +446,19 @@ ResolveAnchor = function()
   return "none"
 end
 
+-- The fallback spot: centred just under the pet avatar (the portrait circle),
+-- not above the frame — it reads as attached to the pet and never off-screen.
+local function AnchorUnderAvatar(pf, ox, oy)
+  local portrait = _G["PetFramePortrait"] or _G["PetFramePetPortrait"]
+  if portrait then
+    frame:SetPoint("TOP", portrait, "BOTTOM", ox, oy)
+  else
+    -- No portrait region on this client: sit under the avatar's corner of the
+    -- pet frame (portrait is the left circle).
+    frame:SetPoint("TOP", pf, "BOTTOMLEFT", 30 + ox, 6 + oy)
+  end
+end
+
 -- Re-resolved every tick: the pet moves, and plate frames come and go. Returns
 -- the mode actually applied.
 local function ApplyAnchor()
@@ -467,7 +480,7 @@ local function ApplyAnchor()
     local pf = _G["PetFrame"]
     if pf then
       frame:ClearAllPoints()
-      frame:SetPoint("BOTTOM", pf, "TOP", ox, oy)
+      AnchorUnderAvatar(pf, ox, oy)
       lastAnchorMode = "petframe"
       return lastAnchorMode
     end
@@ -492,7 +505,7 @@ local function ApplyAnchor()
       -- CENTRE offset, the same scheme the feed button and sniper mark use).
       frame:SetPoint("CENTER", UIParent, "CENTER", db.pinX or 0, db.pinY or 0)
     else
-      frame:SetPoint("BOTTOM", a, "TOP", ox, oy)
+      AnchorUnderAvatar(a, ox, oy)
     end
     lastAnchorMode = "petframe"
     return lastAnchorMode

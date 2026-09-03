@@ -7,13 +7,13 @@ For **WoW Classic Era & Hardcore** (patch 1.15.x).
 A self-contained, dependency-free (no Ace3/LibDBIcon) addon built for the
 hardcore-first hunter. Every action is a deliberate click; nothing is automated.
 
-Current version: **0.9.2** — see [`CHANGELOG.md`](CHANGELOG.md).
+Current version: **0.9.3** — see [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Features
 
 | Feature | What it does |
 |---|---|
-| **Feed Pet button** | A one-click button centred under the pet avatar — or hung just below the pet's name when the client shows it (*Follow pet name when shown*). Always feeds the **best** food in your bags (max happiness tier, then smallest open stack). Respects your pins/excludes. Out-of-combat only (as Blizzard intends). |
+| **Feed Pet button** | A one-click button beside the pet happiness icon. Always feeds the **best** food in your bags (max happiness tier, then smallest open stack). Respects your pins/excludes. Out-of-combat only (as Blizzard intends). |
 | **Sniper Mark** | A reticle by the target frame that reports **IN RANGE / TOO CLOSE / OUT OF RANGE** — six art styles per state in the bold outlined cross family (the new defaults), the classics and a modern sci-fi set, tinted by state. Reflects state only — it never acts. |
 | **Pet Mend Marker** | A **Mend Pet icon floating above your pet's head, nameplate style**. Green + solid when the pet is inside Mend Pet range, faded and greyed when it isn't — so you know at a glance, without reading a bar. Goes **bigger and pulsing with an expanding red ring** at or below **30% pet HP**. **On by default**, and it works with nameplates turned off. |
 | **Gun sound** | Replaces the stock gunshot with a Star-Wars-style blaster pew. Respects guns-only, no-repeat, and mutes the stock sound. |
@@ -47,7 +47,7 @@ away. All marks ship as white-on-alpha `.tga` so the state colour tints them:
 The new art is generated on a black field and luminance-keyed to alpha by
 `tools/build_mark_art.py` (black → transparent, mark → white), cropped, squared and
 resized to 256px, and **every** style is now art (the whole OUT OF RANGE and
-TOO CLOSE sets included), with the IN RANGE set extra-boosted so it reads bright.
+TOO CLOSE sets included), and each state has its own **brightness slider** in Options (10–100%).
 The colour always carries the state as well, so the mark stays
 readable for colourblind players who pick a shape per state.
 
@@ -105,8 +105,9 @@ when the client itself publishes a pet plate; otherwise the marker uses the
 pet-frame fallback. Any CVar an older build changed is still restored on
 load/logout, and `/htk mend` marks those with a `*`.
 
-**3. Otherwise fall back to the pet unit frame — and look like a plate anyway.**
-The fallback draws a nameplate-style widget under the icon (pet name + a
+**3. Otherwise fall back to the pet unit frame — under the avatar, looking like
+a plate anyway.** The fallback sits centred just under the pet avatar (the
+portrait circle) and draws a nameplate-style widget under the icon (pet name + a
 green→red health bar), so it still reads like a plate rather than a stray icon.
 The pet unit frame is used **even when you've hidden it in Edit Mode** (a hidden
 frame keeps its layout), so the marker doesn't vanish for players following the
@@ -114,7 +115,7 @@ UIParent advice below.
 
 **4. Otherwise the UI fallback is yours to place.** `/htk unlock`, drag the
 marker wherever you read it best, lock again — the spot is saved per character
-(`/htk reset` returns it under the pet frame).
+(`/htk reset` returns it under the pet avatar).
 
 **In edit mode you always drag the fallback — even when the head anchor is live.**
 `/htk unlock` switches the marker to the UI fallback widget while frames are
@@ -126,9 +127,14 @@ drag there could neither be started nor kept. That is also why edit mode shows
 **one** marker, not two: there is no second, movable copy of the head marker to
 show, and showing the immovable one would leave you dragging nothing.
 
-Anchor modes: **`auto`** (default) = head when a plate exists, else the pet
-frame · **`plate`** = head only, hidden while there's no plate · **`petframe`** =
-always the UI widget.
+When the client shows the pet's **name** (a full or name-only plate), that plate
+frame exists and `auto` anchors over the head/name — so yes, the marker follows
+the pet name exactly when it is displayed; with nameplates fully off there is no
+name object to attach to and it falls back under the avatar.
+
+Anchor modes: **`auto`** (default) = head/name when a plate exists, else under
+the avatar · **`plate`** = head only, hidden while there's no plate ·
+**`petframe`** = always the UI widget under the avatar.
 
 ### What 1.15.9 actually offers (measured, not assumed)
 
