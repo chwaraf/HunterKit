@@ -5,3 +5,7 @@ art/preview.png
 
 # transient voice-variant previews (listen-and-pick, never shipped)
 Media/voice_*_preview.mp3
+
+# python bytecode
+__pycache__/
+*.pyc
