@@ -7,13 +7,13 @@ For **WoW Classic Era & Hardcore** (patch 1.15.x).
 A self-contained, dependency-free (no Ace3/LibDBIcon) addon built for the
 hardcore-first hunter. Every action is a deliberate click; nothing is automated.
 
-Current version: **0.9.8** — see [`CHANGELOG.md`](CHANGELOG.md).
+Current version: **0.9.9** — see [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Features
 
 | Feature | What it does |
 |---|---|
-| **Feed Pet button** | A one-click button beside the pet happiness icon. Always feeds the **best** food in your bags (max happiness tier, then smallest open stack), with the **total edible food count** in the icon like an action button charge count. The highlight glows only when the pet is **below happy and you are out of combat**. Respects your pins/excludes. Out-of-combat only (as Blizzard intends). |
+| **Feed Pet button** | A one-click button beside the pet happiness icon. Always feeds the **best** food in your bags (max happiness tier, then smallest open stack), shown as the food icon with a **count of that food** (all its stacks) on it like an action button. The highlight glows only when the pet is **below happy and you are out of combat**. Respects your pins/excludes. Out-of-combat only (as Blizzard intends). |
 | **Sniper Mark** | A reticle by the target frame that reports **IN RANGE / TOO CLOSE / OUT OF RANGE** — six art styles per state in the bold outlined cross family (the new defaults), the classics and a modern sci-fi set, tinted by state. Reflects state only — it never acts. |
 | **Pet Mend Marker** | A **Mend Pet icon floating above your pet's head, nameplate style**. Green + solid when the pet is inside Mend Pet range, faded and greyed when it isn't — so you know at a glance, without reading a bar. Goes **bigger and pulsing with an expanding red ring** at or below **30% pet HP**. **On by default**, and it works with nameplates turned off. |
 | **Gun sound** | Replaces the stock gunshot with a Star-Wars-style blaster pew. Respects guns-only, no-repeat, and mutes the stock sound. |

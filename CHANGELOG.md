@@ -3,6 +3,30 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.9] - 2026-09-03
+
+### Fixed
+- **Feed button was stuck on the "?" icon with no count** (regression from
+  0.9.8): `countText:SetFontObject(NumberFontNormalSmallOutline)` referenced a
+  font object that does not exist on all classic builds — the nil global broke
+  the rest of `BuildButton` (border, tooltip, drag), and `UpdateState` then
+  died on the nil border before `RefreshMacro` ever ran. The count font is now
+  set with `SetFont("Fonts\ARIALN.TTF", 11, "OUTLINE")` + a `GameFontHighlightSmall`
+  fallback, the icon/count refresh runs **before** the highlight, and the
+  border write is nil-guarded.
+- **Feed button count now counts the PICKED food** (all of its stacks), not
+  every edible food in the bags — the icon shows the food that will be fed,
+  the number shows how much of it you have.
+- **Voice clips re-recorded** with the voice the user picked (the first batch
+  did not match the audition) and re-phrased to full sentences ("No arrows,
+  lad!" / "No ammo, lad!") so the playback no longer cuts off mid-word.
+
+### Tests
+- 119 + 54 + 62 + 43 = **278 green** (new: picked-food icon texture, count =
+  picked food's total across stacks, count font set via SetFont+OUTLINE).
+
+---
+
 ## [0.9.8] - 2026-09-03
 
 ### Added

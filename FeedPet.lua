@@ -148,7 +148,15 @@ function BuildButton()
 
   countText = button:CreateFontString(nil, "OVERLAY")
   countText:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -1, 1)
-  countText:SetFontObject(NumberFontNormalSmallOutline)   -- Blizzard's item-count look
+  -- Blizzard's item-count look WITHOUT depending on a font-object name that may
+  -- not exist on every client (NumberFontNormalSmallOutline is NOT defined on
+  -- all classic builds -- passing the nil global here broke the rest of
+  -- BuildButton and left the button on the "?" icon). Set the font file +
+  -- OUTLINE directly, the same recipe the default action-button counts use,
+  -- and fall back to a font object that certainly exists.
+  if not countText:SetFont("Fonts\\ARIALN.TTF", 11, "OUTLINE") then
+    countText:SetFontObject(GameFontHighlightSmall)
+  end
   countText:SetJustifyH("RIGHT")
 
   border = HK.CreateBorder(button, 1)
@@ -443,7 +451,7 @@ end
 function FeedPet:PickFood()
   local petLevel = UnitLevel("pet") or UnitLevel("player")
   local best
-  local total = 0
+  local totals = {}   -- per-item stack totals, for the icon's count readout
   for bag = 0, 4 do
     for slot = 1, HK.GetBagNumSlots(bag) do
       local itemID = HK.GetBagItemID(bag, slot)
@@ -454,7 +462,7 @@ function FeedPet:PickFood()
           local tier = TierFor(petLevel, iLevel)
           local ft = self:FoodType(itemID)
           count = count or 1
-          total = total + count
+          totals[itemID] = (totals[itemID] or 0) + count
           if not best or tier > best.tier
              or (tier == best.tier and count < best.count) then
             best = { bag = bag, slot = slot, itemID = itemID, name = name,
@@ -464,7 +472,7 @@ function FeedPet:PickFood()
       end
     end
   end
-  self.lastTotal = total   -- every edible stack in the bags, for the icon count
+  self.foodTotals = totals   -- every stack per food, for the icon count
   -- pinned food override
   for _, pin in ipairs(db.preferredFoods) do
     local hit = self:FindBestStackByID(pin.id, petLevel)
@@ -473,8 +481,8 @@ function FeedPet:PickFood()
   return best
 end
 
--- The button's item-count readout: TOTAL edible food in the bags (not just the
--- stack the click will feed) -- "how much food do I have left" at a glance.
+-- The button's item-count readout: how much of the PICKED food the bags hold
+-- (all its stacks, not just the one the click will feed).
 function FeedPet.SetCount(n)
   if not countText then return end
   countText:SetText(tostring(n))
@@ -510,7 +518,7 @@ function FeedPet:RefreshMacro()
     local icon = food.icon or QUESTION_ICON
     iconTex:SetTexture(icon)
     iconTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-    FeedPet.SetCount(self.lastTotal or 0)
+    FeedPet.SetCount((self.foodTotals and self.foodTotals[food.itemID]) or food.count or 0)
   else
     -- no food in bags: fall back to the game's own Feed Pet (picks a food itself)
     button:ClearAttribute("target-item")
@@ -540,21 +548,25 @@ UpdateState = function()
     if h and h >= 3 then show = false end
   end
   ApplyVisibility(show)
-  -- Highlight rule (user): ON only when the pet is BELOW happy (content or
-  -- unhappy) AND we are out of combat. Feeding is impossible in combat and a
-  -- happy pet needs no attention, so glowing in those cases is just noise.
-  local h = GetPetHappiness()
-  if h and h < 3 and not InCombatLockdown() then
-    local c = HAPPINESS_COLOR[h] or {1, 1, 1}
-    border:SetVertexColor(c[1], c[2], c[3], 1)
-  else
-    border:SetVertexColor(0, 0, 0, 0)
-  end
+  -- Icon + count refresh FIRST: whatever happens with the highlight below must
+  -- never stop the button from showing the picked food and its amount.
   if not InCombatLockdown() then
     if pending then pending = false end
     FeedPet:RefreshMacro()
   else
     pending = true
+  end
+  -- Highlight rule (user): ON only when the pet is BELOW happy (content or
+  -- unhappy) AND we are out of combat. Feeding is impossible in combat and a
+  -- happy pet needs no attention, so glowing in those cases is just noise.
+  local h = GetPetHappiness()
+  if border then
+    if h and h < 3 and not InCombatLockdown() then
+      local c = HAPPINESS_COLOR[h] or {1, 1, 1}
+      border:SetVertexColor(c[1], c[2], c[3], 1)
+    else
+      border:SetVertexColor(0, 0, 0, 0)
+    end
   end
 end
 

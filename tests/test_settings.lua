@@ -351,16 +351,25 @@ HKTest.state.petHP = 900
 HKTest.state.playerCombat, HKTest.state.petCombat = false, false
 HKTest.state.combatLockdown = false
 HKTest.state.happiness = 2
-HKTest.state.bags = { [0] = 2 }
+HKTest.state.bags = { [0] = 3 }
 HKTest.state.bagItems = { [0] = { [1] = { id = 1113, count = 20 },
-                                   [2] = { id = 1113, count = 15 } } }
+                                   [2] = { id = 1113, count = 15 },
+                                   [3] = { id = 1114, count = 50 } } }
 HKTest.state.itemInfo[1113] = { name = "Tough Hunk of Bread", iLevel = 5,
   texture = "Interface\\Icons\\INV_Misc_Food_01" }
+HKTest.state.itemInfo[1114] = { name = "Fresh Bread", iLevel = 5,
+  texture = "Interface\\Icons\\INV_Misc_Food_02" }
 HK.db.feed.enabled = true
 HK.db.feed.hungryOnly = false
 HK.FeedPet.Refresh()
-check("feed icon shows the TOTAL edible food in bags",
+check("feed icon shows the picked food", fb.textures[1].texture ==
+  "Interface\\Icons\\INV_Misc_Food_01", tostring(fb.textures[1].texture))
+check("count = total of the picked food across its stacks",
   fb.fontstrings[1]:GetText() == "35", tostring(fb.fontstrings[1]:GetText()))
+check("count font does not depend on a possibly-missing font object",
+  fb.fontstrings[1].font == "Fonts\\ARIALN.TTF" and
+  fb.fontstrings[1].fontOutline == "OUTLINE",
+  tostring(fb.fontstrings[1].font))
 check("highlight on: below happy, out of combat",
   fb.textures[2].color[2] == 0.8 and fb.textures[2].color[4] == 1,
   table.concat(fb.textures[2].color, ","))
