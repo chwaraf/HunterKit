@@ -618,7 +618,7 @@ function BuildWindow()
   y = y - CHK
   MakeCheckbox(content, y, "Warning sound", function() return db.ammo.sound end,
     function(v) db.ammo.sound = v end,
-    "A distinct sting when the ammo situation gets WORSE (rare, not on every re-warn); short voice clips say \"No arrows!\"/\"No ammo!\" when the slot is empty (at most once every 30 s). Bundled clips (no TTS API on this client), sting as fallback.")
+    "Short bundled voice clips speak the situation: \"Low ammo!\" when the count gets worse (rare, not on every re-warn), \"No arrows!\"/\"No ammo!\" when the slot is empty (at most once every 30 s). A distinct sting is the fallback if a clip is missing.")
   y = y - CHK
 
   -- Sound

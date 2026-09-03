@@ -3,6 +3,27 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.14] - 2026-09-03
+
+### Changed
+- **Voice clips ship as .ogg, and speak the situation.** Every mp3 take --
+  including untouched generator output -- stopped mid-word on the live
+  client; the classic-era engine's mp3 decoder is the flaky part, so all
+  three clips are re-encoded to ogg vorbis (44.1 kHz mono, the format addon
+  sounds universally ship as). New clip set (long-form render, trimmed at
+  the detected silence gaps with 0.3 s tails):
+  - `voice_lowammo.ogg` — "Low ammo, lad! The quiver's running light!"
+    (3.5 s) — plays when the count gets WORSE (first entry / escalation)
+  - `voice_noarrows.ogg` — "No arrows, lad! The quiver's empty!" (3.2 s)
+  - `voice_noammo.ogg` — "No ammo, lad! We're out of ammo!" (2.8 s),
+    at most once every 30 s
+  The quest-failed sting is now only the fallback for a missing clip.
+
+### Tests
+- 119 + 54 + 66 + 43 = **282 green** (low-tier voice path asserted).
+
+---
+
 ## [0.9.13] - 2026-09-03
 
 ### Fixed

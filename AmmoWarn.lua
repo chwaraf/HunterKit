@@ -5,11 +5,11 @@
  configurable threshold, the WeakAura "3/2/1 stacks left" milestones) but tuned
  the way the user asked: periodic, and MORE persistent the less ammo is left.
 
- Audible half (user: DISTINCT and RARE): a quest-failed style sting fires only
- when the situation gets WORSE (first entry into warning, or a tier escalation)
- -- periodic re-warns are visual only. The empty tier speaks instead: short
- bundled voice clips ("No arrows!" / "No ammo!"), with the sting as fallback.
- The client itself has no TTS API, so the clips ship in Media\.
+ Audible half (user: DISTINCT and RARE): short bundled voice clips speak the
+ situation -- "Low ammo!" when the count gets WORSE (first entry or tier
+ escalation), "No arrows!"/"No ammo!" when the slot is empty, at most once
+ per 30 s. Periodic re-warns are visual only. The client has no TTS API, so
+ the clips ship in Media\ as .ogg (the engine's mp3 decoder cut words off).
 ==============================================================================]]
 local _, HK = ...
 
@@ -34,8 +34,12 @@ local RED_X       = "Interface\\Buttons\\UI-GroupLoot-Pass-Up"
 -- is distinct and (by policy below) rare.
 local WARN_SOUND  = "Sound\\Interface\\igQuestFailed.ogg"
 local MEDIA       = "Interface\\AddOns\\HunterKit\\Media\\"
-local VOICE = { arrows = MEDIA .. "voice_noarrows.mp3",
-                bullets = MEDIA .. "voice_noammo.mp3" }
+-- .ogg, NOT .mp3: the classic-era engine's mp3 decoder is flaky -- every mp3
+-- take stopped mid-word in game, even untouched ones. Ogg vorbis is what
+-- addon sounds universally ship as and decodes reliably on every client.
+local VOICE = { arrows  = MEDIA .. "voice_noarrows.ogg",
+                bullets = MEDIA .. "voice_noammo.ogg",
+                low     = MEDIA .. "voice_lowammo.ogg" }
 
 -- tier 0 = silent; higher = less ammo = warned more often and for longer.
 local PERIOD = { [1] = 90, [2] = 45, [3] = 15, [4] = 10 }
@@ -200,8 +204,10 @@ local function Tick()
     end
     label:SetTextColor(c[1], c[2], c[3])
     frame:SetShown(true)
-    -- Sound policy: sting ONLY on a worsening (first entry or escalation);
-    -- the empty tier speaks, but at most once per VOICE_COOLDOWN.
+    -- Sound policy: the voice speaks the situation -- "Low ammo!" on a
+    -- worsening (first entry or escalation), "No arrows!"/"No ammo!" when
+    -- empty, at most once per VOICE_COOLDOWN so it never nags. The sting is
+    -- only the fallback when a clip is missing.
     if db.sound then
       if tier == 4 then
         if now >= lastVoice + VOICE_COOLDOWN then
@@ -209,7 +215,7 @@ local function Tick()
           if not VoiceSound(kind) then WarnSound() end
         end
       elseif tier > lastTier then
-        WarnSound()
+        if not VoiceSound("low") then WarnSound() end
       end
     end
   end

@@ -303,8 +303,9 @@ HKTest.state.now = 2000
 ammoTicker:Tick()
 check("warns when low", HK.AmmoWarn.IsShown(), tostring(HK.AmmoWarn.IsShown()))
 check("warning sound played", #HKTest.soundsPlayed > 0, tostring(#HKTest.soundsPlayed))
-check("sting is the distinct one, not RaidWarning",
-  HKTest.soundsPlayed[#HKTest.soundsPlayed] == "Sound\\Interface\\igQuestFailed.ogg",
+check("low tiers speak the situation: bundled 'low ammo' voice clip",
+  HKTest.soundsPlayed[#HKTest.soundsPlayed] ==
+    "Interface\\AddOns\\HunterKit\\Media\\voice_lowammo.ogg",
   tostring(HKTest.soundsPlayed[#HKTest.soundsPlayed]))
 local s1 = #HKTest.soundsPlayed
 HKTest.state.now = 2010
@@ -328,7 +329,7 @@ check("empty ammo is the most persistent tier", HK.AmmoWarn.IsShown(),
   tostring(HK.AmmoWarn.IsShown()))
 check("empty tier speaks: bundled voice clip for the equipped ammo",
   HKTest.soundsPlayed[#HKTest.soundsPlayed] ==
-    "Interface\\AddOns\\HunterKit\\Media\\voice_noarrows.mp3",
+    "Interface\\AddOns\\HunterKit\\Media\\voice_noarrows.ogg",
   tostring(HKTest.soundsPlayed[#HKTest.soundsPlayed]))
 local v1 = #HKTest.soundsPlayed
 HKTest.state.now = 4011
