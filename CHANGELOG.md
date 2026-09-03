@@ -3,6 +3,20 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.11] - 2026-09-03
+
+### Fixed
+- **Voice clips (fourth take) finally match the dwarfy audition.** The
+  generator only holds the voice's character in long-form text, so the clips
+  are now produced the same way the audition is: the picked voice reads the
+  full dwarfy line ("No arrows, lad! The quiver's empty! Back to the vendor
+  we go..."), and the first two sentences are cut out at the detected silence
+  boundaries (ffmpeg `silencedetect`) with a 50 ms fade. In game you hear
+  only the short warning — rendered in the long-form voice the user approved.
+  `voice_noarrows.mp3` 2.3 s, `voice_noammo.mp3` 2.5 s, 48 kbps mono.
+
+---
+
 ## [0.9.10] - 2026-09-03
 
 ### Fixed
