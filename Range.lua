@@ -230,7 +230,7 @@ local STYLES = {
     halo    = art("mark-far-halo.tga"),
     sides   = art("mark-far-sides.tga"),
     slashes = art("mark-far-slashes.tga"),
-    broken  = art("mark-far-broken.tga"),
+    ban     = art("mark-far-ban.tga"),
   },
 }
 
@@ -238,7 +238,7 @@ local STYLES = {
 local STYLE_ORDER = {
   OK   = { "plus", "crosshair", "reticle", "chevrons", "diamond", "ticks" },
   DEAD = { "cross", "x", "hexx", "block", "bars", "burst" },
-  FAR  = { "broken", "rings", "dashed", "halo", "sides", "slashes" },
+  FAR  = { "ban", "rings", "dashed", "halo", "sides", "slashes" },
 }
 
 -- Texture pool: primitives are created once and reused, so switching style

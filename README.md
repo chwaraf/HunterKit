@@ -7,7 +7,7 @@ For **WoW Classic Era & Hardcore** (patch 1.15.x).
 A self-contained, dependency-free (no Ace3/LibDBIcon) addon built for the
 hardcore-first hunter. Every action is a deliberate click; nothing is automated.
 
-Current version: **0.9.0** — see [`CHANGELOG.md`](CHANGELOG.md).
+Current version: **0.9.1** — see [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Features
 
@@ -29,12 +29,12 @@ It reflects state only — it never fires, targets or casts.
 |---|---|---|
 | **IN RANGE** (Auto Shot ready) | green | open and angular — the shot is available |
 | **TOO CLOSE** (inside the deadzone) | red | closed and heavy — back up |
-| **OUT OF RANGE** | grey | broken and hollow — no shot |
+| **OUT OF RANGE** | grey | a prohibition sign — no shot |
 
 Each state has **six shapes of its own**, and each one is a real piece of art, not
 a recolour of a single icon. The defaults are the **bold outlined cross family** —
-the TOO CLOSE cross you liked, plus a matching IN RANGE plus and a matching broken
-OUT OF RANGE cross, generated against the cross itself so the line work matches.
+the TOO CLOSE cross you liked, plus a matching circled IN RANGE plus and a matching
+prohibition-sign OUT OF RANGE, generated against the cross itself so the line work matches.
 The restored classic crosshair / X / ring marks and the sci-fi set remain one click
 away. All marks ship as white-on-alpha `.tga` so the state colour tints them:
 
@@ -42,7 +42,7 @@ away. All marks ship as white-on-alpha `.tga` so the state colour tints them:
 |---|---|
 | IN RANGE | **`plus`** · `crosshair` · `reticle` · `chevrons` · `diamond` · `ticks` |
 | TOO CLOSE | **`cross`** · `x` · `hexx` · `block` · `bars` · `burst` |
-| OUT OF RANGE | **`broken`** · `rings` · `dashed` · `halo` · `sides` · `slashes` |
+| OUT OF RANGE | **`ban`** · `rings` · `dashed` · `halo` · `sides` · `slashes` |
 
 The new art is generated on a black field and luminance-keyed to alpha by
 `tools/build_mark_art.py` (black → transparent, mark → white), cropped, squared and
@@ -96,23 +96,13 @@ over-the-head anchoring.
 CVar API offers is *friendly pets / minions* — enabling it publishes plates for
 **other players' pets and minions too**. There is nothing narrower to choose.
 
-Tick **Force pet name plate** (opt-in, off by default). HunterKit then walks a
-ladder of nameplate CVars from the least invasive up —
-`nameplateShowFriendlyPets` → `nameplateShowFriendlyMinions` →
-`nameplateShowFriends` → `nameplateShowAll` — skipping any the client doesn't
-have, and **stops at the first rung that actually produces a pet plate**. (On
-Classic Era the friendly + minions pair is what publishes one.) It waits ~1s
-between rungs so the client can react, and never touches CVars during combat
-(the client locks them). Your previous values are stored in SavedVariables and
-**restored when you untick the option or log out**, so nothing is written to
-your config permanently. `/htk mend` marks every CVar it changed with a `*` and
-shows the value it replaced.
-
-**If it can't help, it says so and undoes itself.** Once every rung is on and
-your client still publishes no pet plate after a few seconds, the option
-switches itself off, restores your CVars and prints one line telling you head
-anchoring isn't available there — instead of quietly holding your nameplate
-settings for nothing.
+Earlier builds shipped an opt-in **Force pet name plate** CVar ladder here.
+Real-world testing showed clients that publish **no** pet plate even with every
+nameplate CVar turned on — there the option only held the player's nameplate
+settings hostage, so it was **removed in 0.9.1**. Head anchoring now happens only
+when the client itself publishes a pet plate; otherwise the marker uses the
+pet-frame fallback. Any CVar an older build changed is still restored on
+load/logout, and `/htk mend` marks those with a `*`.
 
 **3. Otherwise fall back to the pet unit frame — and look like a plate anyway.**
 The fallback draws a nameplate-style widget under the icon (pet name + a
@@ -211,9 +201,9 @@ than described here, that output says exactly why.
 read the `anchor would be:` line. `plate` = it's over the pet's head. `petframe` =
 the client publishes no position for your pet, so it's on the UI fallback. With no
 pet plate of any kind — no screen-position API either — that's all there is: use
-`/htk unlock` and drag it where you want it. **Force pet name plate** makes head
-anchoring work with your own nameplates off and restores them afterwards; note it
-is *not* pet-only (see above), and there is no pet-only setting to ask for.
+`/htk unlock` and drag it where you want it. (An opt-in CVar ladder that tried to
+force a pet plate into existence was removed in 0.9.1 — on such clients it could
+never work.)
 
 > Earlier versions of this README said the friendly-plate CVars were "gone" on
 > 1.15.9. That was a bad measurement, not a client fact: the diagnostic listed
@@ -260,10 +250,10 @@ ship copyrighted recordings.
 ## Compatibility
 
 - **Edit Mode (1.15.9)** — supported via the `UIParent` anchor option.
-- **Nameplate addons / nameplates off** — the mend marker still works: tick
-  **Force pet name plate** for head anchoring, or let it use the nameplate-style
-  fallback widget. A nameplate addon that replaces Blizzard's plates is fine too —
-  the marker anchors to the plate frame, it doesn't restyle it.
+- **Nameplate addons / nameplates off** — the mend marker still works: it anchors
+  over the head when the client publishes a pet plate, otherwise it uses the
+  nameplate-style fallback widget. A nameplate addon that replaces Blizzard's
+  plates is fine too — the marker anchors to the plate frame, it doesn't restyle it.
 - **MuteSoundFile (`/msf`) addon** — both manage mutes; last writer wins per ID. If
   you use `/msf`, remove overlapping gunshot IDs from one of the two.
 - **Unit-frame addons** — set Feed/Mark parent to `UIParent`.

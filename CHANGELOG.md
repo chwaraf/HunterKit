@@ -3,6 +3,35 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.1] - 2026-09-03
+### Changed (Sniper Mark)
+- **IN RANGE `plus` gained its circles** — redrawn as the bold plus with a centre
+  dot inside two concentric rings, same outlined style as the TOO CLOSE cross.
+- **OUT OF RANGE default is now `ban`** — a prohibition sign (circle + diagonal
+  bar) in the same family style, because the broken-cross read too much like its
+  siblings. Clearly distinct silhouette; `broken` retired (saved `broken` values
+  fall forward to `ban` via the v14 migration).
+
+### Fixed
+- **`/htk lock` / `/htk unlock` crashed with "Can't measure restricted regions".**
+  The geometry helper's fallback called `GetLeft()` unguarded, which hard-errors
+  for frames anchored into restricted regions (name plates). Every measurement in
+  `HK.AbsRect` is now pcall-guarded, so locking/unlocking can never blow up on a
+  restricted frame again.
+
+### Removed
+- **"Force pet name plate" is gone**, answering the open question with yes: the
+  self-disable diagnostic proved the client publishes no pet plate even with
+  every nameplate CVar on, so the option could never enable head anchoring and
+  only held the player's nameplate settings hostage. The checkbox, the CVar
+  ladder and the self-disable logic are removed (db v14). Any CVar an older build
+  changed is still restored on load/logout, and `/htk mend` keeps its honest
+  capability report pointing at the draggable fallback.
+
+### Added (tests)
+- Removal + leftover-restore checks (blocked SetCVar retry, restore-once path),
+  lock-safety expectations; suite now 115 + 54 + 36 + 40 = 245, all passing.
+
 ## [0.9.0] - 2026-09-02
 ### Changed (Sniper Mark — the bold cross family)
 - **The mark you liked is now the house style.** The thick outlined TOO CLOSE

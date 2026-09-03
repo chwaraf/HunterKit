@@ -22,7 +22,6 @@ MEDIA = os.path.join(ROOT, "Media")
 # (source png in art/, output tga in Media/)
 MAP = [
     ("ok-reticle.png", "mark-ok-reticle.tga"),
-    ("ok-aperture.png", "mark-ok-aperture.tga"),
     ("ok-chevrons.png", "mark-ok-chevrons.tga"),
     ("ok-diamond.png", "mark-ok-diamond.tga"),
     ("ok-ticks.png", "mark-ok-ticks.tga"),
@@ -37,7 +36,7 @@ MAP = [
     ("far-slashes.png", "mark-far-slashes.tga"),
     ("far-halo.png", "mark-far-halo.tga"),
     ("ok-plus.png", "mark-ok-plus.tga"),
-    ("far-broken.png", "mark-far-broken.tga"),
+    ("far-ban.png", "mark-far-ban.tga"),
 ]
 
 SIZE = 256

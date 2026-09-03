@@ -533,10 +533,6 @@ function BuildWindow()
     function(v) db.mend.anchor = v; RefreshMend() end,
     "auto = over the head when a pet plate exists, else above the pet frame. plate = head only. petframe = UI frame only.")
   y = y - ROW
-  MakeCheckbox(content, y, "Force pet name plate", function() return db.mend.forcePlate end,
-    function(v) db.mend.forcePlate = v; RefreshMend() end,
-    "No pet-only setting exists: the finest the client offers is friendly + minions, which also shows other players' pets. Ticking it turns the least it can on and restores your values on untick or logout. /htk mend reports what your client allows.")
-  y = y - CHK
   MakeCheckbox(content, y, "Nameplate style bar", function() return db.mend.plateStyle end,
     function(v) db.mend.plateStyle = v; RefreshMend() end,
     "Pet name + HP bar under the icon, only when no real plate is there.")

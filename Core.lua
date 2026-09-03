@@ -6,7 +6,7 @@
 
 local ADDON_NAME, HK = ...
 
-HK.version = "0.9.0"
+HK.version = "0.9.1"
 
 -- ---------------------------------------------------------------------------
 -- Defaults (schema). This is the source of truth for the options window and
@@ -14,7 +14,7 @@ HK.version = "0.9.0"
 -- ---------------------------------------------------------------------------
 HK.defaults = {
   enabled   = true,
-  dbVersion = 13,
+  dbVersion = 14,
   firstRun  = true,
 
   ui = {
@@ -45,7 +45,7 @@ HK.defaults = {
     showLabel    = false,
     markOK       = "plus",         -- mark style for IN RANGE (bold cross family)
     markDead     = "cross",        -- mark style for TOO CLOSE (the loved cross)
-    markFar      = "broken",       -- mark style for OUT OF RANGE
+    markFar      = "ban",          -- mark style for OUT OF RANGE
   },
 
   sound = {
@@ -104,8 +104,7 @@ HK.defaults = {
     -- plate and the marker can anchor over the pet's head with the player's own
     -- nameplate settings left alone. Previous values are stored here and restored
     -- on disable/logout, so nothing is written to the config permanently.
-    forcePlate  = false,
-    plateCVars  = {},      -- name -> value before HunterKit changed it
+    plateCVars  = {},      -- leftover CVar values older builds changed; restored
   },
 }
 HK.DBNAME = "HunterKitDB"
@@ -177,17 +176,25 @@ end
 -- are also Y-up (positive = up). So the X/Y here are directly compatible with
 -- SetPoint offsets — no sign flip is needed.
 function HK.AbsRect(f)
-  local ok, l, b, w, h = pcall(function() return f:GetRect() end)
-  if not ok then
-    l = f:GetLeft() or 0; b = f:GetBottom() or 0
-    w = f:GetWidth() or 0; h = f:GetHeight() or 0
+  -- Every measurement is pcall-guarded: a frame anchored into a restricted
+  -- region (e.g. a name plate) makes GetRect/GetLeft HARD-error with "Can't
+  -- measure restricted regions", which used to blow up lock/unlock mid-toggle.
+  local ok, l, b, w, h = pcall(f.GetRect, f)
+  if not ok or l == nil then
+    l, b, w, h = 0, 0, 0, 0
+    local v
+    ok, v = pcall(f.GetLeft, f);   if ok and v then l = v end
+    ok, v = pcall(f.GetBottom, f); if ok and v then b = v end
+    ok, v = pcall(f.GetWidth, f);  if ok and v then w = v end
+    ok, v = pcall(f.GetHeight, f); if ok and v then h = v end
   end
   local p = f:GetParent()
   while p and p ~= UIParent and p.GetLeft do
-    local pl = p:GetLeft()
-    if not pl then break end
+    local okp, pl = pcall(p.GetLeft, p)
+    if not okp or not pl then break end
+    local okb, pb = pcall(p.GetBottom, p)
     l = l + pl
-    b = b + (p:GetBottom() or 0)
+    b = b + ((okb and pb) or 0)
     p = p:GetParent()
   end
   return l, b, w, h
@@ -378,8 +385,8 @@ function HK.ResetAll()
   HK.db.dbVersion = HK.dbVersion
 
   -- Re-apply everywhere. RescanSettings re-reads the db slice and rebuilds what
-  -- the setting controls; the mend marker also puts any forced nameplate CVar
-  -- back, because forcePlate is a default-off setting.
+  -- the setting controls; the mend marker also puts any leftover forced
+  -- nameplate CVar back.
   for _, name in ipairs({ "FeedPet", "Range", "Sounds", "PassivePulse", "MendMark" }) do
     local m = HK[name]
     if m and m.RescanSettings then pcall(m.RescanSettings) end
@@ -649,6 +656,17 @@ local function LoadDB()
       if db.range.markFar  == "rings"     then db.range.markFar  = "broken" end
     end
     db.dbVersion = 13
+  end
+
+  -- v13 -> v14: "Force pet name plate" was removed (0.9.1) — on clients that
+  -- publish no pet plate even with every nameplate CVar on it could never work,
+  -- and it held the player's nameplate settings hostage. Leftover CVars an older
+  -- build changed are still restored by MendMark on load/logout. The OUT OF
+  -- RANGE default also moves from the broken-cross to the clearer ban sign.
+  if db.dbVersion < 14 then
+    if db.range and db.range.markFar == "broken" then db.range.markFar = "ban" end
+    if db.mend then db.mend.forcePlate = nil end
+    db.dbVersion = 14
   end
 
   db.dbVersion = HK.defaults.dbVersion
