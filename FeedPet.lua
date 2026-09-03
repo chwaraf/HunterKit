@@ -13,6 +13,7 @@ HK.FeedPet = FeedPet
 local db
 local button, iconTex, countText, border
 local pending = false           -- attribute refresh deferred (combat)
+local bagsDirty = true          -- food rescan needed (CPU: scan only on real changes)
 local initialised = false
 -- forward declarations (referenced before their bodies are defined in this chunk)
 local ApplyVisibility, UpdateState, RefreshEverything, OnBagUpdate
@@ -22,6 +23,12 @@ local dietsReady = false
 
 local HAPPINESS_COLOR = { [3] = {0.2,1,0.2}, [2] = {1,0.8,0}, [1] = {1,0.2,0.2} }
 local QUESTION_ICON = 134400
+-- Feed Pet's real icon file (spell 6991) is ability_hunter_beasttraining --
+-- NOT "Ability_Hunter_FeedPet", which does not exist: that path rendered
+-- NOTHING, leaving the button's semi-transparent background plate with just
+-- the count on it. Resolved from the spell itself below; this is only the
+-- last-resort constant.
+local FEED_PET_ICON = "Interface\\Icons\\ability_hunter_beasttraining"
 local DIET_KEYWORDS = { "meat", "fish", "fruit", "fungus", "bread", "cheese" }
 
 local scanTip
@@ -46,6 +53,23 @@ local function FeedPetSpellName()
     feedPetSpellName = "Feed Pet"
   end
   return feedPetSpellName
+end
+
+-- The Feed Pet spell's icon, resolved through the spell API (fileID on modern
+-- clients, texture path on classic) so it can never depend on a guessed file
+-- name. Memoised -- the spell's icon never changes within a session.
+local feedPetSpellTexture
+local function FeedPetSpellTexture()
+  if feedPetSpellTexture then return feedPetSpellTexture end
+  if C_Spell and C_Spell.GetSpellTexture then
+    local ok, tex = pcall(C_Spell.GetSpellTexture, FEED_PET_SPELL_ID)
+    if ok and tex then feedPetSpellTexture = tex end
+  end
+  if not feedPetSpellTexture and GetSpellTexture then
+    local ok, tex = pcall(GetSpellTexture, FEED_PET_SPELL_ID)
+    if ok and tex then feedPetSpellTexture = tex end
+  end
+  return feedPetSpellTexture or FEED_PET_ICON
 end
 
 -- The frame the feed button anchors to. For the pet-frame parent we prefer the
@@ -84,18 +108,25 @@ function FeedPet.Init()
   BuildButton()
 
   HK.On("UNIT_PET", function(u)
-    if u == "pet" then ResetDiets() end
+    if u == "pet" then ResetDiets(); bagsDirty = true end
     RefreshEverything()
   end)
   HK.On("PET_BAR_UPDATE", function()
     ResetDiets()
+    bagsDirty = true
     RefreshEverything()
   end)
   HK.On("UNIT_HAPPINESS", function(u) if u == "pet" then RefreshEverything() end end)
   HK.On("UNIT_HEALTH", function(u) if u == "pet" then RefreshEverything() end end)
-  HK.On("PLAYER_ENTERING_WORLD", RefreshEverything)
+  HK.On("PLAYER_ENTERING_WORLD", function() bagsDirty = true; RefreshEverything() end)
+  HK.On("PLAYER_REGEN_DISABLED", RefreshEverything)   -- kill the highlight on combat start
   HK.On("PLAYER_REGEN_ENABLED", function()
     if pending then pending = false end
+    bagsDirty = true
+    if button and not InCombatLockdown() then
+      button:SetSize(db.size, db.size)   -- deferred secure resize
+      FeedPet.ApplyPosition()
+    end
     RefreshEverything()            -- re-applies show/hide + macro now that we're safe
   end)
   HK.On("BAG_UPDATE_DELAYED", OnBagUpdate)
@@ -141,12 +172,23 @@ function BuildButton()
   iconTex:SetTexture(QUESTION_ICON)
   iconTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
 
+  -- Border BEFORE the font work below: if anything after this point ever
+  -- fails on a live client, the highlight must still exist (it died once
+  -- somewhere after the fontstring, leaving the button permanently dull).
+  border = HK.CreateBorder(button, 2)
+
   countText = button:CreateFontString(nil, "OVERLAY")
   countText:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -1, 1)
-  countText:SetFontObject(GameFontDisableSmall)
+  -- Blizzard's item-count look WITHOUT depending on a font-object name that may
+  -- not exist on every client (NumberFontNormalSmallOutline is NOT defined on
+  -- all classic builds -- passing the nil global here broke the rest of
+  -- BuildButton and left the button on the "?" icon). Set the font file +
+  -- OUTLINE directly, the same recipe the default action-button counts use,
+  -- and fall back to a font object that certainly exists.
+  if not countText:SetFont("Fonts\\ARIALN.TTF", 11, "OUTLINE") then
+    countText:SetFontObject(GameFontHighlightSmall)
+  end
   countText:SetJustifyH("RIGHT")
-
-  border = HK.CreateBorder(button, 1)
 
   -- hover tooltip: shows what the click will feed so the player knows the action
   button:SetScript("OnEnter", function()
@@ -301,13 +343,19 @@ end
 function FeedPet.RescanSettings()
   db = HK.db.feed
   if not button then return end
-  button:SetSize(db.size, db.size)
-  FeedPet.ApplyPosition()
+  -- SECURE button: SetSize/SetPoint are protected actions in combat and throw
+  -- ADDON_ACTION_BLOCKED; defer both to PLAYER_REGEN_ENABLED.
+  if not InCombatLockdown() then
+    button:SetSize(db.size, db.size)
+    FeedPet.ApplyPosition()
+  end
   -- Apply visibility on toggle: unchecking "Enable feed button" must hide it.
   UpdateState()
   -- RefreshMacro is a FeedPet method (not a local), so call it on the table.
   FeedPet:RefreshMacro()
 end
+
+function FeedPet.ButtonSize() return button and button:GetWidth() or nil end
 
 -- ---------------------------------------------------------------------------
 -- Diet detection
@@ -432,6 +480,7 @@ end
 function FeedPet:PickFood()
   local petLevel = UnitLevel("pet") or UnitLevel("player")
   local best
+  local totals = {}   -- per-item stack totals, for the icon's count readout
   for bag = 0, 4 do
     for slot = 1, HK.GetBagNumSlots(bag) do
       local itemID = HK.GetBagItemID(bag, slot)
@@ -442,6 +491,7 @@ function FeedPet:PickFood()
           local tier = TierFor(petLevel, iLevel)
           local ft = self:FoodType(itemID)
           count = count or 1
+          totals[itemID] = (totals[itemID] or 0) + count
           if not best or tier > best.tier
              or (tier == best.tier and count < best.count) then
             best = { bag = bag, slot = slot, itemID = itemID, name = name,
@@ -451,12 +501,25 @@ function FeedPet:PickFood()
       end
     end
   end
+  self.foodTotals = totals   -- every stack per food, for the icon count
   -- pinned food override
   for _, pin in ipairs(db.preferredFoods) do
     local hit = self:FindBestStackByID(pin.id, petLevel)
     if hit then return hit end
   end
   return best
+end
+
+-- The button's item-count readout: how much of the PICKED food the bags hold
+-- (all its stacks, not just the one the click will feed).
+function FeedPet.SetCount(n)
+  if not countText then return end
+  countText:SetText(tostring(n))
+  if n > 0 then
+    countText:SetTextColor(1, 0.82, 0, 1)
+  else
+    countText:SetTextColor(1, 0.2, 0.2, 1)
+  end
 end
 
 -- ---------------------------------------------------------------------------
@@ -481,20 +544,21 @@ function FeedPet:RefreshMacro()
     button:SetAttribute("target-item", ("%d %d"):format(food.bag, food.slot))
     button:SetAttribute("target-bag", food.bag)
     button:SetAttribute("target-slot", food.slot)
-    local icon = food.icon or QUESTION_ICON
+    local icon = (db.useSpellIcon and FeedPetSpellTexture()) or food.icon or QUESTION_ICON
     iconTex:SetTexture(icon)
     iconTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-    countText:SetText(food.count > 1 and food.count or "")
+    FeedPet.SetCount((self.foodTotals and self.foodTotals[food.itemID]) or food.count or 0)
   else
     -- no food in bags: fall back to the game's own Feed Pet (picks a food itself)
     button:ClearAttribute("target-item")
     button:ClearAttribute("target-bag")
     button:ClearAttribute("target-slot")
-    iconTex:SetTexture(QUESTION_ICON)
+    iconTex:SetTexture(db.useSpellIcon and FeedPetSpellTexture() or QUESTION_ICON)
     iconTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-    countText:SetText("")
+    FeedPet.SetCount(0)
   end
   self.lastFood = food
+  bagsDirty = false
 end
 
 UpdateState = function()
@@ -506,7 +570,7 @@ UpdateState = function()
     if not InCombatLockdown() then button:SetShown(true) end
     return
   end
-  local show = db.enabled and UnitExists("pet") and not UnitIsDead("pet")
+  local show = HK.db.enabled ~= false and db.enabled and UnitExists("pet") and not UnitIsDead("pet")
   -- "Show only when hungry": hide the feed button once the pet is content/full
   -- (happiness >= 3), so it's only visible when there's actually something to feed.
   if show and db.hungryOnly then
@@ -514,16 +578,42 @@ UpdateState = function()
     if h and h >= 3 then show = false end
   end
   ApplyVisibility(show)
-  if show then
-    local h = GetPetHappiness()
-    local c = HAPPINESS_COLOR[h] or {1, 1, 1}
-    border:SetVertexColor(c[1], c[2], c[3], 1)
-  end
+  -- Icon + count refresh FIRST: whatever happens with the highlight below must
+  -- never stop the button from showing the picked food and its amount.
+  -- CPU: the full bag scan (PickFood) runs ONLY when something real changed
+  -- (bags, pet, login, combat end, options) -- NOT on every UNIT_HEALTH tick,
+  -- which fired the whole scan per damage event in combat before.
   if not InCombatLockdown() then
-    if pending then pending = false end
-    FeedPet:RefreshMacro()
+    if pending or bagsDirty then
+      pending = false
+      FeedPet:RefreshMacro()
+    end
   else
     pending = true
+  end
+  -- Highlight rule (user): ON only when the pet is BELOW happy (content or
+  -- unhappy) AND we are out of combat. Feeding is impossible in combat and a
+  -- happy pet needs no attention, so glowing in those cases is just noise.
+  -- The icon itself tints too: a 1-2px border alone proved too easy to miss
+  -- (and the icon can never be nil, unlike anything created later).
+  local h = GetPetHappiness()
+  if h and h < 3 and not InCombatLockdown() then
+    -- NEEDS FOOD: the icon lights up -- full brightness, full colour, plus
+    -- the happiness-coloured border.
+    local c = HAPPINESS_COLOR[h] or {1, 1, 1}
+    if border then border:SetVertexColor(c[1], c[2], c[3], 1) end
+    if iconTex then
+      if iconTex.SetDesaturated then pcall(iconTex.SetDesaturated, iconTex, false) end
+      iconTex:SetVertexColor(1, 1, 1, 1)
+    end
+  else
+    -- Happy or in combat: the icon recedes -- desaturated + dimmed (uniform
+    -- on any artwork, since the tint rides on greyscale), border hidden.
+    if border then border:SetVertexColor(0, 0, 0, 0) end
+    if iconTex then
+      if iconTex.SetDesaturated then pcall(iconTex.SetDesaturated, iconTex, true) end
+      iconTex:SetVertexColor(0.6, 0.6, 0.6, 1)
+    end
   end
 end
 
@@ -538,7 +628,7 @@ end
 
 RefreshEverything = function()
   if not initialised then return end
-  if not HK.db.feed.enabled then
+  if HK.db.enabled == false or not HK.db.feed.enabled then
     ApplyVisibility(false)
     return
   end
@@ -547,12 +637,14 @@ RefreshEverything = function()
 end
 
 function FeedPet.Refresh()
+  bagsDirty = true      -- manual/options refresh: force the food rescan
   RefreshEverything()
 end
 
 OnBagUpdate = function()
-  -- bags changed; invalidate caches and rescan
-  FeedPet:RefreshMacro()
+  -- bags changed; that (and only that) triggers the full food rescan
+  bagsDirty = true
+  RefreshEverything()
 end
 
 -- ---------------------------------------------------------------------------

@@ -100,6 +100,7 @@ function Frame:SetBackdrop() end
 function Frame:SetBackdropColor() end
 function Frame:SetBackdropBorderColor() end
 function Frame:SetTexture(t) self.texture = t; self:Record("SetTexture", t) end
+function Frame:SetDesaturated(d) self.desaturated = d end
 function Frame:SetTexCoord(...) self:Record("SetTexCoord", ...) end
 function Frame:SetBlendMode(m) self.blend = m end
 function Frame:SetVertexColor(r, g, b, a)
@@ -275,12 +276,51 @@ function UnitCanAttack(a, b)
   if b == "target" then return HKTest.state.targetAttackable ~= false end
   return false
 end
-function GetInventoryItemID() return nil end
-function GetItemInfo() return nil end
-function GetContainerNumSlots() return 0 end
+function GetInventorySlotInfo(n) return n == "AmmoSlot" and 100 or nil end
+function GetInventorySlotLink(unit, slot)
+  if slot == 100 then return HKTest.state.ammoLink end
+  return nil
+end
+function GetInventoryItemID(unit, slot)
+  if slot == 100 then return HKTest.state.ammoID or nil end
+  return nil
+end
+function GetInventoryItemCount(unit, slot)
+  if slot == 100 then return HKTest.state.ammoEquipped or 0 end
+  return 0
+end
+function GetItemCount(id) return (HKTest.state.items or {})[id] or 0 end
+function GetItemInfo(id)
+  local it = (HKTest.state.itemInfo or {})[id]
+  if not it then return nil end
+  return it.name, nil, it.quality or 1, it.iLevel or 1, nil, nil,
+         it.subclass, nil, nil, it.texture
+end
+function GetContainerNumSlots(bag) return (HKTest.state.bags or {})[bag] or 0 end
 function GetContainerItemLink() return nil end
-function GetContainerItemInfo() return nil end
-function GetContainerItemID() return nil end
+function GetContainerItemInfo(bag, slot)
+  local it = ((HKTest.state.bagItems or {})[bag] or {})[slot]
+  if not it then return nil end
+  return nil, it.count or 1, nil, nil, nil, nil, it.link, nil, nil, it.id
+end
+
+-- The MODERN container API, shaped exactly like the live client's struct
+-- (stackCount / itemID / hyperlink -- NOT itemCount). Core prefers this path
+-- when C_Container exists, so tests must run the SAME code path as 1.15.x;
+-- without it the itemCount/stackCount field-name bug was invisible here.
+C_Container = {
+  GetContainerNumSlots = function(bag) return (HKTest.state.bags or {})[bag] or 0 end,
+  GetContainerItemInfo = function(bag, slot)
+    local it = ((HKTest.state.bagItems or {})[bag] or {})[slot]
+    if not it then return nil end
+    return { stackCount = it.count or 1, itemID = it.id, hyperlink = it.link }
+  end,
+  UseContainerItem = function() end,
+}
+function GetContainerItemID(bag, slot)
+  local it = ((HKTest.state.bagItems or {})[bag] or {})[slot]
+  return it and it.id or nil
+end
 function UseContainerItem() end
 function GetCursorPosition() return HKTest.cursorX or 0, HKTest.cursorY or 0 end
 function PlaySoundFile(f) HKTest.soundsPlayed[#HKTest.soundsPlayed + 1] = f end
@@ -314,7 +354,11 @@ function GetSpellTexture(id)
   if id == 136 then return HKTest.state.spellTexture end
   return nil
 end
-function GetPetHappiness() return 3, 100, 0 end
+function GetPetHappiness() return HKTest.state.happiness or 3, 100, 0 end
+function GetSpellTexture(id)
+  if id == 6991 then return "Interface\\Icons\\ability_hunter_beasttraining" end
+  return nil
+end
 function UnitName(u) return (u == "pet") and "Fang" or "Testhunter" end
 function UnitPosition(u)
   if u ~= "pet" then return 100, 200, 0, 1 end

@@ -90,12 +90,13 @@ check("TOO CLOSE uses the chosen shape", HK.Range.CurrentStyle() == "burst",
 SetState("FAR")
 HK.db.range.markFar = "slashes"
 HK.Range.RescanSettings()
+HK.Range.Update() -- entering FAR needs a second agreeing tick (debounce)
 check("OUT OF RANGE uses the chosen shape", HK.Range.CurrentStyle() == "slashes",
   tostring(HK.Range.CurrentStyle()))
 
 HK.db.range.markFar = "not-a-shape"
 HK.Range.RescanSettings()
-check("an unknown saved shape falls back", HK.Range.CurrentStyle() == "rings",
+check("an unknown saved shape falls back", HK.Range.CurrentStyle() == "ban",
   tostring(HK.Range.CurrentStyle()))
 
 -- every style draws at its own size
@@ -104,6 +105,23 @@ HK.db.range.size = 96
 HK.Range.RescanSettings()
 local wide = HK.Range.VisibleShapes()
 check("a resized mark still draws", wide > 0, tostring(wide))
+
+-- Regression: a one-tick OUT OF RANGE misread must never flash on screen while
+-- crossing between TOO CLOSE and IN RANGE (the probes can lag the server's
+-- position for a single tick).
+HK.db.range.markOK = "crosshair"
+SetState("OK")
+HK.Range.Update()
+check("crosses into IN RANGE immediately", HK.Range.CurrentStyle() == "crosshair",
+  tostring(HK.Range.CurrentStyle()))
+SetState("FAR")
+HK.Range.Update() -- a lone misread tick
+check("a lone FAR tick does not flash", HK.Range.CurrentStyle() == "crosshair",
+  tostring(HK.Range.CurrentStyle()))
+SetState("OK")
+HK.Range.Update()
+check("still IN RANGE after the misread", HK.Range.CurrentStyle() == "crosshair",
+  tostring(HK.Range.CurrentStyle()))
 
 -- ---------------------------------------------------------------------------
 -- 2) Reset ALL settings
@@ -122,6 +140,7 @@ local rangeSlice = HK.db.range          -- identity the module already holds
 local mendSlice = HK.db.mend
 
 HK.ResetAll()
+HK.Range.Update() -- second tick confirms the FAR state after the reset
 
 check("sizes restored", HK.db.range.size == HK.defaults.range.size
   and HK.db.mend.size == HK.defaults.mend.size
@@ -135,7 +154,7 @@ check("saved positions restored", HK.db.range.moved == false
   tostring(HK.db.range.moved) .. "/" .. tostring(HK.db.range.offsetX))
 check("the db slices the modules hold survived",
   HK.db.range == rangeSlice and HK.db.mend == mendSlice)
-check("the sniper mark re-read the reset", HK.Range.CurrentStyle() == "rings",
+check("the sniper mark re-read the reset", HK.Range.CurrentStyle() == "ban",
   tostring(HK.Range.CurrentStyle()))
 
 -- ---------------------------------------------------------------------------
@@ -186,6 +205,401 @@ if resetBtn then
 end
 
 -- ---------------------------------------------------------------------------
+-- ---------------------------------------------------------------------------
+-- 3) The master switch hides every feature, not just the mend marker
+-- ---------------------------------------------------------------------------
+-- Regression: unchecking "Enable HunterKit" used to hide only the mend marker;
+-- the sniper mark, feed button and passive alert kept running because their
+-- modules only looked at their own per-feature toggle.
+HKTest.state.pet = true
+HK.db.enabled = true
+SetState("OK")
+HK.Range.RescanSettings()
+HK.FeedPet.RescanSettings()
+check("master on: mark shown", HK.Range.IsFrameValid(),
+  tostring(HK.Range.IsFrameValid()))
+check("master on: feed button shown", HK.FeedPet.IsButtonValid(),
+  tostring(HK.FeedPet.IsButtonValid()))
+
+HK.db.enabled = false
+HK.Range.RescanSettings()
+HK.FeedPet.RescanSettings()
+check("master off hides the mark", not HK.Range.IsFrameValid(),
+  tostring(HK.Range.IsFrameValid()))
+check("master off hides the feed button", not HK.FeedPet.IsButtonValid(),
+  tostring(HK.FeedPet.IsButtonValid()))
+
+HK.db.enabled = true
+HK.Range.RescanSettings()
+HK.FeedPet.RescanSettings()
+check("master on restores the mark", HK.Range.IsFrameValid(),
+  tostring(HK.Range.IsFrameValid()))
+
+-- ---------------------------------------------------------------------------
+-- 3b) Secure feed button: no SetSize/SetPoint while in combat
+-- ---------------------------------------------------------------------------
+-- Regression: ticking "Enable HunterKit" in combat threw ADDON_ACTION_BLOCKED on
+-- HunterKitFeedButton:SetSize(). The resize/anchor must defer to regen.
+local keepSize = HK.db.feed.size
+HK.db.feed.size = 40
+HKTest.state.combatLockdown = true
+HK.FeedPet.RescanSettings()
+check("no secure resize while in combat", HK.FeedPet.ButtonSize() ~= 40,
+  tostring(HK.FeedPet.ButtonSize()))
+HKTest.state.combatLockdown = false
+HKTest.Fire("PLAYER_REGEN_ENABLED")
+check("deferred resize applied after combat", HK.FeedPet.ButtonSize() == 40,
+  tostring(HK.FeedPet.ButtonSize()))
+HK.db.feed.size = keepSize
+HKTest.Fire("PLAYER_REGEN_ENABLED")
+
+-- ---------------------------------------------------------------------------
+-- 4) Per-state brightness sliders scale the drawn glow
+-- ---------------------------------------------------------------------------
+SetState("OK")
+HK.db.range.brightOK = 50
+HK.Range.RescanSettings()
+local r, g, b = HK.Range.DrawnColor()
+check("brightness slider dims the IN RANGE mark", math.abs(g - 0.5) <= 0.01,
+  tostring(g))
+HK.db.range.brightOK = 100
+HK.Range.RescanSettings()
+local r2, g2 = HK.Range.DrawnColor()
+check("brightness 100 restores full glow", math.abs(g2 - 1) <= 0.01, tostring(g2))
+
+-- ---------------------------------------------------------------------------
+-- 5) Brightness overdrive stacks a second additive pass
+-- ---------------------------------------------------------------------------
+SetState("OK")
+HK.db.range.brightOK = 150
+HK.Range.RescanSettings()
+local _, g = HK.Range.DrawnColor()
+check("overdrive clamps the base colour at full", math.abs(g - 1) <= 0.01, tostring(g))
+check("overdrive draws a second additive pass", HK.Range.VisibleShapes() == 2,
+  tostring(HK.Range.VisibleShapes()))
+HK.db.range.brightOK = 100
+HK.Range.RescanSettings()
+check("100% is a single pass", HK.Range.VisibleShapes() == 1,
+  tostring(HK.Range.VisibleShapes()))
+
+-- ---------------------------------------------------------------------------
+-- 6) Low ammo warning: periodic, more persistent as ammo drops, with sound
+-- ---------------------------------------------------------------------------
+local ammoTicker
+for _, t in ipairs(HKTest.tickers) do
+  if t.interval == 1 then ammoTicker = t end
+end
+check("ammo ticker running", ammoTicker ~= nil)
+check("voice warnings default off", HK.defaults.ammo.sound == false,
+  tostring(HK.defaults.ammo.sound))
+HK.db.ammo.sound = true   -- exercise the voice paths
+HKTest.state.ammoID = 2515
+HKTest.state.items = { [2515] = 800 }
+HKTest.state.itemInfo = { [2515] = { name = "Rough Arrow", subclass = 2,
+  texture = "Interface\\Icons\\INV_Ammo_Arrow_02" } }
+HKTest.state.now = 1000
+ammoTicker:Tick()
+check("no warning while stocked", not HK.AmmoWarn.IsShown(),
+  tostring(HK.AmmoWarn.IsShown()))
+HKTest.state.items[2515] = 60
+HKTest.state.now = 2000
+ammoTicker:Tick()
+check("warns when low", HK.AmmoWarn.IsShown(), tostring(HK.AmmoWarn.IsShown()))
+check("warning sound played", #HKTest.soundsPlayed > 0, tostring(#HKTest.soundsPlayed))
+check("low tiers speak: bundled 'low arrows' clip (arrows equipped)",
+  HKTest.soundsPlayed[#HKTest.soundsPlayed] ==
+    "Interface\\AddOns\\HunterKit\\Media\\voice_lowarrows.ogg",
+  tostring(HKTest.soundsPlayed[#HKTest.soundsPlayed]))
+local s1 = #HKTest.soundsPlayed
+HKTest.state.now = 2010
+ammoTicker:Tick()
+check("periodic: no re-warn inside the period", #HKTest.soundsPlayed == s1,
+  tostring(#HKTest.soundsPlayed))
+HKTest.state.now = 2100
+ammoTicker:Tick()
+check("re-warn after the period; the low voice repeats past its cooldown",
+  HK.AmmoWarn.IsShown() and #HKTest.soundsPlayed == s1 + 1,
+  tostring(HK.AmmoWarn.IsShown()) .. "/" .. tostring(#HKTest.soundsPlayed))
+HKTest.state.items[2515] = 10
+HKTest.state.now = 3000
+ammoTicker:Tick()
+check("escalation warns and speaks again", #HKTest.soundsPlayed == s1 + 2,
+  tostring(#HKTest.soundsPlayed))
+local s3 = #HKTest.soundsPlayed
+HKTest.state.now = 3016
+ammoTicker:Tick()
+check("low voice cooldown: re-warn without voice inside 60 s",
+  HK.AmmoWarn.IsShown() and #HKTest.soundsPlayed == s3,
+  tostring(HK.AmmoWarn.IsShown()) .. "/" .. tostring(#HKTest.soundsPlayed))
+HKTest.state.items[2515] = 0
+HKTest.state.now = 4000
+ammoTicker:Tick()
+check("empty ammo is the most persistent tier", HK.AmmoWarn.IsShown(),
+  tostring(HK.AmmoWarn.IsShown()))
+check("empty tier speaks: bundled voice clip for the equipped ammo",
+  HKTest.soundsPlayed[#HKTest.soundsPlayed] ==
+    "Interface\\AddOns\\HunterKit\\Media\\voice_noarrows.ogg",
+  tostring(HKTest.soundsPlayed[#HKTest.soundsPlayed]))
+local v1 = #HKTest.soundsPlayed
+HKTest.state.now = 4011
+ammoTicker:Tick()
+check("voice does not nag: silent re-warn inside the 30 s cooldown",
+  HK.AmmoWarn.IsShown() and #HKTest.soundsPlayed == v1,
+  tostring(HK.AmmoWarn.IsShown()) .. "/" .. tostring(#HKTest.soundsPlayed))
+HKTest.state.now = 4046
+ammoTicker:Tick()
+check("voice returns once the 45 s cooldown is over", #HKTest.soundsPlayed == v1 + 1,
+  tostring(#HKTest.soundsPlayed))
+-- frequency multiplier: 4x divides the warn periods (90 -> 22.5 s at tier 1)
+HK.db.ammo.sound = false
+HK.db.ammo.frequency = 4
+HKTest.state.items[2515] = 150
+HKTest.state.now = 5000
+ammoTicker:Tick()
+check("frequency x4 warns", HK.AmmoWarn.IsShown(), tostring(HK.AmmoWarn.IsShown()))
+HKTest.state.now = 5010
+ammoTicker:Tick()
+check("frequency x4: display window unchanged (4 s), so hidden again",
+  not HK.AmmoWarn.IsShown(), tostring(HK.AmmoWarn.IsShown()))
+HKTest.state.now = 5030
+ammoTicker:Tick()
+check("frequency x4: re-warns after ~22 s, not 90", HK.AmmoWarn.IsShown(),
+  tostring(HK.AmmoWarn.IsShown()))
+HK.db.ammo.frequency = 1
+local allVoice = true
+for _, s in ipairs(HKTest.soundsPlayed) do
+  if not s:find("Interface\\AddOns\\HunterKit\\Media\\", 1, true) then allVoice = false end
+end
+check("no game sounds ever played -- voice clips only", allVoice)
+local aw = _G["HunterKitAmmoWarn"]
+check("icon is the equipped ammo's own art",
+  aw.textures[1].texture == "Interface\\Icons\\INV_Ammo_Arrow_02",
+  tostring(aw.textures[1].texture))
+check("red X crosses the icon",
+  aw.textures[2].texture == "Interface\\Buttons\\UI-GroupLoot-Pass-Up",
+  tostring(aw.textures[2].texture))
+aw.scripts["OnUpdate"](aw, 0.25)
+check("warning icon pulses while shown", aw.scale ~= nil and aw.scale ~= 1,
+  tostring(aw.scale))
+-- ammo id fallback: if GetInventoryItemID comes back empty (client quirk),
+-- the slot link must still resolve the projectile -- else a half-full quiver
+-- is misread as tier 4 and the "No ammo!" voice fires while ammo is low.
+HKTest.state.ammoID = nil
+HKTest.state.ammoLink = "|cffffffff|Hitem:2515::::::::70:::::::::|h[Rough Arrow]|h|r"
+HKTest.state.items = { [2515] = 60 }
+HKTest.state.now = 6000
+ammoTicker:Tick()
+check("slot-link fallback resolves the ammo (no false 'no ammo')",
+  HK.AmmoWarn.IsShown() and aw.fontstrings[1]:GetText() == "AMMO: 60",
+  tostring(HK.AmmoWarn.IsShown()) .. "/" .. tostring(aw.fontstrings[1]:GetText()))
+HKTest.state.ammoLink = nil
+-- Fresh episode: the moment the threshold is reached, the warning AND the
+-- voice fire -- no period left over from the previous episode delays them.
+HK.db.ammo.sound = true
+HKTest.state.ammoID = 2515
+HKTest.state.items = { [2515] = 800 }
+HKTest.state.now = 7000
+ammoTicker:Tick()
+check("stocked: hidden again", not HK.AmmoWarn.IsShown(),
+  tostring(HK.AmmoWarn.IsShown()))
+local e1 = #HKTest.soundsPlayed
+HKTest.state.items[2515] = 190
+HKTest.state.now = 7001
+ammoTicker:Tick()
+check("threshold reached: warns and speaks that same tick",
+  HK.AmmoWarn.IsShown() and #HKTest.soundsPlayed == e1 + 1,
+  tostring(HK.AmmoWarn.IsShown()) .. "/" .. tostring(#HKTest.soundsPlayed))
+-- Fresh load: GetTime() counts from client start, so the first warning must
+-- not wait out a full period (the "no ammo warning when the addon first
+-- loads" bug).
+HK.db.ammo.sound = true
+HKTest.state.ammoID = 2515
+HKTest.state.items = { [2515] = 60 }
+HKTest.state.now = 3
+HK.AmmoWarn.Rearm()
+check("fresh load: warns immediately when already low", HK.AmmoWarn.IsShown(),
+  tostring(HK.AmmoWarn.IsShown()))
+check("fresh load: the low voice fires too",
+  HKTest.soundsPlayed[#HKTest.soundsPlayed] ==
+    "Interface\\AddOns\\HunterKit\\Media\\voice_lowarrows.ogg",
+  tostring(HKTest.soundsPlayed[#HKTest.soundsPlayed]))
+-- Cold item cache at login: an unresolved GetItemInfo must NOT be cached --
+-- once the cache warms, the same session has to recover the arrow art.
+HK.db.ammo.sound = false
+local savedInfo = HKTest.state.itemInfo[2515]
+HKTest.state.itemInfo[2515] = nil
+HKTest.state.now = 200
+ammoTicker:Tick()
+HKTest.state.itemInfo[2515] = savedInfo
+HKTest.state.now = 400
+ammoTicker:Tick()
+check("warmed item cache recovers the equipped ammo's icon",
+  aw.textures[1].texture == "Interface\\Icons\\INV_Ammo_Arrow_02",
+  tostring(aw.textures[1].texture))
+-- False-alarm guard (the reported bug): at login/reload the inventory is
+-- transiently unsynced -- BOTH slot reads return nil -- and the old code read
+-- that as "nothing equipped", shouting NO AMMO (and firing the voice) at a
+-- full quiver. A cold read must mean "unknown", never zero.
+HK.db.ammo.sound = true
+HKTest.state.ammoID = nil
+HKTest.state.ammoLink = nil
+HKTest.state.items = { [2515] = 600 }   -- plenty of ammo, client hasn't synced
+HKTest.state.now = 5
+local s1 = #HKTest.soundsPlayed
+HK.AmmoWarn.Rearm()
+check("cold login: no false NO AMMO warning", not HK.AmmoWarn.IsShown(),
+  tostring(HK.AmmoWarn.IsShown()))
+check("cold login: no false voice", #HKTest.soundsPlayed == s1,
+  tostring(#HKTest.soundsPlayed - s1))
+HKTest.state.now = 50000                 -- /reload: GetTime() already large
+HK.AmmoWarn.Rearm()
+check("cold reload: no false NO AMMO warning either", not HK.AmmoWarn.IsShown(),
+  tostring(HK.AmmoWarn.IsShown()))
+-- inventory syncs: normal operation resumes, stocked stays quiet
+HKTest.state.ammoID = 2515
+ammoTicker:Tick()
+check("synced & stocked: still quiet", not HK.AmmoWarn.IsShown(),
+  tostring(HK.AmmoWarn.IsShown()))
+-- a genuinely empty slot still warns once synced
+HKTest.state.ammoID = nil
+HKTest.state.now = 50100
+ammoTicker:Tick()
+check("truly empty slot: NO AMMO still fires", HK.AmmoWarn.IsShown(),
+  tostring(HK.AmmoWarn.IsShown()))
+-- safety net: a session that NEVER syncs believes the empty read after ~10 ticks
+HK.AmmoWarn.Rearm()
+HKTest.state.now = 60000
+for i = 1, 11 do HKTest.state.now = HKTest.state.now + 1; ammoTicker:Tick() end
+check("never-synced fallback: warns after ~10 ticks", HK.AmmoWarn.IsShown(),
+  tostring(HK.AmmoWarn.IsShown()))
+HKTest.state.items = nil
+HKTest.state.ammoLink = nil
+HK.db.ammo.sound = false
+
+-- ---------------------------------------------------------------------------
+-- 7) Feed button: total food count in the icon + highlight rule
+--    (highlight ON only when the pet is BELOW happy AND out of combat)
+-- ---------------------------------------------------------------------------
+local fb = _G["HunterKitFeedButton"]
+check("feed button exists", fb ~= nil)
+HKTest.state.pet = true
+HKTest.state.petHP = 900
+HKTest.state.playerCombat, HKTest.state.petCombat = false, false
+HKTest.state.combatLockdown = false
+HKTest.state.happiness = 2
+HKTest.state.bags = { [0] = 3 }
+HKTest.state.bagItems = { [0] = { [1] = { id = 1113, count = 20 },
+                                   [2] = { id = 1113, count = 15 },
+                                   [3] = { id = 1114, count = 50 } } }
+HKTest.state.itemInfo[1113] = { name = "Tough Hunk of Bread", iLevel = 5,
+  texture = "Interface\\Icons\\INV_Misc_Food_01" }
+HKTest.state.itemInfo[1114] = { name = "Fresh Bread", iLevel = 5,
+  texture = "Interface\\Icons\\INV_Misc_Food_02" }
+HK.db.feed.enabled = true
+HK.db.feed.hungryOnly = false
+HK.FeedPet.Refresh()
+check("feed icon shows the picked food", fb.textures[1].texture ==
+  "Interface\\Icons\\INV_Misc_Food_01", tostring(fb.textures[1].texture))
+check("count = total of the picked food across its stacks",
+  fb.fontstrings[1]:GetText() == "35", tostring(fb.fontstrings[1]:GetText()))
+check("count font does not depend on a possibly-missing font object",
+  fb.fontstrings[1].font == "Fonts\\ARIALN.TTF" and
+  fb.fontstrings[1].fontOutline == "OUTLINE",
+  tostring(fb.fontstrings[1].font))
+check("highlight on: below happy, out of combat",
+  fb.textures[2].color[2] == 0.8 and fb.textures[2].color[4] == 1,
+  table.concat(fb.textures[2].color, ","))
+check("icon BRIGHT when hungry and out of combat",
+  fb.textures[1].desaturated == false and fb.textures[1].color[1] == 1 and
+  fb.textures[1].color[2] == 1,
+  tostring(fb.textures[1].desaturated) .. "/" .. table.concat(fb.textures[1].color, ","))
+HKTest.state.happiness = 3
+HK.FeedPet.Refresh()
+check("highlight off when the pet is happy", fb.textures[2].color[4] == 0,
+  table.concat(fb.textures[2].color, ","))
+check("icon DIM (greyscale 0.6) when happy",
+  fb.textures[1].desaturated == true and
+  math.abs(fb.textures[1].color[1] - 0.6) < 0.01 and
+  math.abs(fb.textures[1].color[2] - 0.6) < 0.01,
+  tostring(fb.textures[1].desaturated) .. "/" .. table.concat(fb.textures[1].color, ","))
+HKTest.state.happiness = 2
+HKTest.state.combatLockdown = true
+HK.FeedPet.Refresh()
+check("highlight off in combat even when hungry", fb.textures[2].color[4] == 0,
+  table.concat(fb.textures[2].color, ","))
+HKTest.state.combatLockdown = false
+HK.db.feed.useSpellIcon = true
+HK.FeedPet.Refresh()
+check("spell-icon option replaces the food icon (resolved via the spell API)",
+  fb.textures[1].texture == "Interface\\Icons\\ability_hunter_beasttraining",
+  tostring(fb.textures[1].texture))
+check("food count stays with the spell icon",
+  fb.fontstrings[1]:GetText() == "35", tostring(fb.fontstrings[1]:GetText()))
+HK.db.feed.useSpellIcon = false
+HK.FeedPet.Refresh()
+check("food icon returns when the option is off", fb.textures[1].texture ==
+  "Interface\\Icons\\INV_Misc_Food_01", tostring(fb.textures[1].texture))
+HKTest.state.happiness = nil
+HKTest.state.bags = nil
+HKTest.state.bagItems = nil
+
+-- ---------------------------------------------------------------------------
+-- 12) Gun sound: auto shot + special shots (option-gated)
+-- ---------------------------------------------------------------------------
+HK.db.sound.enabled = true
+HK.db.sound.specials = true
+local function lastPew() return HKTest.soundsPlayed[#HKTest.soundsPlayed] end
+local sp = #HKTest.soundsPlayed
+HKTest.state.now = 80000
+HKTest.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "c1", 75)
+check("auto shot pews", #HKTest.soundsPlayed == sp + 1 and
+  tostring(lastPew()):find("pew%-", 1, false) ~= nil,
+  tostring(lastPew()))
+HKTest.state.now = 80001
+HKTest.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "c2", 3044)   -- Arcane Shot r1
+check("Arcane Shot pews", #HKTest.soundsPlayed == sp + 2,
+  tostring(#HKTest.soundsPlayed - sp))
+HKTest.state.now = 80002
+HKTest.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "c3", 2643)   -- Multi-Shot r1
+check("Multi-Shot pews", #HKTest.soundsPlayed == sp + 3,
+  tostring(#HKTest.soundsPlayed - sp))
+HKTest.state.now = 80003
+HKTest.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "c4", 19434)  -- Aimed Shot r1
+check("Aimed Shot pews", #HKTest.soundsPlayed == sp + 4,
+  tostring(#HKTest.soundsPlayed - sp))
+HKTest.state.now = 80004
+HKTest.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "c5", 133)    -- Fireball: not a shot
+check("foreign spells stay silent", #HKTest.soundsPlayed == sp + 4,
+  tostring(#HKTest.soundsPlayed - sp))
+HKTest.state.now = 80005
+HKTest.Fire("UNIT_SPELLCAST_SUCCEEDED", "pet", "c6", 75)
+check("pet casts never pew", #HKTest.soundsPlayed == sp + 4,
+  tostring(#HKTest.soundsPlayed - sp))
+-- Option off: specials silent, the auto shot keeps its pew.
+HK.db.sound.specials = false
+HKTest.state.now = 80006
+HKTest.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "c7", 14284)  -- Arcane Shot r5
+check("option off: special shot silent", #HKTest.soundsPlayed == sp + 4,
+  tostring(#HKTest.soundsPlayed - sp))
+HKTest.state.now = 80007
+HKTest.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "c8", 75)
+check("option off: auto shot still pews", #HKTest.soundsPlayed == sp + 5,
+  tostring(#HKTest.soundsPlayed - sp))
+-- Name fallback: a rank ID missing from the table still pews by spell name.
+HK.db.sound.specials = true
+HKTest.state.now = 80008
+HKTest.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "c9", 99999, "Multi-Shot", "Rank 9")
+check("spell-name fallback pews", #HKTest.soundsPlayed == sp + 6,
+  tostring(#HKTest.soundsPlayed - sp))
+-- The shared min-interval spam guard covers specials too: same tick, no pew.
+HKTest.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "c11", 3044)
+check("spam guard covers specials", #HKTest.soundsPlayed == sp + 6,
+  tostring(#HKTest.soundsPlayed - sp))
+HKTest.state.now = 80009
+HKTest.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "c10", 99998, "Serpent Sting", "Rank 9")
+check("non-ammo spells never pew", #HKTest.soundsPlayed == sp + 6,
+  tostring(#HKTest.soundsPlayed - sp))
+
 say(string.format("\n%d passed, %d failed", passes, #failures))
 if #failures > 0 then
   for _, f in ipairs(failures) do say("  - " .. f) end

@@ -18,11 +18,11 @@
    * if a pet plate exists -> anchor over the pet's head (true world anchoring).
      We try three ways to find one: the direct API, the plate the client handed
      us in NAME_PLATE_UNIT_ADDED, and a scan of C_NamePlate.GetNamePlates().
-   * if the player has nameplates off, no plate exists. `forcePlate` (opt-in)
-     turns on the minimum nameplate CVars this client still has, ladder-style,
-     and checks after each step whether a pet plate actually appeared — then
-     restores the old values when switched off or at logout, so nothing is
-     written to the player's config permanently.
+   * if the player has nameplates off, no plate exists. An opt-in "Force pet
+     name plate" CVar ladder was tried and removed in 0.9.1: on clients that
+     publish no pet plate even with every nameplate CVar on it could never
+     work, and it held the player's nameplate settings hostage. CVars that an
+     older build changed are still restored on load/logout.
    * otherwise we fall back to the pet unit frame and draw a nameplate-style
      widget (icon + pet name + HP bar) so it still reads like a plate.
 ==============================================================================]]
@@ -50,22 +50,10 @@ local RING_TEX = "Interface\\Cooldown\\star4"
 local C_INRANGE = { 0.2, 1, 0.2 }
 local C_FAR     = { 1, 0.15, 0.15 }
 
--- The nameplate CVars, least invasive first. `forcePlate` walks this ladder one
--- step at a time and only escalates if the previous step produced no pet plate.
--- GetCVar returns nil for a CVar the client doesn't have (Midnight dropped the
--- friendly ones), so a missing entry is skipped instead of erroring.
--- There is NO pet-only plate setting on any client: the finest granularity the
--- CVar API offers is "friendly pets/minions", which also publishes plates for
--- other players' pets and minions. Rungs are cumulative (each step adds one and
--- never removes an earlier one) so the ladder stops at the first rung that
--- actually yields a pet plate. Classic Era 1.15.9 publishes pet plates through
--- the friendly + minions pair, which is why minions is a rung of its own.
-local PLATE_CVAR_LADDER = {
-  "nameplateShowFriendlyPets",
-  "nameplateShowFriendlyMinions",
-  "nameplateShowFriends",
-  "nameplateShowAll",
-}
+-- The "Force pet name plate" CVar ladder was removed in 0.9.1 (it could never
+-- produce a pet plate on clients that publish none, and it held the player's
+-- nameplate CVars hostage). CVars that older builds changed are still restored
+-- on load/logout via db.plateCVars.
 -- CVars to PROBE by name. C_Console.GetAllCommands() only lists registered
 -- *console commands*, so several real nameplate CVars are missing from it -- that
 -- is how an earlier diagnostic wrongly reported the friendly ones as absent.
@@ -83,11 +71,8 @@ local PLATE_CVAR_CANDIDATES = {
   "nameplateShowOnlyNames",
   "nameplateShowSelf",
   "nameplateMaxDistance",
+  "UnitNameFriendlyPetName",
 }
-local plateStep = 0          -- how many ladder rungs we've enabled
-local plateWait = 0          -- ticks since the last step (give the client a beat)
-local plateGiveUp = 0        -- ticks with every rung on and still no pet plate
-local plateVerdict = false   -- said once per session, not every tick
 
 -- Cached spell name. Cleared on SPELLS_CHANGED so learning Mend Pet later is
 -- picked up without a /reload.
@@ -262,39 +247,15 @@ local function WorldScreenPos()
 end
 
 -- ---------------------------------------------------------------------------
--- forcePlate — opt-in CVar ladder that makes a pet plate exist
+-- Leftover CVar cleanup (the force-plate ladder was removed in 0.9.1)
 -- ---------------------------------------------------------------------------
--- CVars are locked while in combat, so callers must retry after
--- PLAYER_REGEN_ENABLED.
+-- CVars are locked while in combat; a blocked restore retries on the next call
+-- (PLAYER_REGEN_ENABLED and every tick re-run it).
 local function PlateCVarsLocked()
   return InCombatLockdown and InCombatLockdown() == true
 end
 
-local function SaveCVar(name)
-  local cur = GetCVar(name)
-  if cur == nil then return false end                 -- not on this client
-  if cur == "1" or cur == 1 then return false end     -- already on
-  if db.plateCVars[name] == nil then db.plateCVars[name] = cur end
-  return true
-end
-
--- Enable one more rung of the ladder. Returns true if it changed something.
-local function ApplyPlateStep()
-  if not db.forcePlate then return false end
-  if not (SetCVar and GetCVar) then return false end
-  if PlateCVarsLocked() then return false end
-  local name = PLATE_CVAR_LADDER[plateStep + 1]
-  if not name then return false end
-  local had = SaveCVar(name)
-  pcall(SetCVar, name, "1")
-  plateStep = plateStep + 1
-  plateWait = 0
-  HK.Dbg("mend forcePlate step", tostring(plateStep), name, "saved=" .. tostring(had))
-  return true
-end
-
--- Put the CVars back the way we found them. Values are persisted in the db so a
--- /reload with the option off can still undo them.
+-- Put back every CVar an older build saved, then forget it.
 local function RestorePlateCVars()
   if not (SetCVar and GetCVar) then return end
   if type(db) ~= "table" or type(db.plateCVars) ~= "table" then return end
@@ -308,44 +269,7 @@ local function RestorePlateCVars()
       n = n + 1
     end
   end
-  plateStep = 0
-  if n > 0 then HK.Dbg("mend forcePlate restored", tostring(n), "cvars") end
-end
-
--- Called every tick: escalate the ladder while no pet plate has shown up.
-local function MaintainPlateCVars()
-  if not db.forcePlate then
-    if next(db.plateCVars or {}) then RestorePlateCVars() end
-    plateStep = 0
-    return
-  end
-  if PlateCVarsLocked() then return end
-  if PetPlate() then plateGiveUp = 0; return end   -- it worked: keep them on
-  if not PetIsOut() then return end      -- no pet out: no plate to wait for
-
-  if plateStep >= #PLATE_CVAR_LADDER then
-    -- Every rung this client has is on, the pet is out, and after a grace period
-    -- there is still no pet plate: the option cannot help here. Rather than hold
-    -- the player's nameplate CVars hostage for nothing (and silently appear to do
-    -- nothing), put them back, switch the option off and say so once.
-    plateGiveUp = plateGiveUp + 1
-    if plateGiveUp >= 50 then            -- ~5s at a 0.10s tick
-      plateGiveUp = 0
-      db.forcePlate = false
-      RestorePlateCVars()
-      if HK.Options and HK.Options.RefreshControls then
-        pcall(HK.Options.RefreshControls)
-      end
-      if not plateVerdict then
-        plateVerdict = true
-        print("|cffff0000HunterKit|r 'Force pet name plate' turned on every nameplate CVar your client has and it still publishes no pet plate, so it switched itself off and restored your settings. Head anchoring is not available here — the marker uses the draggable fallback (/htk unlock).")
-      end
-    end
-    return
-  end
-
-  plateWait = plateWait + 1
-  if plateWait >= 10 then ApplyPlateStep() end   -- ~1s per rung at a 0.10s tick
+  if n > 0 then HK.Dbg("mend restored", tostring(n), "leftover nameplate cvars") end
 end
 
 -- ---------------------------------------------------------------------------
@@ -523,6 +447,25 @@ ResolveAnchor = function()
   return "none"
 end
 
+-- The fallback spot: centred just under the pet avatar (the portrait circle),
+-- not above the frame — it reads as attached to the pet and never off-screen.
+local function AnchorUnderAvatar(pf, ox, oy)
+  -- Centred on the avatar's vertical axis, a clear gap BELOW the frame bottom so
+  -- the mark never overlaps the pet frame. The portrait's exact centre is
+  -- measured when allowed (out of combat); 32 is the stock avatar centre.
+  local cx = 32
+  local portrait = _G["PetFramePortrait"] or _G["PetFramePetPortrait"]
+  if portrait then
+    local okw, pw = pcall(portrait.GetWidth, portrait)
+    local okl, pl = pcall(portrait.GetLeft, portrait)
+    local okf, fl = pcall(pf.GetLeft, pf)
+    if okw and pw and pw > 0 and okl and pl and okf and fl then
+      cx = (pl + pw / 2) - fl
+    end
+  end
+  frame:SetPoint("TOP", pf, "BOTTOMLEFT", cx + ox, -6 + oy)
+end
+
 -- Re-resolved every tick: the pet moves, and plate frames come and go. Returns
 -- the mode actually applied.
 local function ApplyAnchor()
@@ -544,7 +487,7 @@ local function ApplyAnchor()
     local pf = _G["PetFrame"]
     if pf then
       frame:ClearAllPoints()
-      frame:SetPoint("BOTTOM", pf, "TOP", ox, oy)
+      AnchorUnderAvatar(pf, ox, oy)
       lastAnchorMode = "petframe"
       return lastAnchorMode
     end
@@ -569,7 +512,7 @@ local function ApplyAnchor()
       -- CENTRE offset, the same scheme the feed button and sniper mark use).
       frame:SetPoint("CENTER", UIParent, "CENTER", db.pinX or 0, db.pinY or 0)
     else
-      frame:SetPoint("BOTTOM", a, "TOP", ox, oy)
+      AnchorUnderAvatar(a, ox, oy)
     end
     lastAnchorMode = "petframe"
     return lastAnchorMode
@@ -707,6 +650,13 @@ Update = function()
   local hp = PetHPPercent()
   urgentNow = (hp ~= nil) and (hp <= (db.hpThreshold or 30))
 
+  -- Optional: the marker exists ONLY at/below the threshold (user preference);
+  -- a hurt pet is exactly when it earns its screen space.
+  if db.onlyBelow and not urgentNow and not editing then
+    Hide()
+    return
+  end
+
   -- "Only in combat" is the default; a hurt pet is always worth showing.
   if db.combatOnly and not InFight() and not urgentNow and not editing then
     Hide()
@@ -739,7 +689,7 @@ end
 -- Called by the ticker: cheap, and keeps the marker glued to a moving pet.
 local function Tick()
   if not frame then return end
-  MaintainPlateCVars()
+  RestorePlateCVars()   -- no-op unless an older build left CVars to put back
   Update()
 end
 
@@ -747,15 +697,17 @@ function MendMark.RescanSettings()
   db = HK.db.mend
   if not frame then return end
   icon:SetTexture(MendIconTexture())
-  if not db.forcePlate then RestorePlateCVars() end
-  plateStep = 0
-  plateWait = 0
+  RestorePlateCVars()
   Update()
 end
 
 function MendMark.IsShown()
   return frame ~= nil and frame:IsShown() == true
 end
+
+-- The pet's name plate frame if the client publishes one (full or name-only),
+-- nil otherwise. Shared so the feed button can hang below the pet's name.
+function MendMark.PetPlateFrame() return PetPlate() end
 
 function MendMark.AnchorMode()
   return lastAnchorMode
@@ -780,7 +732,7 @@ function MendMark.Diagnostic()
 end
 
 -- The nameplate CVars that decide whether the client publishes a pet plate at
--- all, plus what forcePlate changed. Printed by /htk mend so "why isn't it over
+-- all, plus leftover changes older builds made. Printed by /htk mend so "why isn't it over
 -- the head?" is answerable without guesswork.
 function MendMark.PlateCVars()
   if not GetCVar then return "(GetCVar unavailable)" end
@@ -858,7 +810,8 @@ function MendMark.NameplateCVarDump()
   local function add(n)
     if type(n) ~= "string" then return end
     n = (n:gsub("^/", ""))
-    if n:lower():find("nameplate", 1, true) and not seen[n] then
+    if (n:lower():find("nameplate", 1, true) or n:lower():find("unitname", 1, true))
+      and not seen[n] then
       seen[n] = true
       names[#names + 1] = n
     end
@@ -897,21 +850,6 @@ function MendMark.NameplateCVarDump()
   return table.concat(out, "  ")
 end
 
--- How many rungs of the force-plate ladder could still change something: the CVar
--- exists on this client AND is currently off. Zero means ticking "Force pet name
--- plate" cannot help (nameplateShowAll is already 1 and no friendly rung exists),
--- and we must say that instead of suggesting it. Probing by name (not by console
--- command list) is what makes this trustworthy.
-function MendMark.LadderCVarsUsable()
-  if not GetCVar then return 0 end
-  local n = 0
-  for _, name in ipairs(PLATE_CVAR_LADDER) do
-    local ok, v = pcall(GetCVar, name)
-    if ok and v ~= nil and v ~= "1" and v ~= 1 then n = n + 1 end
-  end
-  return n
-end
-
 -- Why the marker is not on screen right now (nil when it should be showing).
 function MendMark.HiddenReason()
   if not frame then return "not initialised" end
@@ -937,7 +875,7 @@ function MendMark.PrintDiag()
   local rm = ResolveAnchor()
   print("  anchor would be: " .. tostring(rm)
     .. (lastAnchorMode and ("  (applied: " .. lastAnchorMode .. ")") or "  (not applied yet)"))
-  print("  cvars (* = changed by HunterKit, restored on disable/logout): " .. MendMark.PlateCVars())
+  print("  cvars (* = changed by an older HunterKit, restored on load/logout): " .. MendMark.PlateCVars())
   print(MendMark.Capabilities())
   print("  nameplate cvars: " .. MendMark.NameplateCVarDump())
   if rm == "plate" then
@@ -945,23 +883,20 @@ function MendMark.PrintDiag()
   elseif rm == "screen" then
     print("  Anchored to the client's own screen position for the pet (no plate needed).")
   else
-    if db.forcePlate then
-      local changed = 0
-      for _ in pairs(db.plateCVars or {}) do changed = changed + 1 end
-      print("  'Force pet name plate' is ON and changed " .. changed ..
-            " CVar(s), but the client still publishes no pet plate.")
-      print("  There is nothing else to turn on here — the marker stays on the UI fallback:")
-      print("  /htk unlock and drag it wherever you want it (the spot is saved).")
-    elseif MendMark.LadderCVarsUsable() == 0 then
-      print("  This client publishes no pet plate, no screen position for the pet, and has no")
-      print("  nameplate CVar left that would create one — so over-the-head anchoring is not")
-      print("  available here. The marker uses the UI fallback instead:")
+    local un = GetCVar and (select(2, pcall(GetCVar, "UnitNameFriendlyPetName"))) or nil
+    if un == "1" or un == 1 then
+      -- The name the player sees is drawn by the UNIT-NAME system, which exposes
+      -- no frame and no screen position — unlike a name-only plate, which looks
+      -- almost the same but IS a frame and therefore anchorable.
+      print("  The name over your pet comes from the unit-name setting, not a name plate.")
+      print("  Unit names expose no frame or screen position, so nothing can anchor to")
+      print("  them. A NAME-ONLY plate looks the same but IS anchorable: turn on")
+      print("  nameplateShowFriendlyPets + nameplateShowOnlyNames (if your client has them).")
+      print("  Until then the marker uses the UI fallback:")
       print("  /htk unlock and drag it wherever you want it (the spot is saved).")
     else
-      print("  No pet name plate from the client, so the marker is on the UI fallback.")
-      print("  Tick Options → Pet Mend Marker → 'Force pet name plate' (" ..
-            MendMark.LadderCVarsUsable() .. " CVar(s) here could create one);")
-      print("  HunterKit restores them on untick/logout. Or /htk unlock and drag the marker.")
+      print("  This client publishes no pet plate right now, so the marker uses the UI")
+      print("  fallback. /htk unlock and drag it wherever you want it (the spot is saved).")
     end
   end
 end
@@ -980,8 +915,8 @@ function MendMark.Init()
   HK.On("UNIT_MAXHEALTH", function(u) if u == "pet" then Update() end end)
   HK.On("UNIT_PET", function(u) if u == "player" then Update() end end)
   HK.On("PLAYER_REGEN_ENABLED", function()
-    -- CVars are locked in combat: (re)apply or restore once we're out.
-    if db.forcePlate then plateWait = 10 else RestorePlateCVars() end
+    -- CVars are locked in combat: restore leftovers once we're out.
+    RestorePlateCVars()
     Update()
   end)
   HK.On("PLAYER_REGEN_DISABLED", Update)
@@ -1006,7 +941,7 @@ function MendMark.Init()
     Update()
   end)
 
-  if not db.forcePlate then RestorePlateCVars() end
+  RestorePlateCVars()
 
   ticker = HK.Ticker(0.10, Tick)
   Update()
