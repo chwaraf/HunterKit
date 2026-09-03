@@ -146,6 +146,11 @@ function BuildButton()
   iconTex:SetTexture(QUESTION_ICON)
   iconTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
 
+  -- Border BEFORE the font work below: if anything after this point ever
+  -- fails on a live client, the highlight must still exist (it died once
+  -- somewhere after the fontstring, leaving the button permanently dull).
+  border = HK.CreateBorder(button, 2)
+
   countText = button:CreateFontString(nil, "OVERLAY")
   countText:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -1, 1)
   -- Blizzard's item-count look WITHOUT depending on a font-object name that may
@@ -158,8 +163,6 @@ function BuildButton()
     countText:SetFontObject(GameFontHighlightSmall)
   end
   countText:SetJustifyH("RIGHT")
-
-  border = HK.CreateBorder(button, 1)
 
   -- hover tooltip: shows what the click will feed so the player knows the action
   button:SetScript("OnEnter", function()
@@ -559,14 +562,16 @@ UpdateState = function()
   -- Highlight rule (user): ON only when the pet is BELOW happy (content or
   -- unhappy) AND we are out of combat. Feeding is impossible in combat and a
   -- happy pet needs no attention, so glowing in those cases is just noise.
+  -- The icon itself tints too: a 1-2px border alone proved too easy to miss
+  -- (and the icon can never be nil, unlike anything created later).
   local h = GetPetHappiness()
-  if border then
-    if h and h < 3 and not InCombatLockdown() then
-      local c = HAPPINESS_COLOR[h] or {1, 1, 1}
-      border:SetVertexColor(c[1], c[2], c[3], 1)
-    else
-      border:SetVertexColor(0, 0, 0, 0)
-    end
+  if h and h < 3 and not InCombatLockdown() then
+    local c = HAPPINESS_COLOR[h] or {1, 1, 1}
+    if border then border:SetVertexColor(c[1], c[2], c[3], 1) end
+    if iconTex then iconTex:SetVertexColor(c[1], c[2], c[3], 1) end
+  else
+    if border then border:SetVertexColor(0, 0, 0, 0) end
+    if iconTex then iconTex:SetVertexColor(1, 1, 1, 1) end
   end
 end
 

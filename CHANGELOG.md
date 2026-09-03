@@ -3,6 +3,34 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.13] - 2026-09-03
+
+### Fixed
+- **Feed button food count showed 1 instead of the real stack size** on live
+  clients: `HK.GetBagItemCount` read `info.itemCount` from
+  `C_Container.GetContainerItemInfo`, but the live struct field is
+  **`stackCount`** — the count was always nil, and every stack fell back to
+  "1". Now reads `stackCount` (with `itemCount` as fallback), and the test
+  stub gained a live-shaped `C_Container` (stackCount/itemID/hyperlink) so
+  the suite runs the SAME code path as 1.15.x — reintroducing the bug now
+  fails the suite (verified: it reports the stacks-of-1 total).
+- **Feed button highlight made unmistakable**: the food icon itself now tints
+  happiness-orange/red alongside the border (thickened 1px -> 2px), and the
+  border is created BEFORE the fontstring work in `BuildButton` so nothing
+  downstream can leave the button permanently dull. Rule unchanged: ON only
+  when the pet is below happy AND out of combat.
+- **"No ammo" voice no longer nags**: it speaks at most once every 30 s
+  (was: every 10 s warn). The visual re-warns keep their period.
+- **Clips no longer cut off the last word**: re-recorded and re-trimmed with
+  a 0.3 s tail of the detected silence gap after the final word (the old cut
+  started the fade AT the silence boundary, clipping the release), plus a
+  trimmed leading silence. 3.2 s / 3.0 s.
+
+### Tests
+- 119 + 54 + 66 + 43 = **282 green**.
+
+---
+
 ## [0.9.12] - 2026-09-03
 
 ### Changed

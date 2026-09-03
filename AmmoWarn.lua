@@ -20,7 +20,12 @@ local db
 local frame, icon, cross, label
 local lastWarn = 0
 local lastTier = 0
+local lastVoice = 0
 local shownUntil = 0
+
+-- The empty-tier voice must not nag: it speaks at most once per cooldown,
+-- while the VISUAL re-warns keep the 10 s period.
+local VOICE_COOLDOWN = 30
 
 local ARROW_ICON  = "Interface\\Icons\\INV_Arrow_02"
 local BULLET_ICON = "Interface\\Icons\\INV_Ammo_Bullet_03"
@@ -196,15 +201,19 @@ local function Tick()
     label:SetTextColor(c[1], c[2], c[3])
     frame:SetShown(true)
     -- Sound policy: sting ONLY on a worsening (first entry or escalation);
-    -- the empty tier speaks on every warn (that is the point of "no ammo").
+    -- the empty tier speaks, but at most once per VOICE_COOLDOWN.
     if db.sound then
       if tier == 4 then
-        if not VoiceSound(kind) then WarnSound() end
+        if now >= lastVoice + VOICE_COOLDOWN then
+          lastVoice = now
+          if not VoiceSound(kind) then WarnSound() end
+        end
       elseif tier > lastTier then
         WarnSound()
       end
     end
   end
+  if tier == 0 then lastVoice = 0 end
   lastTier = tier
   if now > shownUntil then
     frame:SetShown(false)

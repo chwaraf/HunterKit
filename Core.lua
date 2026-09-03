@@ -6,7 +6,7 @@
 
 local ADDON_NAME, HK = ...
 
-HK.version = "0.9.12"
+HK.version = "0.9.13"
 
 -- ---------------------------------------------------------------------------
 -- Defaults (schema). This is the source of truth for the options window and
@@ -251,7 +251,10 @@ end
 function HK.GetBagItemCount(bag, slot)
   if CCont and CCont.GetContainerItemInfo then
     local ok, info = pcall(CCont.GetContainerItemInfo, bag, slot)
-    if ok and info then return info.itemCount end
+    -- The live ContainerItemInfo field is stackCount (NOT itemCount -- that
+    -- name never existed on the struct and silently made every stack read
+    -- as 1 on C_Container clients).
+    if ok and info then return info.stackCount or info.itemCount end
   end
   if GetContainerItemInfo then return select(2, GetContainerItemInfo(bag, slot)) end
   return nil

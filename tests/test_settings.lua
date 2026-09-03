@@ -330,6 +330,16 @@ check("empty tier speaks: bundled voice clip for the equipped ammo",
   HKTest.soundsPlayed[#HKTest.soundsPlayed] ==
     "Interface\\AddOns\\HunterKit\\Media\\voice_noarrows.mp3",
   tostring(HKTest.soundsPlayed[#HKTest.soundsPlayed]))
+local v1 = #HKTest.soundsPlayed
+HKTest.state.now = 4011
+ammoTicker:Tick()
+check("voice does not nag: silent re-warn inside the 30 s cooldown",
+  HK.AmmoWarn.IsShown() and #HKTest.soundsPlayed == v1,
+  tostring(HK.AmmoWarn.IsShown()) .. "/" .. tostring(#HKTest.soundsPlayed))
+HKTest.state.now = 4041
+ammoTicker:Tick()
+check("voice returns once the cooldown is over", #HKTest.soundsPlayed == v1 + 1,
+  tostring(#HKTest.soundsPlayed))
 local aw = _G["HunterKitAmmoWarn"]
 check("icon is the equipped ammo's own art",
   aw.textures[1].texture == "Interface\\Icons\\INV_Ammo_Arrow_02",
@@ -373,10 +383,14 @@ check("count font does not depend on a possibly-missing font object",
 check("highlight on: below happy, out of combat",
   fb.textures[2].color[2] == 0.8 and fb.textures[2].color[4] == 1,
   table.concat(fb.textures[2].color, ","))
+check("icon tint doubles as the highlight when hungry",
+  fb.textures[1].color[2] == 0.8, table.concat(fb.textures[1].color, ","))
 HKTest.state.happiness = 3
 HK.FeedPet.Refresh()
 check("highlight off when the pet is happy", fb.textures[2].color[4] == 0,
   table.concat(fb.textures[2].color, ","))
+check("icon untinted when happy", fb.textures[1].color[1] == 1 and
+  fb.textures[1].color[2] == 1, table.concat(fb.textures[1].color, ","))
 HKTest.state.happiness = 2
 HKTest.state.combatLockdown = true
 HK.FeedPet.Refresh()

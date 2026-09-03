@@ -298,6 +298,20 @@ function GetContainerItemInfo(bag, slot)
   if not it then return nil end
   return nil, it.count or 1, nil, nil, nil, nil, it.link, nil, nil, it.id
 end
+
+-- The MODERN container API, shaped exactly like the live client's struct
+-- (stackCount / itemID / hyperlink -- NOT itemCount). Core prefers this path
+-- when C_Container exists, so tests must run the SAME code path as 1.15.x;
+-- without it the itemCount/stackCount field-name bug was invisible here.
+C_Container = {
+  GetContainerNumSlots = function(bag) return (HKTest.state.bags or {})[bag] or 0 end,
+  GetContainerItemInfo = function(bag, slot)
+    local it = ((HKTest.state.bagItems or {})[bag] or {})[slot]
+    if not it then return nil end
+    return { stackCount = it.count or 1, itemID = it.id, hyperlink = it.link }
+  end,
+  UseContainerItem = function() end,
+}
 function GetContainerItemID(bag, slot)
   local it = ((HKTest.state.bagItems or {})[bag] or {})[slot]
   return it and it.id or nil

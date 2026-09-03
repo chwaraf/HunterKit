@@ -2,7 +2,7 @@
 ## Title: HunterKit
 ## Notes: Feed-pet quick button, Sniper Mark range check, pet Mend marker over the pet, blaster gun sounds, passive-pet alert. Hardcore friendly.
 ## Author: <you>
-## Version: 0.9.12
+## Version: 0.9.13
 ## SavedVariables: HunterKitDB
 ## X-Category: Class & Role Specific
 ## X-Website: https://wago.io/
