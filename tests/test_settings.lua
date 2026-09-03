@@ -543,6 +543,63 @@ HKTest.state.happiness = nil
 HKTest.state.bags = nil
 HKTest.state.bagItems = nil
 
+-- ---------------------------------------------------------------------------
+-- 12) Gun sound: auto shot + special shots (option-gated)
+-- ---------------------------------------------------------------------------
+HK.db.sound.enabled = true
+HK.db.sound.specials = true
+local function lastPew() return HKTest.soundsPlayed[#HKTest.soundsPlayed] end
+local sp = #HKTest.soundsPlayed
+HKTest.state.now = 80000
+HKTest.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "c1", 75)
+check("auto shot pews", #HKTest.soundsPlayed == sp + 1 and
+  tostring(lastPew()):find("pew%-", 1, false) ~= nil,
+  tostring(lastPew()))
+HKTest.state.now = 80001
+HKTest.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "c2", 3044)   -- Arcane Shot r1
+check("Arcane Shot pews", #HKTest.soundsPlayed == sp + 2,
+  tostring(#HKTest.soundsPlayed - sp))
+HKTest.state.now = 80002
+HKTest.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "c3", 2643)   -- Multi-Shot r1
+check("Multi-Shot pews", #HKTest.soundsPlayed == sp + 3,
+  tostring(#HKTest.soundsPlayed - sp))
+HKTest.state.now = 80003
+HKTest.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "c4", 19434)  -- Aimed Shot r1
+check("Aimed Shot pews", #HKTest.soundsPlayed == sp + 4,
+  tostring(#HKTest.soundsPlayed - sp))
+HKTest.state.now = 80004
+HKTest.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "c5", 133)    -- Fireball: not a shot
+check("foreign spells stay silent", #HKTest.soundsPlayed == sp + 4,
+  tostring(#HKTest.soundsPlayed - sp))
+HKTest.state.now = 80005
+HKTest.Fire("UNIT_SPELLCAST_SUCCEEDED", "pet", "c6", 75)
+check("pet casts never pew", #HKTest.soundsPlayed == sp + 4,
+  tostring(#HKTest.soundsPlayed - sp))
+-- Option off: specials silent, the auto shot keeps its pew.
+HK.db.sound.specials = false
+HKTest.state.now = 80006
+HKTest.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "c7", 14284)  -- Arcane Shot r5
+check("option off: special shot silent", #HKTest.soundsPlayed == sp + 4,
+  tostring(#HKTest.soundsPlayed - sp))
+HKTest.state.now = 80007
+HKTest.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "c8", 75)
+check("option off: auto shot still pews", #HKTest.soundsPlayed == sp + 5,
+  tostring(#HKTest.soundsPlayed - sp))
+-- Name fallback: a rank ID missing from the table still pews by spell name.
+HK.db.sound.specials = true
+HKTest.state.now = 80008
+HKTest.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "c9", 99999, "Multi-Shot", "Rank 9")
+check("spell-name fallback pews", #HKTest.soundsPlayed == sp + 6,
+  tostring(#HKTest.soundsPlayed - sp))
+-- The shared min-interval spam guard covers specials too: same tick, no pew.
+HKTest.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "c11", 3044)
+check("spam guard covers specials", #HKTest.soundsPlayed == sp + 6,
+  tostring(#HKTest.soundsPlayed - sp))
+HKTest.state.now = 80009
+HKTest.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "c10", 99998, "Serpent Sting", "Rank 9")
+check("non-ammo spells never pew", #HKTest.soundsPlayed == sp + 6,
+  tostring(#HKTest.soundsPlayed - sp))
+
 say(string.format("\n%d passed, %d failed", passes, #failures))
 if #failures > 0 then
   for _, f in ipairs(failures) do say("  - " .. f) end

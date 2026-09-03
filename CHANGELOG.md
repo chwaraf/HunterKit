@@ -3,6 +3,25 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.24] - 2026-09-03
+
+### Added
+- **Special shots pew too**: Arcane Shot, Multi-Shot and Aimed Shot now play
+  the pew on release, exactly like the auto shot -- every rank, matched by
+  spellID with a spell-name fallback so a rank missing from the table still
+  pews. New checkbox **Options > Gun Sound > "Pew on special shots"**
+  (default ON) turns them back to their stock sounds while keeping the pew
+  on the auto shot. Volley stays out (channeled -- no release event) and so
+  do non-ammo spells like Serpent Sting. The same guns-only filter and the
+  0.15 s spam guard apply, so an Arcane+Multi macro pews once, not twice.
+
+### Tests
+- 119 + 55 + 99 + 43 = **316 green** (new section 12: auto shot, all three
+  specials, foreign spells, pet casts, option off, name fallback, spam
+  guard).
+
+---
+
 ## [0.9.23] - 2026-09-03
 
 ### Fixed

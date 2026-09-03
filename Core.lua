@@ -6,7 +6,7 @@
 
 local ADDON_NAME, HK = ...
 
-HK.version = "0.9.23"
+HK.version = "0.9.24"
 
 -- ---------------------------------------------------------------------------
 -- Defaults (schema). This is the source of truth for the options window and
@@ -66,6 +66,10 @@ HK.defaults = {
     -- its place via the combat log. (The mute is applied with MuteSoundFile,
     -- which is session-wide in C++ — see Sounds.lua for the caveat.)
     muteOriginal = true,
+    -- Special shots (Arcane Shot / Multi-Shot / Aimed Shot) pew too; the
+    -- option lives under Options > Gun Sound for anyone who wants the pew
+    -- strictly on the auto shot.
+    specials     = true,
     minInterval  = 0.15,
     channel      = "SFX",
     noRepeat     = true,

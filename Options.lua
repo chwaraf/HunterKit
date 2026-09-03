@@ -640,6 +640,10 @@ function BuildWindow()
     end,
     "Pew on each shot, stock gunshot muted. Untick to restore it at once.")
   y = y - CHK
+  MakeCheckbox(content, y, "Pew on special shots", function() return db.sound.specials end,
+    function(v) db.sound.specials = v end,
+    "Arcane Shot, Multi-Shot and Aimed Shot pew too. Untick for auto shot only.")
+  y = y - CHK
 
   -- Pulse
   AddSection(content, y, "Passive pet alert")
