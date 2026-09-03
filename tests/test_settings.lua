@@ -462,8 +462,9 @@ check("highlight off in combat even when hungry", fb.textures[2].color[4] == 0,
 HKTest.state.combatLockdown = false
 HK.db.feed.useSpellIcon = true
 HK.FeedPet.Refresh()
-check("spell-icon option replaces the food icon", fb.textures[1].texture ==
-  "Interface\\Icons\\Ability_Hunter_FeedPet", tostring(fb.textures[1].texture))
+check("spell-icon option replaces the food icon (resolved via the spell API)",
+  fb.textures[1].texture == "Interface\\Icons\\ability_hunter_beasttraining",
+  tostring(fb.textures[1].texture))
 check("food count stays with the spell icon",
   fb.fontstrings[1]:GetText() == "35", tostring(fb.fontstrings[1]:GetText()))
 HK.db.feed.useSpellIcon = false

@@ -354,6 +354,10 @@ function GetSpellTexture(id)
   return nil
 end
 function GetPetHappiness() return HKTest.state.happiness or 3, 100, 0 end
+function GetSpellTexture(id)
+  if id == 6991 then return "Interface\\Icons\\ability_hunter_beasttraining" end
+  return nil
+end
 function UnitName(u) return (u == "pet") and "Fang" or "Testhunter" end
 function UnitPosition(u)
   if u ~= "pet" then return 100, 200, 0, 1 end

@@ -23,7 +23,12 @@ local dietsReady = false
 
 local HAPPINESS_COLOR = { [3] = {0.2,1,0.2}, [2] = {1,0.8,0}, [1] = {1,0.2,0.2} }
 local QUESTION_ICON = 134400
-local FEED_PET_ICON = "Interface\\Icons\\Ability_Hunter_FeedPet"
+-- Feed Pet's real icon file (spell 6991) is ability_hunter_beasttraining --
+-- NOT "Ability_Hunter_FeedPet", which does not exist: that path rendered
+-- NOTHING, leaving the button's semi-transparent background plate with just
+-- the count on it. Resolved from the spell itself below; this is only the
+-- last-resort constant.
+local FEED_PET_ICON = "Interface\\Icons\\ability_hunter_beasttraining"
 local DIET_KEYWORDS = { "meat", "fish", "fruit", "fungus", "bread", "cheese" }
 
 local scanTip
@@ -48,6 +53,23 @@ local function FeedPetSpellName()
     feedPetSpellName = "Feed Pet"
   end
   return feedPetSpellName
+end
+
+-- The Feed Pet spell's icon, resolved through the spell API (fileID on modern
+-- clients, texture path on classic) so it can never depend on a guessed file
+-- name. Memoised -- the spell's icon never changes within a session.
+local feedPetSpellTexture
+local function FeedPetSpellTexture()
+  if feedPetSpellTexture then return feedPetSpellTexture end
+  if C_Spell and C_Spell.GetSpellTexture then
+    local ok, tex = pcall(C_Spell.GetSpellTexture, FEED_PET_SPELL_ID)
+    if ok and tex then feedPetSpellTexture = tex end
+  end
+  if not feedPetSpellTexture and GetSpellTexture then
+    local ok, tex = pcall(GetSpellTexture, FEED_PET_SPELL_ID)
+    if ok and tex then feedPetSpellTexture = tex end
+  end
+  return feedPetSpellTexture or FEED_PET_ICON
 end
 
 -- The frame the feed button anchors to. For the pet-frame parent we prefer the
@@ -522,7 +544,7 @@ function FeedPet:RefreshMacro()
     button:SetAttribute("target-item", ("%d %d"):format(food.bag, food.slot))
     button:SetAttribute("target-bag", food.bag)
     button:SetAttribute("target-slot", food.slot)
-    local icon = (db.useSpellIcon and FEED_PET_ICON) or food.icon or QUESTION_ICON
+    local icon = (db.useSpellIcon and FeedPetSpellTexture()) or food.icon or QUESTION_ICON
     iconTex:SetTexture(icon)
     iconTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     FeedPet.SetCount((self.foodTotals and self.foodTotals[food.itemID]) or food.count or 0)
@@ -531,7 +553,7 @@ function FeedPet:RefreshMacro()
     button:ClearAttribute("target-item")
     button:ClearAttribute("target-bag")
     button:ClearAttribute("target-slot")
-    iconTex:SetTexture(db.useSpellIcon and FEED_PET_ICON or QUESTION_ICON)
+    iconTex:SetTexture(db.useSpellIcon and FeedPetSpellTexture() or QUESTION_ICON)
     iconTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     FeedPet.SetCount(0)
   end

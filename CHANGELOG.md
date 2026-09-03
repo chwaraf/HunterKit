@@ -3,6 +3,24 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.19] - 2026-09-03
+
+### Fixed
+- **"Use default Feed Pet icon" showed a semi-transparent blank with only
+  the count**: the hardcoded path `Interface\Icons\Ability_Hunter_FeedPet`
+  does not exist -- Feed Pet's actual icon file is
+  `ability_hunter_beasttraining`. A nonexistent path renders nothing, so all
+  that was left was the button's translucent background plate. The icon is
+  now resolved through the spell API (`C_Spell.GetSpellTexture` /
+  `GetSpellTexture` on spell 6991, memoised), with the correct file as the
+  last-resort constant -- it can no longer depend on a guessed name.
+
+### Tests
+- 119 + 55 + 79 + 43 = **296 green** (spell-icon check now asserts the
+  API-resolved texture).
+
+---
+
 ## [0.9.18] - 2026-09-03
 
 ### Changed
