@@ -25,7 +25,7 @@ All notable changes to HunterKit are documented here. Format follows
 ### Added (tests)
 - Brightness slider checks (50% halves the drawn green channel, 100% restores);
   feed-anchor checks removed with the reverted feature; suite now
-  115 + 54 + 37 + 40 = 246, all passing.
+  115 + 54 + 38 + 40 = 247, all passing.
 
 ## [0.9.2] - 2026-09-03
 ### Changed
