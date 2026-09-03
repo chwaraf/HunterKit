@@ -2,3 +2,6 @@
 # tools/build_mark_art.py into the shipped Media/*.tga). Keep the repo lean.
 art/*.png
 art/preview.png
+
+# transient voice-variant previews (listen-and-pick, never shipped)
+Media/voice_*_preview.mp3

@@ -3,6 +3,18 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.12] - 2026-09-03
+
+### Changed
+- **Voice clips (fifth take) re-recorded with a British-accented voice**
+  (`en-GB` candidate pool instead of the generic `en` pool, whose takes kept
+  reading generic no matter the text). Same production as 0.9.11: long-form
+  dwarfy line rendered first, first two sentences cut at the silencedetect
+  boundaries with a fade. `voice_noarrows.mp3` 3.0 s, `voice_noammo.mp3`
+  3.0 s. A pitch-shifted (-3 semitones) variant can be produced on request.
+
+---
+
 ## [0.9.11] - 2026-09-03
 
 ### Fixed
