@@ -3,6 +3,38 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.22] - 2026-09-03
+
+### Fixed
+- **No ammo warning on first load** (the reported bug): `lastWarn`/`lastVoice`
+  started at 0 while `GetTime()` counts from client start -- on a fresh login
+  `now >= 0 + period` stays false, so a player who logged in already low saw
+  no icon and heard no voice for up to 90 s. Both now start (and reset on
+  `PLAYER_ENTERING_WORLD`, via the new `AmmoWarn.Rearm`) deeply negative:
+  the first warning fires on the very first tick.
+- **Cold item cache no longer poisons the session**: at login
+  `GetItemInfo(id)` can return nil ("lacking info"); the memo kept that miss
+  forever, pinning arrows to the generic icon and the wrong voice variant.
+  Unresolved lookups are now retried next tick instead of cached.
+
+### Performance (audited + measured in the harness, µs/call)
+- **Range stopped redrawing 10x per second**: `Update()` (10 Hz) re-ran the
+  full primitive redraw -- twice under brightness overdrive -- even when
+  state/style/size/brightness were unchanged. A change signature now skips
+  no-op redraws; the signature resets whenever the mark hides.
+- Audit of every recurring path: AmmoWarn tick (1 Hz) 0.4 µs, MendMark
+  Update (10 Hz) 0.8 µs, Range Update (10 Hz, no target) 0.2 µs, FeedPet
+  per-event refresh 9.4 µs (full bag rescan only on real bag/pet/login/
+  options changes since 0.9.16). OnUpdate scripts (ammo pulse, mend anchor,
+  passive pulse) run only while their frame is shown. No leaks found: all
+  frames are created once at Init; no per-tick table churn in hot paths.
+
+### Tests
+- 119 + 55 + 82 + 43 = **299 green** (fresh-load warn + voice, cold-cache
+  recovery).
+
+---
+
 ## [0.9.21] - 2026-09-03
 
 ### Changed

@@ -409,6 +409,33 @@ ammoTicker:Tick()
 check("threshold reached: warns and speaks that same tick",
   HK.AmmoWarn.IsShown() and #HKTest.soundsPlayed == e1 + 1,
   tostring(HK.AmmoWarn.IsShown()) .. "/" .. tostring(#HKTest.soundsPlayed))
+-- Fresh load: GetTime() counts from client start, so the first warning must
+-- not wait out a full period (the "no ammo warning when the addon first
+-- loads" bug).
+HK.db.ammo.sound = true
+HKTest.state.ammoID = 2515
+HKTest.state.items = { [2515] = 60 }
+HKTest.state.now = 3
+HK.AmmoWarn.Rearm()
+check("fresh load: warns immediately when already low", HK.AmmoWarn.IsShown(),
+  tostring(HK.AmmoWarn.IsShown()))
+check("fresh load: the low voice fires too",
+  HKTest.soundsPlayed[#HKTest.soundsPlayed] ==
+    "Interface\\AddOns\\HunterKit\\Media\\voice_lowarrows.ogg",
+  tostring(HKTest.soundsPlayed[#HKTest.soundsPlayed]))
+-- Cold item cache at login: an unresolved GetItemInfo must NOT be cached --
+-- once the cache warms, the same session has to recover the arrow art.
+HK.db.ammo.sound = false
+local savedInfo = HKTest.state.itemInfo[2515]
+HKTest.state.itemInfo[2515] = nil
+HKTest.state.now = 200
+ammoTicker:Tick()
+HKTest.state.itemInfo[2515] = savedInfo
+HKTest.state.now = 400
+ammoTicker:Tick()
+check("warmed item cache recovers the equipped ammo's icon",
+  aw.textures[1].texture == "Interface\\Icons\\INV_Ammo_Arrow_02",
+  tostring(aw.textures[1].texture))
 HKTest.state.items = nil
 HKTest.state.ammoID = nil
 HK.db.ammo.sound = false

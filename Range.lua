@@ -320,6 +320,7 @@ end
 
 local lastStyle = nil
 local lastR, lastG, lastB = 1, 1, 1
+local lastDrawnSig = nil   -- what ApplyState last drew (10 Hz redraw skip)
 
 local function StyleFor(state)
   local key
@@ -346,6 +347,15 @@ end
 ApplyState = function(state)
   local c = COLORS[state] or COLORS.FAR
   local style = StyleFor(state)
+  -- Redraw skip: Update() ticks at 10 Hz, and nothing about the mark changes
+  -- between ticks while the state/style/size/brightness hold. Redrawing the
+  -- whole primitive set (twice, with overdrive) ten times a second per
+  -- texture was the addon's busiest pointless work.
+  local bkey = state == "OK" and "brightOK" or state == "DEAD" and "brightDead" or "brightFar"
+  local sig = state .. "|" .. style .. "|" .. (db.size or 60) .. "|" ..
+              (db[bkey] or 100) .. "|" .. (db.showLabel and 1 or 0)
+  if sig == lastDrawnSig and frame:IsShown() then return end
+  lastDrawnSig = sig
   lastStyle = style
   frame:SetAlpha(1)
   -- Per-state brightness slider (10..100%): with the ADDitive blend, scaling the
@@ -386,6 +396,7 @@ function Range.Update()
   if HK.db.enabled == false or not HK.db.range.enabled then
     frame:SetShown(false)
     lastState, shownState = nil, nil
+    lastDrawnSig = nil
     farPending, farPendingN = nil, 0
     return
   end
@@ -394,6 +405,7 @@ function Range.Update()
   if not s then
     frame:SetShown(false)
     shownState, farPending, farPendingN = nil, nil, 0
+    lastDrawnSig = nil
     return
   end
   frame:SetShown(true)

@@ -20,8 +20,12 @@ HK.AmmoWarn = AmmoWarn
 
 local db
 local frame, icon, cross, label
-local lastWarn = 0
-local lastVoice = 0
+-- Start deeply negative, NOT at 0: GetTime() counts from client start, so on
+-- a fresh login "now >= 0 + PERIOD" stays false and the first warning (and
+-- voice) would sit silent for up to a full period -- the "no warning when the
+-- addon first loads" bug. -3600 means "never warned yet, warn at once".
+local lastWarn = -3600
+local lastVoice = -3600
 local shownUntil = 0
 
 -- Voice cooldowns, scaled by the frequency option: 45 s is the user's floor
@@ -127,7 +131,11 @@ local function AmmoType(id)
   if not GetItemInfo then return nil, nil end
   local ok, name, _, _, _, _, subclass, _, _, _, texture = pcall(GetItemInfo, id)
   if not ok then return nil, nil end
-  local low = (type(name) == "string") and name:lower() or ""
+  -- Item cache not warm yet (login): return "unknown" WITHOUT caching it, so
+  -- the next tick retries. Caching the miss pinned arrows to the generic
+  -- fallback icon/voice for the whole session.
+  if type(name) ~= "string" or name == "" then return nil, nil end
+  local low = name:lower()
   local kind
   if low:find("arrow", 1, true) or subclass == 2 then
     kind = "arrows"
@@ -253,6 +261,14 @@ local function Tick()
   end
 end
 
+-- (Re)arm after login/reload/zone: forget any previous episode so a player
+-- who logs in already low on ammo is warned on the very first tick.
+function AmmoWarn.Rearm()
+  lastWarn = -3600
+  lastVoice = -3600
+  Tick()
+end
+
 function AmmoWarn.RescanSettings()
   db = HK.db.ammo
   if not frame then return end
@@ -267,7 +283,7 @@ function AmmoWarn.Init()
   BuildFrame()
 
   HK.On("BAG_UPDATE_DELAYED", function() lastWarn = 0; Tick() end)
-  HK.On("PLAYER_ENTERING_WORLD", Tick)
+  HK.On("PLAYER_ENTERING_WORLD", AmmoWarn.Rearm)
 
   HK.Ticker(1, Tick)
   Tick()
