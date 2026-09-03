@@ -96,6 +96,39 @@ check("README documents the pet mend marker", readme:find("Pet Mend Marker", 1, 
 check("CHANGELOG documents the pet mend marker",
   changelog:find("Pet Mend Marker", 1, true) ~= nil)
 
+-- Texture guard: shipped art is PNG (as of 0.9.28) -- lossless, 9x smaller
+-- than the old TGAs, and the format addons universally use on this client.
+-- The BLP detour (0.9.21-0.9.27) failed twice: BLP1 showed green squares
+-- and a hand-rolled BLP2 used the wrong 156-byte header (working BLPs use
+-- 148: width at byte 12, mip offsets at byte 20, 1024-byte palette gap
+-- before mip0, full mip chain -- see the autopsy in tools/tga_to_blp.py).
+-- Every shipped texture must exist as a PNG and carry the PNG magic.
+do
+  local textures = {
+    "crosshair", "crosshair-x", "crosshair-outline",
+    "mark-ok-reticle", "mark-ok-plus", "mark-ok-ticks", "mark-ok-diamond",
+    "mark-ok-chevrons",
+    "mark-far-ban", "mark-far-halo", "mark-far-dashring", "mark-far-sides",
+    "mark-far-slashes",
+    "mark-dead-cross", "mark-dead-block", "mark-dead-burst", "mark-dead-bars",
+    "mark-dead-hexx",
+  }
+  for _, n in ipairs(textures) do
+    local fh = io.open("../Media/" .. n .. ".png", "rb")
+    check("texture " .. n .. ".png exists", fh ~= nil)
+    if fh then
+      local magic = fh:read(8)
+      fh:close()
+      check("texture " .. n .. ".png carries the PNG magic",
+        magic == "\137PNG\r\n\26\n", tostring(magic))
+    end
+  end
+  check("no stray .tga files ship",
+    io.open("../Media/mark-ok-plus.tga", "rb") == nil)
+  check("no stray .blp files ship",
+    io.open("../Media/mark-ok-plus.blp", "rb") == nil)
+end
+
 say(string.format("\n%d passed, %d failed", passes, #failures))
 if #failures > 0 then
   for _, f in ipairs(failures) do say("  - " .. f) end

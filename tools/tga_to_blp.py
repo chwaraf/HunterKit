@@ -1,5 +1,24 @@
 #!/usr/bin/env python3
-"""Convert the mark art Media/*.tga -> Media/*.blp (BLP1 / DXT5), losslessly
+"""EXPERIMENTAL -- DO NOT SHIP THE OUTPUT (the addon ships PNG since 0.9.28).
+
+Both hand-rolled containers failed on the user's 1.15.9 client: BLP1 showed
+neon-green "unreadable texture" squares, and the BLP2/DXT5 rewrite did not
+render either.
+
+AUTOPSY (0.9.28, byte-diffed against client-proven BLPs from WeakAuras2
+Statusbar_Clean.blp and DBM alert_circle.blp): the BLP2 rewrite used BLP1's
+156-byte header (compression/alphaDepth/alphaEncoding/mips as full u32s,
+width at byte 20, mip offsets at byte 28). Real BLP2s use a 148-byte
+header: magic, u32=1, then BYTE-sized fields (0x02, alphaDepth, encoding,
+hasMips), width at byte 12, height at byte 16, mip offsets at byte 20,
+mip sizes at byte 84; a 1024-byte palette gap follows the header even for
+DXT (mip0 offset 1172), and working files carry a full mip chain. With the
+156-byte header the client reads width/height/offsets from the wrong bytes
+and renders nothing. Fixing all of this would still lose to PNG, which is
+lossless and 2.2x smaller than these DXT5 files -- so this tool stays as a
+reference only. If you ever revive it, update tests/test_docs.lua first.
+
+Convert the mark art Media/*.tga -> Media/*.blp (BLP2 / DXT5), losslessly
 for anything DXT5 can represent exactly and visually-lossless otherwise.
 
 WHY: the shipped art is uncompressed 32-bit TGA (6.2 MB). BLP+DXT5 is the
@@ -186,12 +205,19 @@ def dxt5_decode(data, w, h):
 
 
 # --------------------------------------------------------------------------
-# BLP1 container (DXT flavour)
+# BLP2 container (DXT flavour)
 # --------------------------------------------------------------------------
-def blp1_dxt5(rgba):
+# BLP2 -- NOT BLP1. BLP1 is the 2004-vanilla container; the Classic Era
+# client (1.15, modern texture pipeline) cannot decode it and renders the
+# bright-green "unreadable texture" placeholder. That was the "neon green
+# squares" bug of 0.9.21-0.9.25. The DXT5 payload is byte-identical between
+# the two containers; only this header differs.
+def blp2_dxt5(rgba):
     h, w, _ = rgba.shape
     data = dxt5_encode(rgba)
-    header = struct.pack("<4sIIIIII", b"BLP1", 2, 8, w, h, 3, 1)
+    # magic, compression=2 (DXT), alphaDepth=8, alphaEncoding=7 (DXT5),
+    # hasMips=0, width, height
+    header = struct.pack("<4sIIIIII", b"BLP2", 2, 8, 7, 0, w, h)
     header += struct.pack("<16I", 156, *([0] * 15))           # mip0 offset
     header += struct.pack("<16I", len(data), *([0] * 15))     # mip0 size
     assert len(header) == 156, len(header)
@@ -210,7 +236,7 @@ def main():
         w, h = img.size
         assert w % 4 == 0 and h % 4 == 0, (name, w, h)
         rgba = np.asarray(img)
-        blob = blp1_dxt5(rgba)
+        blob = blp2_dxt5(rgba)
         back = dxt5_decode(blob[156:], w, h)
         err = np.abs(back.astype(np.int32) - rgba.astype(np.int32))
         mse = float((err.astype(np.float64) ** 2).mean())

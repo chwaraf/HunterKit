@@ -3,6 +3,90 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.28] - 2026-09-03
+
+### Changed
+- **Art is PNG now: 7.08 MB -> 783 KB (9.0x smaller) and provably lossless**
+  -- the format most addons ship and the client renders natively. Every file
+  was decoded back after conversion and compared pixel-for-pixel with the
+  TGA source (`tools/tga_to_png.py`, new); `Range.lua` points at `.png`.
+  This is smaller than the failed BLP attempt (1.77 MB) AND touches no
+  pixel values, unlike DXT5.
+- **BLP autopsy** (per the user's suggestion to diff against working addon
+  BLPs): byte-comparison with WeakAuras2/DBM textures shows real BLP2 uses
+  a 148-byte header (byte-sized flag fields, width at byte 12, mip offsets
+  at byte 20, 1024-byte palette gap before mip0, full mip chains) -- my
+  0.9.26 files used BLP1's 156-byte u32 layout, so the client read
+  width/height/offsets from the wrong bytes and rendered nothing. Full
+  findings recorded in tools/tga_to_blp.py; the tool stays experimental.
+- The docs-test guard now enforces PNG: all 18 textures must exist with the
+  PNG magic, and no `.tga`/`.blp` strays may ship.
+
+### Tests
+- 119 + 55 + 102 + 81 = **357 green**.
+
+---
+
+## [0.9.27] - 2026-09-03
+
+### Changed
+- **Back to TGA art -- the 4x compression experiment is withdrawn.** The
+  BLP2 rewrite of 0.9.26 still did not render on the 1.15.9 client, and
+  BLP1 (0.9.21) showed neon-green squares: two hand-rolled containers, two
+  failures. Rather than guess a third time, all 18 mark/crosshair textures
+  are restored **byte-identical to the 0.9.20 release the marks last
+  rendered correctly on** (SHA-256 verified against `ddbd423`), and
+  `Range.lua` points at `.tga` again. Media is 7.0 MB again -- the working
+  art wins over the smaller folder.
+- The docs-test guard now enforces what actually renders: every shipped
+  texture must exist as an uncompressed 32-bit RGBA TGA (image type 2,
+  32 bpp), and no stray `.blp` may ship. `tools/tga_to_blp.py` is kept but
+  marked EXPERIMENTAL -- do not ship its output.
+
+### Tests
+- 119 + 55 + 102 + 80 = **356 green**.
+
+---
+
+## [0.9.26] - 2026-09-03
+
+### Fixed
+- **Marks rendered as neon-green squares**: the 0.9.21 conversion wrapped the
+  textures in **BLP1** -- the 2004-vanilla container. The Classic Era client
+  runs the modern texture pipeline and only decodes **BLP2**; BLP1 shows up
+  as the bright-green "unreadable texture" placeholder. All 18 textures are
+  now BLP2/DXT5. The DXT5 payload is byte-identical between the two
+  containers, so image quality and file size are exactly as measured in
+  0.9.21 (crosshairs lossless, marks 33.9-41.0 dB PSNR, 7.08 MB -> 1.77 MB,
+  4.0x smaller). `tools/tga_to_blp.py` now emits BLP2, and a new docs test
+  asserts the BLP2 magic of every shipped texture so a wrong container can
+  never ship again.
+
+### Tests
+- 119 + 55 + 102 + 79 = **355 green** (36 new checks: existence + BLP2
+  magic for all 18 textures).
+
+---
+
+## [0.9.25] - 2026-09-03
+
+### Fixed
+- **Hunter's Mark no longer pews.** The 0.9.24 spell-ID table was written
+  from memory and mislabelled four IDs: 14323/14324/14325 are **Hunter's
+  Mark ranks 2-4** (not Multi-Shot 5-7) and 27068 is Hunter's Mark rank 5
+  (a TBC id, not Aimed Shot 7) -- so marking a target played the pew. All
+  four removed, plus unverified 27019. Every remaining ID re-verified
+  against classicdb.ch / wowhead classic: Arcane Shot r1-8 = 3044 +
+  14281-14287, Multi-Shot r1-5 = 2643/14288/14289/14290/25294, Aimed Shot
+  r1-6 = 19434/20900-20904. (14326, the next ID over, is Scare Beast r2 --
+  it was never in the table.)
+
+### Tests
+- 119 + 55 + 102 + 43 = **319 green** (every Hunter's Mark rank id and the
+  name path stay silent; real Multi-Shot r5 still pews).
+
+---
+
 ## [0.9.24] - 2026-09-03
 
 ### Added

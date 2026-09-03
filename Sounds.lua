@@ -36,16 +36,22 @@ local AUTO_SHOT = 75                  -- spellID for Auto Shot (launch moment)
 -- Ammo-spending special shots, every rank the client knows. IDs are the
 -- fast path; the localized-name fallback below covers any rank missing here
 -- (a miss only means "no pew", never a wrong pew -- unknown IDs are ignored).
+-- Every ID verified against classicdb.ch / wowhead classic (0.9.25):
+--   Arcane Shot  r1-r8 = 3044, 14281-14287
+--   Multi-Shot   r1-r5 = 2643, 14288, 14289, 14290, 25294
+--   Aimed Shot   r1-r6 = 19434, 20900-20904
+-- NOT here on purpose: 14323/14324/14325 are Hunter's Mark r2-r4 (they were
+-- mislabelled as Multi-Shot ranks in 0.9.24, which made Hunter's Mark pew),
+-- 27068 is Hunter's Mark r5 (TBC id), 14326 is Scare Beast r2.
 local SPECIAL_IDS = {
-  -- Arcane Shot (ranks 1-9)
+  -- Arcane Shot (ranks 1-8)
   [3044] = true, [14281] = true, [14282] = true, [14283] = true,
-  [14284] = true, [14285] = true, [14286] = true, [14287] = true, [27019] = true,
-  -- Multi-Shot (ranks 1-8)
-  [2643] = true, [14288] = true, [14289] = true, [14290] = true,
-  [14323] = true, [14324] = true, [14325] = true, [25294] = true,
-  -- Aimed Shot (ranks 1-7)
+  [14284] = true, [14285] = true, [14286] = true, [14287] = true,
+  -- Multi-Shot (ranks 1-5)
+  [2643] = true, [14288] = true, [14289] = true, [14290] = true, [25294] = true,
+  -- Aimed Shot (ranks 1-6)
   [19434] = true, [20900] = true, [20901] = true, [20902] = true,
-  [20903] = true, [20904] = true, [27068] = true,
+  [20903] = true, [20904] = true,
 }
 -- English name fallback (event carries spellName on this client).
 local SPECIAL_NAMES = {
