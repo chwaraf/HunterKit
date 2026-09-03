@@ -3,6 +3,27 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.27] - 2026-09-03
+
+### Changed
+- **Back to TGA art -- the 4x compression experiment is withdrawn.** The
+  BLP2 rewrite of 0.9.26 still did not render on the 1.15.9 client, and
+  BLP1 (0.9.21) showed neon-green squares: two hand-rolled containers, two
+  failures. Rather than guess a third time, all 18 mark/crosshair textures
+  are restored **byte-identical to the 0.9.20 release the marks last
+  rendered correctly on** (SHA-256 verified against `ddbd423`), and
+  `Range.lua` points at `.tga` again. Media is 7.0 MB again -- the working
+  art wins over the smaller folder.
+- The docs-test guard now enforces what actually renders: every shipped
+  texture must exist as an uncompressed 32-bit RGBA TGA (image type 2,
+  32 bpp), and no stray `.blp` may ship. `tools/tga_to_blp.py` is kept but
+  marked EXPERIMENTAL -- do not ship its output.
+
+### Tests
+- 119 + 55 + 102 + 80 = **356 green**.
+
+---
+
 ## [0.9.26] - 2026-09-03
 
 ### Fixed

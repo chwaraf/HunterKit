@@ -96,9 +96,10 @@ check("README documents the pet mend marker", readme:find("Pet Mend Marker", 1, 
 check("CHANGELOG documents the pet mend marker",
   changelog:find("Pet Mend Marker", 1, true) ~= nil)
 
--- BLP2 guard: the Classic Era client cannot decode BLP1 textures -- they
--- render as bright-green "unreadable texture" squares (the 0.9.21-0.9.25
--- regression). Every shipped texture must carry the BLP2 magic.
+-- Texture guard: the client only ever rendered the uncompressed 32-bit TGAs
+-- reliably (BLP1 showed green squares, and hand-rolled BLP2 did not render
+-- either -- 0.9.21-0.9.26). Every shipped texture must be an uncompressed
+-- true-colour TGA: image type 2, 32 bits per pixel.
 do
   local textures = {
     "crosshair", "crosshair-x", "crosshair-outline",
@@ -110,15 +111,19 @@ do
     "mark-dead-hexx",
   }
   for _, n in ipairs(textures) do
-    local fh = io.open("../Media/" .. n .. ".blp", "rb")
-    check("texture " .. n .. ".blp exists", fh ~= nil)
+    local fh = io.open("../Media/" .. n .. ".tga", "rb")
+    check("texture " .. n .. ".tga exists", fh ~= nil)
     if fh then
-      local magic = fh:read(4)
+      local hdr = fh:read(18)
       fh:close()
-      check("texture " .. n .. ".blp is BLP2 (engine-readable)",
-        magic == "BLP2", tostring(magic))
+      local imgType, bpp = hdr:byte(3), hdr:byte(17)
+      check("texture " .. n .. ".tga is uncompressed 32-bit RGBA",
+        imgType == 2 and bpp == 32,
+        string.format("type=%s bpp=%s", tostring(imgType), tostring(bpp)))
     end
   end
+  check("no stray .blp files ship",
+    io.open("../Media/mark-ok-plus.blp", "rb") == nil)
 end
 
 say(string.format("\n%d passed, %d failed", passes, #failures))

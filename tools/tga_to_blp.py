@@ -1,5 +1,13 @@
 #!/usr/bin/env python3
-"""Convert the mark art Media/*.tga -> Media/*.blp (BLP2 / DXT5), losslessly
+"""EXPERIMENTAL -- DO NOT SHIP THE OUTPUT (as of 0.9.27).
+
+Both hand-rolled containers failed on the user's 1.15.9 client: BLP1 showed
+neon-green "unreadable texture" squares, and the BLP2/DXT5 rewrite did not
+render either. The addon ships the uncompressed 32-bit TGAs instead; the
+docs test enforces that. This tool stays as a reference/experiment only --
+if you ever make it render in-game, update tests/test_docs.lua first.
+
+Convert the mark art Media/*.tga -> Media/*.blp (BLP2 / DXT5), losslessly
 for anything DXT5 can represent exactly and visually-lossless otherwise.
 
 WHY: the shipped art is uncompressed 32-bit TGA (6.2 MB). BLP+DXT5 is the
