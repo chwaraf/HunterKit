@@ -6,7 +6,7 @@
 
 local ADDON_NAME, HK = ...
 
-HK.version = "0.9.14"
+HK.version = "0.9.15"
 
 -- ---------------------------------------------------------------------------
 -- Defaults (schema). This is the source of truth for the options window and
@@ -14,7 +14,7 @@ HK.version = "0.9.14"
 -- ---------------------------------------------------------------------------
 HK.defaults = {
   enabled   = true,
-  dbVersion = 18,
+  dbVersion = 19,
   firstRun  = true,
 
   ui = {
@@ -38,7 +38,7 @@ HK.defaults = {
   ammo = {
     enabled   = true,
     threshold = 200,   -- warn at or below this many arrows/bullets left
-    sound     = true,  -- raid-warning sound with each warning
+    sound     = false, -- voice warnings (user: off by default)
   },
 
   range = {
@@ -709,6 +709,13 @@ local function LoadDB()
   -- option were added; MergeDefaults fills the new keys with their defaults.
   if db.dbVersion < 17 then
     db.dbVersion = 17
+  end
+
+  if db.dbVersion < 19 then
+    -- 0.9.15: voice warnings are opt-in now; force the new default once so
+    -- it reaches existing profiles too (the checkbox re-enables it).
+    if db.ammo then db.ammo.sound = false end
+    db.dbVersion = 19
   end
 
   if db.dbVersion < 18 then

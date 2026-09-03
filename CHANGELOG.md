@@ -3,6 +3,31 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.15] - 2026-09-03
+
+### Changed
+- **Voice warnings are opt-in: OFF by default** (dbVersion 19 forces the new
+  default once for existing profiles; the checkbox re-enables).
+- **Voice only — no game sounds at all.** The quest-failed sting fallback is
+  gone; if a clip is missing, the warning is simply silent.
+- **Clips shortened to the first sentence** ("No ammo, lad!" — the second
+  sentence was still getting cut in game): 1.7–1.9 s, four clips matching the
+  situation AND the projectile: `voice_lowarrows.ogg`, `voice_lowammo.ogg`,
+  `voice_noarrows.ogg`, `voice_noammo.ogg`.
+
+### Fixed
+- **"Low ammo" was never heard**: `lastTier` was updated on EVERY tick, so by
+  the time the warn period elapsed the tier had already "caught up" and the
+  escalation voice was skipped. It now updates only when a warn actually
+  fires, so the first warning and every escalation speaks.
+
+### Tests
+- 119 + 54 + 68 + 43 = **284 green** (voice-only assertion: no sound outside
+  the addon's Media folder is ever played; default-off default; low-arrows
+  clip path).
+
+---
+
 ## [0.9.14] - 2026-09-03
 
 ### Changed

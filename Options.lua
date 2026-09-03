@@ -618,7 +618,7 @@ function BuildWindow()
   y = y - CHK
   MakeCheckbox(content, y, "Warning sound", function() return db.ammo.sound end,
     function(v) db.ammo.sound = v end,
-    "Short bundled voice clips speak the situation: \"Low ammo!\" when the count gets worse (rare, not on every re-warn), \"No arrows!\"/\"No ammo!\" when the slot is empty (at most once every 30 s). A distinct sting is the fallback if a clip is missing.")
+    "Voice only -- no game sounds. Bundled clips speak the situation: \"Low arrows!\"/\"Low ammo!\" when the count gets worse (rare, not on every re-warn), \"No arrows!\"/\"No ammo!\" when the slot is empty (at most once every 30 s). Off by default.")
   y = y - CHK
 
   -- Sound

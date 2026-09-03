@@ -6,10 +6,12 @@
  the way the user asked: periodic, and MORE persistent the less ammo is left.
 
  Audible half (user: DISTINCT and RARE): short bundled voice clips speak the
- situation -- "Low ammo!" when the count gets WORSE (first entry or tier
- escalation), "No arrows!"/"No ammo!" when the slot is empty, at most once
- per 30 s. Periodic re-warns are visual only. The client has no TTS API, so
- the clips ship in Media\ as .ogg (the engine's mp3 decoder cut words off).
+ situation -- "Low arrows!"/"Low ammo!" when the count gets WORSE (first
+ entry or tier escalation), "No arrows!"/"No ammo!" when the slot is empty,
+ at most once per 30 s, matching the equipped projectile. VOICE ONLY: no
+ game sound is ever played (user), and it is OFF BY DEFAULT. Periodic
+ re-warns are visual only. No TTS API on the client, so the clips ship in
+ Media\ as .ogg (the engine's mp3 decoder cut words off).
 ==============================================================================]]
 local _, HK = ...
 
@@ -30,16 +32,14 @@ local VOICE_COOLDOWN = 30
 local ARROW_ICON  = "Interface\\Icons\\INV_Arrow_02"
 local BULLET_ICON = "Interface\\Icons\\INV_Ammo_Bullet_03"
 local RED_X       = "Interface\\Buttons\\UI-GroupLoot-Pass-Up"
--- Deliberately NOT RaidWarning: that one is common in raids/groups; this sting
--- is distinct and (by policy below) rare.
-local WARN_SOUND  = "Sound\\Interface\\igQuestFailed.ogg"
 local MEDIA       = "Interface\\AddOns\\HunterKit\\Media\\"
 -- .ogg, NOT .mp3: the classic-era engine's mp3 decoder is flaky -- every mp3
 -- take stopped mid-word in game, even untouched ones. Ogg vorbis is what
 -- addon sounds universally ship as and decodes reliably on every client.
-local VOICE = { arrows  = MEDIA .. "voice_noarrows.ogg",
-                bullets = MEDIA .. "voice_noammo.ogg",
-                low     = MEDIA .. "voice_lowammo.ogg" }
+local VOICE = { arrows      = MEDIA .. "voice_noarrows.ogg",
+                bullets     = MEDIA .. "voice_noammo.ogg",
+                low_arrows  = MEDIA .. "voice_lowarrows.ogg",
+                low_bullets = MEDIA .. "voice_lowammo.ogg" }
 
 -- tier 0 = silent; higher = less ammo = warned more often and for longer.
 local PERIOD = { [1] = 90, [2] = 45, [3] = 15, [4] = 10 }
@@ -93,14 +93,6 @@ local TIER_COLOR = {
   [3] = {1, 0.15, 0.1},
   [4] = {1, 0.05, 0.05},
 }
-
-local function WarnSound()
-  if PlaySoundFile then
-    local ok = pcall(PlaySoundFile, WARN_SOUND, "Master")
-    if ok then return end
-  end
-  if PlaySound then pcall(PlaySound, "igQuestFailed") end
-end
 
 -- The empty tier speaks: bundled dwarf-style clips. Returns false when the
 -- clip is missing from Media (client PlaySoundFile returns false), so the
@@ -204,23 +196,27 @@ local function Tick()
     end
     label:SetTextColor(c[1], c[2], c[3])
     frame:SetShown(true)
-    -- Sound policy: the voice speaks the situation -- "Low ammo!" on a
-    -- worsening (first entry or escalation), "No arrows!"/"No ammo!" when
-    -- empty, at most once per VOICE_COOLDOWN so it never nags. The sting is
-    -- only the fallback when a clip is missing.
+    -- Sound policy: ONLY the bundled voice -- never a game sound (user).
+    -- It speaks the situation: "Low arrows!"/"Low ammo!" on a worsening
+    -- (first entry or escalation), "No arrows!"/"No ammo!" when empty, at
+    -- most once per VOICE_COOLDOWN so it never nags.
     if db.sound then
       if tier == 4 then
         if now >= lastVoice + VOICE_COOLDOWN then
           lastVoice = now
-          if not VoiceSound(kind) then WarnSound() end
+          VoiceSound(kind == "arrows" and "arrows" or "bullets")
         end
       elseif tier > lastTier then
-        if not VoiceSound("low") then WarnSound() end
+        VoiceSound(kind == "arrows" and "low_arrows" or "low_bullets")
       end
     end
+    -- lastTier updates ONLY when a warn actually fires. Updating it every
+    -- tick (the old bug) let the tier "catch up" before the period elapsed,
+    -- so the escalation voice was skipped -- the user never heard the
+    -- low-ammo call at all.
+    lastTier = tier
   end
-  if tier == 0 then lastVoice = 0 end
-  lastTier = tier
+  if tier == 0 then lastTier = 0; lastVoice = 0 end
   if now > shownUntil then
     frame:SetShown(false)
   end

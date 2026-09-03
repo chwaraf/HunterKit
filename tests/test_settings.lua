@@ -290,6 +290,9 @@ for _, t in ipairs(HKTest.tickers) do
   if t.interval == 1 then ammoTicker = t end
 end
 check("ammo ticker running", ammoTicker ~= nil)
+check("voice warnings default off", HK.defaults.ammo.sound == false,
+  tostring(HK.defaults.ammo.sound))
+HK.db.ammo.sound = true   -- exercise the voice paths
 HKTest.state.ammoID = 2515
 HKTest.state.items = { [2515] = 800 }
 HKTest.state.itemInfo = { [2515] = { name = "Rough Arrow", subclass = 2,
@@ -303,9 +306,9 @@ HKTest.state.now = 2000
 ammoTicker:Tick()
 check("warns when low", HK.AmmoWarn.IsShown(), tostring(HK.AmmoWarn.IsShown()))
 check("warning sound played", #HKTest.soundsPlayed > 0, tostring(#HKTest.soundsPlayed))
-check("low tiers speak the situation: bundled 'low ammo' voice clip",
+check("low tiers speak: bundled 'low arrows' clip (arrows equipped)",
   HKTest.soundsPlayed[#HKTest.soundsPlayed] ==
-    "Interface\\AddOns\\HunterKit\\Media\\voice_lowammo.ogg",
+    "Interface\\AddOns\\HunterKit\\Media\\voice_lowarrows.ogg",
   tostring(HKTest.soundsPlayed[#HKTest.soundsPlayed]))
 local s1 = #HKTest.soundsPlayed
 HKTest.state.now = 2010
@@ -341,6 +344,11 @@ HKTest.state.now = 4041
 ammoTicker:Tick()
 check("voice returns once the cooldown is over", #HKTest.soundsPlayed == v1 + 1,
   tostring(#HKTest.soundsPlayed))
+local allVoice = true
+for _, s in ipairs(HKTest.soundsPlayed) do
+  if not s:find("Interface\\AddOns\\HunterKit\\Media\\", 1, true) then allVoice = false end
+end
+check("no game sounds ever played -- voice clips only", allVoice)
 local aw = _G["HunterKitAmmoWarn"]
 check("icon is the equipped ammo's own art",
   aw.textures[1].texture == "Interface\\Icons\\INV_Ammo_Arrow_02",
@@ -350,6 +358,7 @@ check("red X crosses the icon",
   tostring(aw.textures[2].texture))
 HKTest.state.items = nil
 HKTest.state.ammoID = nil
+HK.db.ammo.sound = false
 
 -- ---------------------------------------------------------------------------
 -- 7) Feed button: total food count in the icon + highlight rule
