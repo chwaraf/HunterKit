@@ -3,6 +3,68 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.29] - 2026-09-03
+
+### Added
+- **Ammo auto-buy (`AmmoBuy.lua`)** -- refills the quiver / ammo pouch at any
+  vendor. The feature is a **pure planner** (`AmmoBuy.Plan`) plus a queued
+  **executor**: the planner reads the client and returns a plan (or nil and a
+  human reason), which is what the confirm popup prints, what the merchant
+  button's tooltip shows, and what the tests drive. Nothing is ever bought
+  without a plan.
+  - **How much**: capacity is the AMMO-SPECIFIC bags only -- quiver (bag family
+    bit 1) for arrows, ammo pouch (bit 2) for bullets -- at **slots x 200**.
+    `have` is the summed real stack counts, so partial stacks top up correctly,
+    and a quiver slot holding a *different* arrow is subtracted from capacity
+    rather than counted as progress.
+  - **200-per-stack**: vendors move basic ammo in bundles (read from the
+    merchant's own `quantity`, not assumed), and the amount is always rounded
+    **down** to whole bundles -- rounding up would either overflow the quiver or
+    blow past a deliberately small fill percentage.
+  - **Which tier**: `equipped` (more of what is in the ammo slot, falling back
+    to the best of the *same kind* if the vendor lacks it -- a gun user is never
+    handed arrows), `best` (highest tier the player's level allows), or `capped`
+    (best, but never above a required-level cap, for staying on cheap ammo).
+  - **UI**: a **Fill completely (100%)** checkbox with a **Fill to %** slider
+    (5-100% of quiver capacity) underneath, tier dropdown + level-cap slider,
+    **Keep gold in reserve** and **Max spend per visit** sliders, a mode
+    dropdown, and a **Refill ammo** button on the merchant window whose tooltip
+    reports the exact amount -- or the reason it cannot buy.
+  - **Modes**: `confirm` (a popup before any gold moves -- the default, and
+    forced on for upgrading profiles), `auto` (buys as the vendor opens), and
+    `manual` (button / `/htk buy` only).
+  - New commands: **`/htk buy`** and **`/htk buyinfo`** (diagnostics: quiver
+    space, every vendor projectile, and the plan or the refusal).
+
+### Fixed (found by the new tests, before shipping)
+- The purchase queue's stall detector sampled the bag count **after** the buy
+  landed, so it compared the post-buy count with itself, read every healthy
+  purchase as a stall and aborted the run after the first stack. The baseline is
+  now taken immediately *before* each call.
+- The planner rounded the amount **up** to the next bundle when one still fit
+  the free space, which overshot a small fill percentage (25% of a 2000 quiver
+  bought 600 arrows, not 400). It now always rounds down.
+
+### Safety
+Every failure mode is a clean refusal with a printed reason, never an error:
+no quiver / pouch equipped, the wrong bag family for the ammo kind, an empty
+ammo slot (falls back to the vendor's best usable), a vendor with no ammo or
+none of your kind, ammo above your level, token / honor `extendedCost` ammo
+(never priced in gold, so never bought), limited `numAvailable` stock, an
+already-full quiver, less than one stack short, not enough gold for a whole
+bundle, a reserve above your purse, a vendor bundle that isn't 200, the
+merchant closing mid-run, a silent client refusal (aborts after 3 no-progress
+attempts instead of looping), and a second trigger while a run is live. Buys
+are spaced on a 0.35 s timer -- never a tight loop -- and gold is re-checked
+every step. Every client call is `pcall`-guarded.
+
+### Tests
+- New `tests/test_ammobuy.lua` (**55 checks**) covering all of the above, with
+  merchant / money / bag-family / static-popup stubs added to `wow_stub.lua`.
+- 119 + 55 + 102 + 55 + 83 = **414 green**.
+
+---
+
 ## [0.9.28] - 2026-09-03
 
 ### Changed
