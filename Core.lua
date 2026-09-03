@@ -6,7 +6,7 @@
 
 local ADDON_NAME, HK = ...
 
-HK.version = "0.9.1"
+HK.version = "0.9.2"
 
 -- ---------------------------------------------------------------------------
 -- Defaults (schema). This is the source of truth for the options window and
@@ -14,7 +14,7 @@ HK.version = "0.9.1"
 -- ---------------------------------------------------------------------------
 HK.defaults = {
   enabled   = true,
-  dbVersion = 14,
+  dbVersion = 15,
   firstRun  = true,
 
   ui = {
@@ -25,9 +25,10 @@ HK.defaults = {
   feed = {
     enabled        = true,
     size           = 28,
-    offsetX        = 12,           -- clear gap to the right of the happiness icon
-    offsetY        = 0,
+    offsetX        = 0,            -- centred under the pet avatar
+    offsetY        = -4,
     parent         = "PetFrame",
+    followName     = true,         -- hang below the pet's name when a plate shows it
     moved          = false,        -- true once the user drags it (then pinned absolutely)
     preferredFoods = {},
     exclude        = {},
@@ -667,6 +668,18 @@ local function LoadDB()
     if db.range and db.range.markFar == "broken" then db.range.markFar = "ban" end
     if db.mend then db.mend.forcePlate = nil end
     db.dbVersion = 14
+  end
+
+  -- v14 -> v15: the feed button's default moved from right-of-happiness to
+  -- centred under the pet avatar (the old spot could sit off-screen and read as
+  -- detached). Anyone who never dragged it gets the new spot; dragged/pinned
+  -- positions are untouched.
+  if db.dbVersion < 15 then
+    if db.feed and not db.feed.moved then
+      db.feed.offsetX = 0
+      db.feed.offsetY = -4
+    end
+    db.dbVersion = 15
   end
 
   db.dbVersion = HK.defaults.dbVersion

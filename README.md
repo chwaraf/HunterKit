@@ -7,13 +7,13 @@ For **WoW Classic Era & Hardcore** (patch 1.15.x).
 A self-contained, dependency-free (no Ace3/LibDBIcon) addon built for the
 hardcore-first hunter. Every action is a deliberate click; nothing is automated.
 
-Current version: **0.9.1** — see [`CHANGELOG.md`](CHANGELOG.md).
+Current version: **0.9.2** — see [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Features
 
 | Feature | What it does |
 |---|---|
-| **Feed Pet button** | A one-click button beside the pet happiness icon. Always feeds the **best** food in your bags (max happiness tier, then smallest open stack). Respects your pins/excludes. Out-of-combat only (as Blizzard intends). |
+| **Feed Pet button** | A one-click button centred under the pet avatar — or hung just below the pet's name when the client shows it (*Follow pet name when shown*). Always feeds the **best** food in your bags (max happiness tier, then smallest open stack). Respects your pins/excludes. Out-of-combat only (as Blizzard intends). |
 | **Sniper Mark** | A reticle by the target frame that reports **IN RANGE / TOO CLOSE / OUT OF RANGE** — six art styles per state in the bold outlined cross family (the new defaults), the classics and a modern sci-fi set, tinted by state. Reflects state only — it never acts. |
 | **Pet Mend Marker** | A **Mend Pet icon floating above your pet's head, nameplate style**. Green + solid when the pet is inside Mend Pet range, faded and greyed when it isn't — so you know at a glance, without reading a bar. Goes **bigger and pulsing with an expanding red ring** at or below **30% pet HP**. **On by default**, and it works with nameplates turned off. |
 | **Gun sound** | Replaces the stock gunshot with a Star-Wars-style blaster pew. Respects guns-only, no-repeat, and mutes the stock sound. |
@@ -47,7 +47,8 @@ away. All marks ship as white-on-alpha `.tga` so the state colour tints them:
 The new art is generated on a black field and luminance-keyed to alpha by
 `tools/build_mark_art.py` (black → transparent, mark → white), cropped, squared and
 resized to 256px, and **every** style is now art (the whole OUT OF RANGE and
-TOO CLOSE sets included). The colour always carries the state as well, so the mark stays
+TOO CLOSE sets included), with the IN RANGE set extra-boosted so it reads bright.
+The colour always carries the state as well, so the mark stays
 readable for colourblind players who pick a shape per state.
 
 ## Pet Mend Marker
@@ -113,7 +114,7 @@ UIParent advice below.
 
 **4. Otherwise the UI fallback is yours to place.** `/htk unlock`, drag the
 marker wherever you read it best, lock again — the spot is saved per character
-(`/htk reset` returns it above the pet frame).
+(`/htk reset` returns it under the pet frame).
 
 **In edit mode you always drag the fallback — even when the head anchor is live.**
 `/htk unlock` switches the marker to the UI fallback widget while frames are

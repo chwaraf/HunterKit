@@ -235,6 +235,22 @@ HK.FeedPet.RescanSettings()
 check("master on restores the mark", HK.Range.IsFrameValid(),
   tostring(HK.Range.IsFrameValid()))
 
+-- ---------------------------------------------------------------------------
+-- 4) Feed button anchor: under the pet's name when shown, else the avatar
+-- ---------------------------------------------------------------------------
+HK.db.feed.followName = true
+local feedPlate = CreateFrame("Frame", "FeedTestPlate", UIParent)
+feedPlate:SetSize(100, 30)
+feedPlate.namePlateUnitToken = "pet"
+HKTest.state.scanPlate = feedPlate
+HK.FeedPet.RescanSettings()
+check("feed button hangs under the pet's name when shown",
+  HK.FeedPet.AnchorKind() == "plate", tostring(HK.FeedPet.AnchorKind()))
+HKTest.state.scanPlate = nil
+HK.FeedPet.RescanSettings()
+check("feed button defaults to under the pet avatar",
+  HK.FeedPet.AnchorKind() == "frame", tostring(HK.FeedPet.AnchorKind()))
+
 say(string.format("\n%d passed, %d failed", passes, #failures))
 if #failures > 0 then
   for _, f in ipairs(failures) do say("  - " .. f) end

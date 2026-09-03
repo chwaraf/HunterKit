@@ -21,10 +21,10 @@ MEDIA = os.path.join(ROOT, "Media")
 
 # (source png in art/, output tga in Media/)
 MAP = [
-    ("ok-reticle.png", "mark-ok-reticle.tga"),
-    ("ok-chevrons.png", "mark-ok-chevrons.tga"),
-    ("ok-diamond.png", "mark-ok-diamond.tga"),
-    ("ok-ticks.png", "mark-ok-ticks.tga"),
+    ("ok-reticle.png", "mark-ok-reticle.tga", 1.35),
+    ("ok-chevrons.png", "mark-ok-chevrons.tga", 1.35),
+    ("ok-diamond.png", "mark-ok-diamond.tga", 1.35),
+    ("ok-ticks.png", "mark-ok-ticks.tga", 1.35),
     ("trial-dead.png", "mark-dead-hexx.tga"),
     ("dead-cross.png", "mark-dead-cross.tga"),
     ("dead-block.png", "mark-dead-block.tga"),
@@ -35,14 +35,14 @@ MAP = [
     ("far-sides.png", "mark-far-sides.tga"),
     ("far-slashes.png", "mark-far-slashes.tga"),
     ("far-halo.png", "mark-far-halo.tga"),
-    ("ok-plus.png", "mark-ok-plus.tga"),
+    ("ok-plus.png", "mark-ok-plus.tga", 1.6),
     ("far-ban.png", "mark-far-ban.tga"),
 ]
 
 SIZE = 256
 
 
-def convert(src, dst):
+def convert(src, dst, boost=1.0):
     im = Image.open(src).convert("RGBA")
     r, g, b, _ = im.split()
     # alpha = luminance of the glow; output is pure white so the game can tint it
@@ -55,6 +55,8 @@ def convert(src, dst):
     # are solid white in-game instead of a faint wash (ADD blend uses alpha as
     # intensity, so mid-grey alpha read as "barely visible").
     lum = lum.point(lambda v: 0 if v < 8 else min(255, int(255 * ((v / 255.0) ** 0.55))))
+    if boost != 1.0:  # extra intensity for arts that read dim in-game
+        lum = lum.point(lambda v: min(255, int(v * boost)))
     white = Image.new("L", im.size, 255)
     out = Image.merge("RGBA", (white, white, white, lum))
 
@@ -77,21 +79,23 @@ def convert(src, dst):
 
 def main():
     made = []
-    for src, name in MAP:
+    for entry in MAP:
+        src, name = entry[0], entry[1]
+        boost = entry[2] if len(entry) > 2 else 1.0
         s = os.path.join(ART, src)
         if not os.path.exists(s):
             print("skip (missing) %s" % src)
             continue
         d = os.path.join(MEDIA, name)
-        convert(s, d)
+        convert(s, d, boost)
         made.append((name, os.path.getsize(d) // 1024))
     for name, kb in made:
         print("wrote Media/%s  %dKB" % (name, kb))
     # a human-viewable composite over mid-grey to sanity-check legibility
     prev = os.path.join(ART, "preview.png")
     thumbs = []
-    for src, name in MAP:
-        d = os.path.join(MEDIA, name)
+    for entry in MAP:
+        d = os.path.join(MEDIA, entry[1])
         if os.path.exists(d):
             thumbs.append(Image.open(d).convert("RGBA"))
     if thumbs:

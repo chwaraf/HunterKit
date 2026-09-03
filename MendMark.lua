@@ -678,6 +678,10 @@ function MendMark.IsShown()
   return frame ~= nil and frame:IsShown() == true
 end
 
+-- The pet's name plate frame if the client publishes one (full or name-only),
+-- nil otherwise. Shared so the feed button can hang below the pet's name.
+function MendMark.PetPlateFrame() return PetPlate() end
+
 function MendMark.AnchorMode()
   return lastAnchorMode
 end

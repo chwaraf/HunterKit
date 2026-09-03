@@ -445,7 +445,11 @@ function BuildWindow()
   y = y - HDR
   MakeCheckbox(content, y, "Enable feed button", function() return db.feed.enabled end,
     function(v) db.feed.enabled = v; RefreshFeed() end,
-    "One-click Feed Pet beside the happiness icon. Right-click to pick food.")
+    "One-click Feed Pet under the pet avatar (or just below the pet's name when shown). Right-click to pick food.")
+  y = y - CHK
+  MakeCheckbox(content, y, "Follow pet name when shown", function() return db.feed.followName ~= false end,
+    function(v) db.feed.followName = v; RefreshFeed() end,
+    "When the client shows the pet's name (a full or name-only plate), hang the button just below it; otherwise it sits centred under the pet avatar.")
   y = y - CHK
   MakeCheckbox(content, y, "Only when hungry", function() return db.feed.hungryOnly end,
     function(v) db.feed.hungryOnly = v; RefreshFeed() end,
@@ -457,7 +461,7 @@ function BuildWindow()
   MakeDropdown(content, y, "Anchor", { "PetFrame", "UIParent" },
     function() return db.feed.parent end,
     function(v) db.feed.parent = v; RefreshFeed() end,
-    "PetFrame = by the happiness icon. UIParent = free/drag, for when an addon hides the pet frame.")
+    "PetFrame = under the pet avatar. UIParent = free/drag, for when an addon hides the pet frame.")
   y = y - ROW
 
   -- Range

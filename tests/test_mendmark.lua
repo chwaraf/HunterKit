@@ -47,7 +47,7 @@ check("db.mend defaults merged", HK.db.mend ~= nil and HK.db.mend.enabled == tru
   HK.db.mend and tostring(HK.db.mend.enabled))
 check("default low-HP threshold is 30%", HK.db.mend.hpThreshold == 30)
 check("default anchor is auto", HK.db.mend.anchor == "auto")
-check("db version migrated to 14", HK.db.dbVersion == 14, tostring(HK.db.dbVersion))
+check("db version migrated to 15", HK.db.dbVersion == 15, tostring(HK.db.dbVersion))
 check("new installs default to the bold cross family",
   HK.db.range.markOK == "plus" and HK.db.range.markDead == "cross"
   and HK.db.range.markFar == "ban",

@@ -3,6 +3,27 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.2] - 2026-09-03
+### Changed
+- **Brighter IN RANGE marks.** The generated IN RANGE art read dim next to the
+  cross; the converter now applies a per-art intensity boost (plus ×1.6, the rest
+  of the IN RANGE set ×1.35) on top of the gamma curve, so the green state reads
+  as bold as the others.
+- **Feed button default moved under the pet avatar.** The old right-of-happiness
+  spot could sit off-screen and read as detached; the default (and Reset ALL) now
+  centre it just below the pet frame. Saved positions you dragged are untouched;
+  un-dragged installs migrate (db v15).
+- **New option: "Follow pet name when shown" (on by default).** When the client
+  publishes the pet's name — a full or name-only plate — the feed button hangs
+  just below it, re-anchoring on plate add/remove and after combat; with no plate
+  it falls back to under the avatar. So yes: the pet name is anchorable exactly
+  when it is displayed, because the name text is drawn by the plate frame; when
+  nothing is displayed there is no name object to attach to.
+
+### Added (tests)
+- Feed-anchor checks (plate shown → under the name; no plate → under the avatar);
+  suite now 115 + 54 + 38 + 40 = 247, all passing.
+
 ## [0.9.1] - 2026-09-03
 ### Changed (Sniper Mark)
 - **IN RANGE `plus` gained its circles** — redrawn as the bold plus with a centre

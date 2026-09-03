@@ -14,6 +14,7 @@ local db
 local button, iconTex, countText, border
 local pending = false           -- attribute refresh deferred (combat)
 local initialised = false
+local anchorKind = nil
 -- forward declarations (referenced before their bodies are defined in this chunk)
 local ApplyVisibility, UpdateState, RefreshEverything, OnBagUpdate
 local bestCache = nil
@@ -96,7 +97,14 @@ function FeedPet.Init()
   HK.On("PLAYER_ENTERING_WORLD", RefreshEverything)
   HK.On("PLAYER_REGEN_ENABLED", function()
     if pending then pending = false end
+    FeedPet.ApplyPosition()        -- re-anchor now that SetPoint is allowed again
     RefreshEverything()            -- re-applies show/hide + macro now that we're safe
+  end)
+  HK.On("NAME_PLATE_UNIT_ADDED", function(u)
+    if u == "pet" then FeedPet.ApplyPosition() end
+  end)
+  HK.On("NAME_PLATE_UNIT_REMOVED", function(u)
+    if u == "pet" then FeedPet.ApplyPosition() end
   end)
   HK.On("BAG_UPDATE_DELAYED", OnBagUpdate)
 end
@@ -235,21 +243,39 @@ end
 
 function FeedPet.ApplyPosition()
   if not button then return end
+  -- SECURE button: re-anchoring in combat is a blocked action; the
+  -- PLAYER_REGEN_ENABLED handler re-runs this once we are safe.
+  if InCombatLockdown() then return end
   button:ClearAllPoints()
-  -- Once the user has dragged it (or selected a UIParent anchor), pin it to the
-  -- absolute UIParent CENTRE offset so it stays exactly where dropped. Otherwise
-  -- use the default happy-icon anchor.
+  -- Once the user has dragged it, pin it to the absolute UIParent CENTRE offset
+  -- so it stays exactly where dropped.
   if HK.IsPinned(db) then
     button:SetPoint("CENTER", UIParent, "CENTER", db.offsetX, db.offsetY)
+    anchorKind = "pin"
     return
   end
-  -- Sit to the right of the pet frame. Prefer anchoring to the happiness icon so
-  -- the feed button's CENTRE lands on the SAME height as the happiness icon and
-  -- sits fully to its right (the happiness icon is a separate frame just right of
-  -- the pet portrait — anchoring to the pet frame's own right edge put the button
-  -- ON the happiness icon, which is what looked overlapping).
-  button:SetPoint("LEFT", FeedAnchor(), "RIGHT", db.offsetX, db.offsetY)
+  -- Hang just below the pet's name when the client publishes a pet plate (full
+  -- or name-only) and "Follow pet name" is on — the name text itself is drawn by
+  -- the plate, so the plate frame IS the pet name as far as anchoring goes.
+  local plate = db.followName ~= false and HK.MendMark
+    and HK.MendMark.PetPlateFrame and HK.MendMark.PetPlateFrame() or nil
+  if plate then
+    button:SetPoint("TOP", plate, "BOTTOM", db.offsetX, db.offsetY)
+    anchorKind = "plate"
+    return
+  end
+  -- Default: centred under the pet avatar. The old right-of-happiness spot could
+  -- sit off-screen and read as detached; under the avatar always reads.
+  local pf = _G[db.parent] or _G["PetFrame"] or UIParent
+  if pf == UIParent then
+    button:SetPoint("CENTER", UIParent, "CENTER", db.offsetX, db.offsetY)
+  else
+    button:SetPoint("TOP", pf, "BOTTOM", db.offsetX, db.offsetY)
+  end
+  anchorKind = "frame"
 end
+
+function FeedPet.AnchorKind() return anchorKind end
 
 function FeedPet.IsButtonValid()
   return button and button:IsShown()
