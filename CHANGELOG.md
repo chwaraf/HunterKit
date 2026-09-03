@@ -3,6 +3,18 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.6] - 2026-09-03
+### Changed (Options — Sniper Mark reworked per sketch)
+- The Sniper Mark block is now the sketched grid: column headers **SHAPE** and
+  **BRIGHTNESS** on one level; one row per state with the shape cycle-button on
+  the left, the state name (**IN RANGE / TOO CLOSE / OUT OF RANGE**) beside it,
+  and that state's brightness slider on the right. The word "shape" is gone from
+  the row labels; the state texts stay.
+
+### Added (tests)
+- Existing options-window geometry tests cover the new grid (compact sliders,
+  labels, no clipping); suite still 117 + 54 + 40 + 40 = 251, all passing.
+
 ## [0.9.5] - 2026-09-03
 ### Fixed
 - **Ticking "Enable HunterKit" in combat threw `ADDON_ACTION_BLOCKED`** on

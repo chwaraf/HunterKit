@@ -486,30 +486,63 @@ function BuildWindow()
   MakeSlider(content, y, "Mark size", 20, 96, 1, function() return db.range.size end,
     function(v) db.range.size = v; RefreshRange() end, "Size of the reticle, in pixels.")
   y = y - ROW
-  MakeSlider(content, y, "IN RANGE brightness", 10, 100, 5, function() return db.range.brightOK or 100 end,
-    function(v) db.range.brightOK = v; RefreshRange() end, "Glow intensity of the IN RANGE mark.", true)
-  y = y - CHK
-  MakeSlider(content, y, "TOO CLOSE brightness", 10, 100, 5, function() return db.range.brightDead or 100 end,
-    function(v) db.range.brightDead = v; RefreshRange() end, "Glow intensity of the TOO CLOSE mark.", true)
-  y = y - CHK
-  MakeSlider(content, y, "OUT OF RANGE brightness", 10, 100, 5, function() return db.range.brightFar or 100 end,
-    function(v) db.range.brightFar = v; RefreshRange() end, "Glow intensity of the OUT OF RANGE mark.", true)
-  y = y - CHK
-  MakeDropdown(content, y, "IN RANGE shape", ShapeNames("OK", { "crosshair", "diamond", "brackets" }),
-    function() return db.range.markOK or "crosshair" end,
+  -- Shape/brightness grid (user sketch): SHAPE cycle-buttons on the left with the
+  -- state name beside them, BRIGHTNESS sliders on the right, one row per state.
+  local function ShapeRow(labelText, options, get, set, tip, bGet, bSet)
+    local row = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
+    row:SetSize(150, 22)
+    row:SetPoint("TOPLEFT", content, "TOPLEFT", 0, y - 4)
+    row:SetText(get() or "")
+    row:SetScript("OnClick", function()
+      local cur = get()
+      local idx = 1
+      for i, o in ipairs(options) do if o == cur then idx = i end end
+      local nxt = options[(idx % #options) + 1]
+      set(nxt)
+      row:SetText(nxt)
+    end)
+    AttachTooltip(row, labelText .. " shape", tip)
+    controlRefresh[#controlRefresh + 1] = function() row:SetText(get() or "") end
+    local st = content:CreateFontString(nil, "OVERLAY")
+    st:SetPoint("LEFT", row, "RIGHT", 10, 0)
+    st:SetFontObject(GameFontNormal)
+    st:SetJustifyH("LEFT")
+    st:SetWordWrap(false)
+    st:SetText(labelText)
+    st:SetTextColor(0.9, 0.9, 0.9)
+    MakeSlider(content, y, "", 10, 100, 5, bGet, bSet,
+      "Glow intensity of the " .. labelText .. " mark.", true)
+    y = y - CHK
+  end
+  local hShape = content:CreateFontString(nil, "OVERLAY")
+  hShape:SetPoint("TOPLEFT", content, "TOPLEFT", 0, y)
+  hShape:SetFontObject(GameFontNormal)
+  hShape:SetJustifyH("LEFT")
+  hShape:SetText("SHAPE")
+  local hBright = content:CreateFontString(nil, "OVERLAY")
+  hBright:SetPoint("TOPRIGHT", content, "TOPRIGHT", -36, y)
+  hBright:SetFontObject(GameFontNormal)
+  hBright:SetJustifyH("LEFT")
+  hBright:SetText("BRIGHTNESS")
+  y = y - 20
+  ShapeRow("IN RANGE", ShapeNames("OK", { "crosshair", "diamond", "brackets" }),
+    function() return db.range.markOK or "plus" end,
     function(v) db.range.markOK = v; RefreshRange() end,
-    "Shape while Auto Shot is in range (green). Click to cycle the six styles.")
-  y = y - ROW
-  MakeDropdown(content, y, "TOO CLOSE shape", ShapeNames("DEAD", { "x", "block", "circle" }),
-    function() return db.range.markDead or "x" end,
+    "Shape while Auto Shot is in range (green). Click to cycle the six styles.",
+    function() return db.range.brightOK or 100 end,
+    function(v) db.range.brightOK = v; RefreshRange() end)
+  ShapeRow("TOO CLOSE", ShapeNames("DEAD", { "x", "block", "circle" }),
+    function() return db.range.markDead or "cross" end,
     function(v) db.range.markDead = v; RefreshRange() end,
-    "Shape when the target is too close (red). Click to cycle the six styles.")
-  y = y - ROW
-  MakeDropdown(content, y, "OUT OF RANGE shape", ShapeNames("FAR", { "rings", "dashed", "halo" }),
-    function() return db.range.markFar or "rings" end,
+    "Shape when the target is too close (red). Click to cycle the six styles.",
+    function() return db.range.brightDead or 100 end,
+    function(v) db.range.brightDead = v; RefreshRange() end)
+  ShapeRow("OUT OF RANGE", ShapeNames("FAR", { "rings", "dashed", "halo" }),
+    function() return db.range.markFar or "ban" end,
     function(v) db.range.markFar = v; RefreshRange() end,
-    "Shape when the target is out of range (grey). Click to cycle the six styles.")
-  y = y - ROW
+    "Shape when the target is out of range (grey). Click to cycle the six styles.",
+    function() return db.range.brightFar or 100 end,
+    function(v) db.range.brightFar = v; RefreshRange() end)
   MakeCheckbox(content, y, "Show range label", function() return db.range.showLabel end,
     function(v) db.range.showLabel = v; RefreshRange() end, "Spell the state out under the mark.")
   y = y - CHK
