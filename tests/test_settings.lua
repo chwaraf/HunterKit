@@ -599,6 +599,24 @@ HKTest.state.now = 80009
 HKTest.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "c10", 99998, "Serpent Sting", "Rank 9")
 check("non-ammo spells never pew", #HKTest.soundsPlayed == sp + 6,
   tostring(#HKTest.soundsPlayed - sp))
+-- 0.9.25 regression: Hunter's Mark must NEVER pew. 14323/14324/14325 are
+-- Hunter's Mark ranks 2-4 (mislabelled as Multi-Shot in 0.9.24).
+local hm = { 1130, 14323, 14324, 14325, 14326, 27068 }
+for i, id in ipairs(hm) do
+  HKTest.state.now = 80100 + i
+  HKTest.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "hm" .. i, id)
+end
+check("Hunter's Mark never pews (all rank ids)", #HKTest.soundsPlayed == sp + 6,
+  tostring(#HKTest.soundsPlayed - sp))
+HKTest.state.now = 80110
+HKTest.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "hmN", 99997, "Hunter's Mark", "Rank 4")
+check("Hunter's Mark by name never pews", #HKTest.soundsPlayed == sp + 6,
+  tostring(#HKTest.soundsPlayed - sp))
+-- ...and the REAL Multi-Shot rank 5 (25294) still does.
+HKTest.state.now = 80111
+HKTest.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "ms5", 25294)
+check("Multi-Shot rank 5 still pews", #HKTest.soundsPlayed == sp + 7,
+  tostring(#HKTest.soundsPlayed - sp))
 
 say(string.format("\n%d passed, %d failed", passes, #failures))
 if #failures > 0 then

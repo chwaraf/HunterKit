@@ -3,6 +3,25 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.25] - 2026-09-03
+
+### Fixed
+- **Hunter's Mark no longer pews.** The 0.9.24 spell-ID table was written
+  from memory and mislabelled four IDs: 14323/14324/14325 are **Hunter's
+  Mark ranks 2-4** (not Multi-Shot 5-7) and 27068 is Hunter's Mark rank 5
+  (a TBC id, not Aimed Shot 7) -- so marking a target played the pew. All
+  four removed, plus unverified 27019. Every remaining ID re-verified
+  against classicdb.ch / wowhead classic: Arcane Shot r1-8 = 3044 +
+  14281-14287, Multi-Shot r1-5 = 2643/14288/14289/14290/25294, Aimed Shot
+  r1-6 = 19434/20900-20904. (14326, the next ID over, is Scare Beast r2 --
+  it was never in the table.)
+
+### Tests
+- 119 + 55 + 102 + 43 = **319 green** (every Hunter's Mark rank id and the
+  name path stay silent; real Multi-Shot r5 still pews).
+
+---
+
 ## [0.9.24] - 2026-09-03
 
 ### Added
