@@ -642,7 +642,7 @@ function BuildWindow()
   y = y - CHK
 
   -- Pulse
-  AddSection(content, y, "Passive Alert")
+  AddSection(content, y, "Passive pet alert")
   y = y - HDR
   MakeCheckbox(content, y, "Enable passive alert", function() return db.pulse.enabled end,
     function(v) db.pulse.enabled = v; RefreshPulse() end,

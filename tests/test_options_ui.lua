@@ -102,7 +102,7 @@ local rules = {}
 for _, t in ipairs(content.textures) do
   if t.height == 1 then rules[#rules + 1] = t end
 end
--- Master, Feed Pet, Sniper Mark, Pet Mend Marker, Gun Sound, Passive Alert,
+-- Master, Feed Pet, Sniper Mark, Pet Mend Marker, Gun Sound, Passive pet alert,
 -- Positions, Reset.
 check("every section has a divider rule", #rules == 9, tostring(#rules))
 local spanning = 0

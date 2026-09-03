@@ -276,6 +276,10 @@ function UnitCanAttack(a, b)
   return false
 end
 function GetInventorySlotInfo(n) return n == "AmmoSlot" and 100 or nil end
+function GetInventorySlotLink(unit, slot)
+  if slot == 100 then return HKTest.state.ammoLink end
+  return nil
+end
 function GetInventoryItemID(unit, slot)
   if slot == 100 then return HKTest.state.ammoID or nil end
   return nil

@@ -378,6 +378,18 @@ check("icon is the equipped ammo's own art",
 check("red X crosses the icon",
   aw.textures[2].texture == "Interface\\Buttons\\UI-GroupLoot-Pass-Up",
   tostring(aw.textures[2].texture))
+-- ammo id fallback: if GetInventoryItemID comes back empty (client quirk),
+-- the slot link must still resolve the projectile -- else a half-full quiver
+-- is misread as tier 4 and the "No ammo!" voice fires while ammo is low.
+HKTest.state.ammoID = nil
+HKTest.state.ammoLink = "|cffffffff|Hitem:2515::::::::70:::::::::|h[Rough Arrow]|h|r"
+HKTest.state.items = { [2515] = 60 }
+HKTest.state.now = 6000
+ammoTicker:Tick()
+check("slot-link fallback resolves the ammo (no false 'no ammo')",
+  HK.AmmoWarn.IsShown() and aw.fontstrings[1]:GetText() == "AMMO: 60",
+  tostring(HK.AmmoWarn.IsShown()) .. "/" .. tostring(aw.fontstrings[1]:GetText()))
+HKTest.state.ammoLink = nil
 HKTest.state.items = nil
 HKTest.state.ammoID = nil
 HK.db.ammo.sound = false

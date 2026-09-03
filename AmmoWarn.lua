@@ -67,6 +67,15 @@ local function AmmoCount()
     local ok, v = pcall(GetInventoryItemID, "player", slot)
     if ok then id = v end
   end
+  -- Belt & braces: if the id API comes back empty, parse the slot link.
+  -- Otherwise a client quirk reads as "nothing equipped" and the warning
+  -- shouts "No ammo!" (tier 4) while the quiver is still half full.
+  if not id and GetInventorySlotLink then
+    local ok, link = pcall(GetInventorySlotLink, "player", slot)
+    if ok and type(link) == "string" then
+      id = tonumber(link:match("item:(%d+)"))
+    end
+  end
   if not id then return 0, nil end   -- slot exists but nothing equipped
   local n = 0
   if GetItemCount then

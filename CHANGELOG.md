@@ -3,6 +3,20 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.17] - 2026-09-03
+
+### Added
+- **Ammo id fallback via the inventory slot link**: if
+  `GetInventoryItemID` comes back empty on a client, the item id is parsed
+  from `GetInventorySlotLink` instead. Without it, such a client reads as
+  "nothing equipped" (tier 4) and the warning shouts "No ammo!" while the
+  quiver is still half full.
+
+### Changed
+- Options section renamed: **"Passive Alert" -> "Passive pet alert"**.
+
+---
+
 ## [0.9.16] - 2026-09-03
 
 ### Added
