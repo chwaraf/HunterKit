@@ -610,15 +610,15 @@ function BuildWindow()
   y = y - HDR
   MakeCheckbox(content, y, "Enable low ammo warning", function() return db.ammo.enabled end,
     function(v) db.ammo.enabled = v; RefreshAmmo() end,
-    "Periodic on-screen warning (right of the passive alert) plus sound when your equipped ammo runs low. The less ammo, the more often and the longer it shows.")
+    "Periodic on-screen warning (right of the passive alert) when your equipped ammo runs low: the equipped projectile icon under a red X. The less ammo, the more often and the longer it shows.")
   y = y - CHK
-  MakeSlider(content, y, "Warn below", 10, 500, 10, function() return db.ammo.threshold or 100 end,
+  MakeSlider(content, y, "Warn below", 10, 500, 10, function() return db.ammo.threshold or 200 end,
     function(v) db.ammo.threshold = v; RefreshAmmo() end,
     "Warn when the equipped ammo count drops to this or lower.", true)
   y = y - CHK
   MakeCheckbox(content, y, "Warning sound", function() return db.ammo.sound end,
     function(v) db.ammo.sound = v end,
-    "Play the raid-warning sound with each warning. This client has no TTS API, so sound is the audible half.")
+    "A distinct sting when the ammo situation gets WORSE (rare, not on every re-warn); short voice clips say \"No arrows!\"/\"No ammo!\" when the slot is empty. Bundled clips (no TTS API on this client), sting as fallback.")
   y = y - CHK
 
   -- Sound

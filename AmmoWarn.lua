@@ -5,8 +5,11 @@
  configurable threshold, the WeakAura "3/2/1 stacks left" milestones) but tuned
  the way the user asked: periodic, and MORE persistent the less ammo is left.
 
- There is no TTS API on this client, so the audible half is the raid-warning
- sound (distinct, interrupt-resistant), gated behind its own toggle.
+ Audible half (user: DISTINCT and RARE): a quest-failed style sting fires only
+ when the situation gets WORSE (first entry into warning, or a tier escalation)
+ -- periodic re-warns are visual only. The empty tier speaks instead: short
+ bundled voice clips ("No arrows!" / "No ammo!"), with the sting as fallback.
+ The client itself has no TTS API, so the clips ship in Media\.
 ==============================================================================]]
 local _, HK = ...
 
@@ -14,13 +17,20 @@ local AmmoWarn = {}
 HK.AmmoWarn = AmmoWarn
 
 local db
-local frame, icon, label
+local frame, icon, cross, label
 local lastWarn = 0
+local lastTier = 0
 local shownUntil = 0
 
 local ARROW_ICON  = "Interface\\Icons\\INV_Arrow_02"
 local BULLET_ICON = "Interface\\Icons\\INV_Ammo_Bullet_03"
-local WARN_SOUND  = "Sound\\Interface\\RaidWarning.ogg"
+local RED_X       = "Interface\\Buttons\\UI-GroupLoot-Pass-Up"
+-- Deliberately NOT RaidWarning: that one is common in raids/groups; this sting
+-- is distinct and (by policy below) rare.
+local WARN_SOUND  = "Sound\\Interface\\igQuestFailed.ogg"
+local MEDIA       = "Interface\\AddOns\\HunterKit\\Media\\"
+local VOICE = { arrows = MEDIA .. "voice_noarrows.mp3",
+                bullets = MEDIA .. "voice_noammo.mp3" }
 
 -- tier 0 = silent; higher = less ammo = warned more often and for longer.
 local PERIOD = { [1] = 90, [2] = 45, [3] = 15, [4] = 10 }
@@ -80,7 +90,33 @@ local function WarnSound()
     local ok = pcall(PlaySoundFile, WARN_SOUND, "Master")
     if ok then return end
   end
-  if PlaySound then pcall(PlaySound, "RaidWarning") end
+  if PlaySound then pcall(PlaySound, "igQuestFailed") end
+end
+
+-- The empty tier speaks: bundled dwarf-style clips. Returns false when the
+-- clip is missing from Media (client PlaySoundFile returns false), so the
+-- caller can fall back to the sting.
+local function VoiceSound(kind)
+  local path = VOICE[kind] or VOICE.bullets
+  if not PlaySoundFile then return false end
+  local ok, played = pcall(PlaySoundFile, path, "Master")
+  return ok and played ~= false
+end
+
+-- What is equipped in the ammo slot: "arrows" / "bullets" / nil (unknown),
+-- plus the item's own icon so the warning shows the real projectile art.
+local function AmmoType(id)
+  if not id or not GetItemInfo then return nil, nil end
+  local ok, name, _, _, _, _, subclass, _, _, _, texture = pcall(GetItemInfo, id)
+  if not ok then return nil, nil end
+  local low = (type(name) == "string") and name:lower() or ""
+  local kind
+  if low:find("arrow", 1, true) or subclass == 2 then
+    kind = "arrows"
+  elseif low:find("shot", 1, true) or low:find("bullet", 1, true) or subclass == 3 then
+    kind = "bullets"
+  end
+  return kind, texture
 end
 
 -- ---------------------------------------------------------------------------
@@ -96,6 +132,11 @@ local function BuildFrame()
   icon:SetAllPoints(frame)
   icon:SetTexture(ARROW_ICON)
   icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+
+  -- The red X over the equipped projectile's own icon: "no arrows"/"no ammo".
+  cross = frame:CreateTexture(nil, "OVERLAY")
+  cross:SetAllPoints(frame)
+  cross:SetTexture(RED_X)
 
   label = frame:CreateFontString(nil, "OVERLAY")
   label:SetPoint("TOP", frame, "BOTTOM", 0, -2)
@@ -141,20 +182,30 @@ local function Tick()
   end
   local tier = TierFor(n, id)
   local now = GetTime()
+  local kind, tex = AmmoType(id)
   if tier > 0 and now >= lastWarn + PERIOD[tier] then
     lastWarn = now
     shownUntil = now + DURA[tier]
     local c = TIER_COLOR[tier]
-    icon:SetTexture(id and ARROW_ICON or BULLET_ICON)
+    icon:SetTexture(tex or ARROW_ICON)
     if tier == 4 then
-      label:SetText("NO AMMO!")
+      label:SetText(kind == "arrows" and "NO ARROWS!" or "NO AMMO!")
     else
       label:SetText("AMMO: " .. n)
     end
     label:SetTextColor(c[1], c[2], c[3])
     frame:SetShown(true)
-    if db.sound then WarnSound() end
+    -- Sound policy: sting ONLY on a worsening (first entry or escalation);
+    -- the empty tier speaks on every warn (that is the point of "no ammo").
+    if db.sound then
+      if tier == 4 then
+        if not VoiceSound(kind) then WarnSound() end
+      elseif tier > lastTier then
+        WarnSound()
+      end
+    end
   end
+  lastTier = tier
   if now > shownUntil then
     frame:SetShown(false)
   end

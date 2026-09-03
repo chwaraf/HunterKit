@@ -3,6 +3,43 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.8] - 2026-09-03
+
+### Added
+- **Ammo warning icon**: the warning now shows the *equipped projectile's own
+  icon* (arrows or bullets, resolved via `GetItemInfo`) under a big **red X**
+  — "no arrows"/"no ammo" readable at a glance. The empty-tier label matches
+  (`NO ARROWS!` vs `NO AMMO!`).
+- **Bundled dwarf-style voice clips** (`Media/voice_noarrows.mp3`,
+  `Media/voice_noammo.mp3`): the empty tier *speaks* on every warn. The client
+  has no TTS API, so the clips ship with the addon; the sting is the fallback
+  if a clip is ever missing.
+- **Feed button food count**: the icon now carries the **total edible food**
+  in your bags (all stacks, not just the one the click will feed), gold like
+  an action-button count, red `0` when the bags hold nothing edible.
+
+### Changed
+- **Ammo sound policy is distinct AND rare**: the sting (now
+  `igQuestFailed.ogg`, deliberately not the common RaidWarning) fires only
+  when the situation gets **worse** — first entry into warning or a tier
+  escalation. Periodic re-warns are visual-only; the empty tier speaks.
+- **Ammo threshold default raised 100 → 200** (migration only moves values
+  still at the old default; user-chosen thresholds are never rewritten).
+
+### Fixed
+- **Feed button highlight is now consistent**: it glows only when the pet is
+  **below happy (content/unhappy) AND you are out of combat** — previously it
+  glowed green even for a happy pet. `PLAYER_REGEN_DISABLED` re-runs the
+  update so the glow dies the moment combat starts.
+- The ammo warning icon used to show a generic arrow whenever *anything* was
+  equipped (inverted condition); it now follows the real item.
+
+### Tests
+- `dbVersion` 18; stub bag/item-info/pet-happiness APIs made state-driven.
+- 119 + 54 + 60 + 43 = **276 green**.
+
+---
+
 ## [0.9.7] - 2026-09-03
 
 ### Added

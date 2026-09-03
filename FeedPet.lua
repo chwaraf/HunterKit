@@ -94,6 +94,7 @@ function FeedPet.Init()
   HK.On("UNIT_HAPPINESS", function(u) if u == "pet" then RefreshEverything() end end)
   HK.On("UNIT_HEALTH", function(u) if u == "pet" then RefreshEverything() end end)
   HK.On("PLAYER_ENTERING_WORLD", RefreshEverything)
+  HK.On("PLAYER_REGEN_DISABLED", RefreshEverything)   -- kill the highlight on combat start
   HK.On("PLAYER_REGEN_ENABLED", function()
     if pending then pending = false end
     if button and not InCombatLockdown() then
@@ -147,7 +148,7 @@ function BuildButton()
 
   countText = button:CreateFontString(nil, "OVERLAY")
   countText:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -1, 1)
-  countText:SetFontObject(GameFontDisableSmall)
+  countText:SetFontObject(NumberFontNormalSmallOutline)   -- Blizzard's item-count look
   countText:SetJustifyH("RIGHT")
 
   border = HK.CreateBorder(button, 1)
@@ -442,6 +443,7 @@ end
 function FeedPet:PickFood()
   local petLevel = UnitLevel("pet") or UnitLevel("player")
   local best
+  local total = 0
   for bag = 0, 4 do
     for slot = 1, HK.GetBagNumSlots(bag) do
       local itemID = HK.GetBagItemID(bag, slot)
@@ -452,6 +454,7 @@ function FeedPet:PickFood()
           local tier = TierFor(petLevel, iLevel)
           local ft = self:FoodType(itemID)
           count = count or 1
+          total = total + count
           if not best or tier > best.tier
              or (tier == best.tier and count < best.count) then
             best = { bag = bag, slot = slot, itemID = itemID, name = name,
@@ -461,12 +464,25 @@ function FeedPet:PickFood()
       end
     end
   end
+  self.lastTotal = total   -- every edible stack in the bags, for the icon count
   -- pinned food override
   for _, pin in ipairs(db.preferredFoods) do
     local hit = self:FindBestStackByID(pin.id, petLevel)
     if hit then return hit end
   end
   return best
+end
+
+-- The button's item-count readout: TOTAL edible food in the bags (not just the
+-- stack the click will feed) -- "how much food do I have left" at a glance.
+function FeedPet.SetCount(n)
+  if not countText then return end
+  countText:SetText(tostring(n))
+  if n > 0 then
+    countText:SetTextColor(1, 0.82, 0, 1)
+  else
+    countText:SetTextColor(1, 0.2, 0.2, 1)
+  end
 end
 
 -- ---------------------------------------------------------------------------
@@ -494,7 +510,7 @@ function FeedPet:RefreshMacro()
     local icon = food.icon or QUESTION_ICON
     iconTex:SetTexture(icon)
     iconTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-    countText:SetText(food.count > 1 and food.count or "")
+    FeedPet.SetCount(self.lastTotal or 0)
   else
     -- no food in bags: fall back to the game's own Feed Pet (picks a food itself)
     button:ClearAttribute("target-item")
@@ -502,7 +518,7 @@ function FeedPet:RefreshMacro()
     button:ClearAttribute("target-slot")
     iconTex:SetTexture(QUESTION_ICON)
     iconTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-    countText:SetText("")
+    FeedPet.SetCount(0)
   end
   self.lastFood = food
 end
@@ -524,10 +540,15 @@ UpdateState = function()
     if h and h >= 3 then show = false end
   end
   ApplyVisibility(show)
-  if show then
-    local h = GetPetHappiness()
+  -- Highlight rule (user): ON only when the pet is BELOW happy (content or
+  -- unhappy) AND we are out of combat. Feeding is impossible in combat and a
+  -- happy pet needs no attention, so glowing in those cases is just noise.
+  local h = GetPetHappiness()
+  if h and h < 3 and not InCombatLockdown() then
     local c = HAPPINESS_COLOR[h] or {1, 1, 1}
     border:SetVertexColor(c[1], c[2], c[3], 1)
+  else
+    border:SetVertexColor(0, 0, 0, 0)
   end
   if not InCombatLockdown() then
     if pending then pending = false end

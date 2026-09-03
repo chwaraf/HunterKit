@@ -285,11 +285,23 @@ function GetInventoryItemCount(unit, slot)
   return 0
 end
 function GetItemCount(id) return (HKTest.state.items or {})[id] or 0 end
-function GetItemInfo() return nil end
-function GetContainerNumSlots() return 0 end
+function GetItemInfo(id)
+  local it = (HKTest.state.itemInfo or {})[id]
+  if not it then return nil end
+  return it.name, nil, it.quality or 1, it.iLevel or 1, nil, nil,
+         it.subclass, nil, nil, it.texture
+end
+function GetContainerNumSlots(bag) return (HKTest.state.bags or {})[bag] or 0 end
 function GetContainerItemLink() return nil end
-function GetContainerItemInfo() return nil end
-function GetContainerItemID() return nil end
+function GetContainerItemInfo(bag, slot)
+  local it = ((HKTest.state.bagItems or {})[bag] or {})[slot]
+  if not it then return nil end
+  return nil, it.count or 1, nil, nil, nil, nil, it.link, nil, nil, it.id
+end
+function GetContainerItemID(bag, slot)
+  local it = ((HKTest.state.bagItems or {})[bag] or {})[slot]
+  return it and it.id or nil
+end
 function UseContainerItem() end
 function GetCursorPosition() return HKTest.cursorX or 0, HKTest.cursorY or 0 end
 function PlaySoundFile(f) HKTest.soundsPlayed[#HKTest.soundsPlayed + 1] = f end
@@ -323,7 +335,7 @@ function GetSpellTexture(id)
   if id == 136 then return HKTest.state.spellTexture end
   return nil
 end
-function GetPetHappiness() return 3, 100, 0 end
+function GetPetHappiness() return HKTest.state.happiness or 3, 100, 0 end
 function UnitName(u) return (u == "pet") and "Fang" or "Testhunter" end
 function UnitPosition(u)
   if u ~= "pet" then return 100, 200, 0, 1 end

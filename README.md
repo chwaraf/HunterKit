@@ -7,18 +7,18 @@ For **WoW Classic Era & Hardcore** (patch 1.15.x).
 A self-contained, dependency-free (no Ace3/LibDBIcon) addon built for the
 hardcore-first hunter. Every action is a deliberate click; nothing is automated.
 
-Current version: **0.9.7** — see [`CHANGELOG.md`](CHANGELOG.md).
+Current version: **0.9.8** — see [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Features
 
 | Feature | What it does |
 |---|---|
-| **Feed Pet button** | A one-click button beside the pet happiness icon. Always feeds the **best** food in your bags (max happiness tier, then smallest open stack). Respects your pins/excludes. Out-of-combat only (as Blizzard intends). |
+| **Feed Pet button** | A one-click button beside the pet happiness icon. Always feeds the **best** food in your bags (max happiness tier, then smallest open stack), with the **total edible food count** in the icon like an action button charge count. The highlight glows only when the pet is **below happy and you are out of combat**. Respects your pins/excludes. Out-of-combat only (as Blizzard intends). |
 | **Sniper Mark** | A reticle by the target frame that reports **IN RANGE / TOO CLOSE / OUT OF RANGE** — six art styles per state in the bold outlined cross family (the new defaults), the classics and a modern sci-fi set, tinted by state. Reflects state only — it never acts. |
 | **Pet Mend Marker** | A **Mend Pet icon floating above your pet's head, nameplate style**. Green + solid when the pet is inside Mend Pet range, faded and greyed when it isn't — so you know at a glance, without reading a bar. Goes **bigger and pulsing with an expanding red ring** at or below **30% pet HP**. **On by default**, and it works with nameplates turned off. |
 | **Gun sound** | Replaces the stock gunshot with a Star-Wars-style blaster pew. Respects guns-only, no-repeat, and mutes the stock sound. |
 | **Passive alert** | A big pulsing Ability Seal center-screen above your character while the pet is Passive, plus an optional glow on the passive button. Impossible to miss. |
-| **Low ammo warning** | Periodic on-screen + raid-warning-sound alert when your equipped arrows/bullets run low — the less ammo, the more often and the longer it shows; `NO AMMO!` when empty. Sits right of the passive alert when both are up. Threshold configurable (default 100, like the community ammo trackers). |
+| **Low ammo warning** | Periodic on-screen alert when your equipped arrows/bullets run low — the **equipped projectile's own icon under a red X**, right of the passive alert. The less ammo, the more often and the longer it shows. Sound is **distinct and rare**: a quest-failed style sting only when things get worse, and short bundled voice clips ("No arrows!" / "No ammo!") when the slot is empty. Threshold configurable (default 200). |
 | **Options** | Draggable settings window — a master **Enable HunterKit** switch that pauses *every* feature at once, one rule per feature block, wrapped tooltips, and a two-click **Reset ALL settings** button. The Sniper Mark block is a grid per state: **SHAPE** cycle-button + state name on the left, short **BRIGHTNESS** slider (0–200%, 100% at the bar's middle, overdrive stacks a second additive pass) on the right. Minimap button, `/htk lock\|unlock`, `/htk reset`. |
 
 ## Sniper Mark

@@ -6,7 +6,7 @@
 
 local ADDON_NAME, HK = ...
 
-HK.version = "0.9.7"
+HK.version = "0.9.8"
 
 -- ---------------------------------------------------------------------------
 -- Defaults (schema). This is the source of truth for the options window and
@@ -14,7 +14,7 @@ HK.version = "0.9.7"
 -- ---------------------------------------------------------------------------
 HK.defaults = {
   enabled   = true,
-  dbVersion = 17,
+  dbVersion = 18,
   firstRun  = true,
 
   ui = {
@@ -37,7 +37,7 @@ HK.defaults = {
 
   ammo = {
     enabled   = true,
-    threshold = 100,   -- warn at or below this many arrows/bullets left
+    threshold = 200,   -- warn at or below this many arrows/bullets left
     sound     = true,  -- raid-warning sound with each warning
   },
 
@@ -706,6 +706,13 @@ local function LoadDB()
   -- option were added; MergeDefaults fills the new keys with their defaults.
   if db.dbVersion < 17 then
     db.dbVersion = 17
+  end
+
+  if db.dbVersion < 18 then
+    -- 0.9.8: ammo warning default raised 100 -> 200. Only move the value if it
+    -- is still the OLD default -- a user-chosen threshold is never rewritten.
+    if db.ammo and db.ammo.threshold == 100 then db.ammo.threshold = 200 end
+    db.dbVersion = 18
   end
 
   db.dbVersion = HK.defaults.dbVersion

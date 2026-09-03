@@ -292,6 +292,8 @@ end
 check("ammo ticker running", ammoTicker ~= nil)
 HKTest.state.ammoID = 2515
 HKTest.state.items = { [2515] = 800 }
+HKTest.state.itemInfo = { [2515] = { name = "Rough Arrow", subclass = 2,
+  texture = "Interface\\Icons\\INV_Ammo_Arrow_02" } }
 HKTest.state.now = 1000
 ammoTicker:Tick()
 check("no warning while stocked", not HK.AmmoWarn.IsShown(),
@@ -301,23 +303,80 @@ HKTest.state.now = 2000
 ammoTicker:Tick()
 check("warns when low", HK.AmmoWarn.IsShown(), tostring(HK.AmmoWarn.IsShown()))
 check("warning sound played", #HKTest.soundsPlayed > 0, tostring(#HKTest.soundsPlayed))
+check("sting is the distinct one, not RaidWarning",
+  HKTest.soundsPlayed[#HKTest.soundsPlayed] == "Sound\\Interface\\igQuestFailed.ogg",
+  tostring(HKTest.soundsPlayed[#HKTest.soundsPlayed]))
 local s1 = #HKTest.soundsPlayed
 HKTest.state.now = 2010
 ammoTicker:Tick()
 check("periodic: no re-warn inside the period", #HKTest.soundsPlayed == s1,
   tostring(#HKTest.soundsPlayed))
+HKTest.state.now = 2100
+ammoTicker:Tick()
+check("re-warn after the period is visual only (sound stays rare)",
+  HK.AmmoWarn.IsShown() and #HKTest.soundsPlayed == s1,
+  tostring(HK.AmmoWarn.IsShown()) .. "/" .. tostring(#HKTest.soundsPlayed))
 HKTest.state.items[2515] = 10
 HKTest.state.now = 3000
 ammoTicker:Tick()
-check("critical tier warns again", #HKTest.soundsPlayed > s1,
+check("escalation sounds again", #HKTest.soundsPlayed == s1 + 1,
   tostring(#HKTest.soundsPlayed))
 HKTest.state.items[2515] = 0
 HKTest.state.now = 4000
 ammoTicker:Tick()
 check("empty ammo is the most persistent tier", HK.AmmoWarn.IsShown(),
   tostring(HK.AmmoWarn.IsShown()))
+check("empty tier speaks: bundled voice clip for the equipped ammo",
+  HKTest.soundsPlayed[#HKTest.soundsPlayed] ==
+    "Interface\\AddOns\\HunterKit\\Media\\voice_noarrows.mp3",
+  tostring(HKTest.soundsPlayed[#HKTest.soundsPlayed]))
+local aw = _G["HunterKitAmmoWarn"]
+check("icon is the equipped ammo's own art",
+  aw.textures[1].texture == "Interface\\Icons\\INV_Ammo_Arrow_02",
+  tostring(aw.textures[1].texture))
+check("red X crosses the icon",
+  aw.textures[2].texture == "Interface\\Buttons\\UI-GroupLoot-Pass-Up",
+  tostring(aw.textures[2].texture))
 HKTest.state.items = nil
 HKTest.state.ammoID = nil
+
+-- ---------------------------------------------------------------------------
+-- 7) Feed button: total food count in the icon + highlight rule
+--    (highlight ON only when the pet is BELOW happy AND out of combat)
+-- ---------------------------------------------------------------------------
+local fb = _G["HunterKitFeedButton"]
+check("feed button exists", fb ~= nil)
+HKTest.state.pet = true
+HKTest.state.petHP = 900
+HKTest.state.playerCombat, HKTest.state.petCombat = false, false
+HKTest.state.combatLockdown = false
+HKTest.state.happiness = 2
+HKTest.state.bags = { [0] = 2 }
+HKTest.state.bagItems = { [0] = { [1] = { id = 1113, count = 20 },
+                                   [2] = { id = 1113, count = 15 } } }
+HKTest.state.itemInfo[1113] = { name = "Tough Hunk of Bread", iLevel = 5,
+  texture = "Interface\\Icons\\INV_Misc_Food_01" }
+HK.db.feed.enabled = true
+HK.db.feed.hungryOnly = false
+HK.FeedPet.Refresh()
+check("feed icon shows the TOTAL edible food in bags",
+  fb.fontstrings[1]:GetText() == "35", tostring(fb.fontstrings[1]:GetText()))
+check("highlight on: below happy, out of combat",
+  fb.textures[2].color[2] == 0.8 and fb.textures[2].color[4] == 1,
+  table.concat(fb.textures[2].color, ","))
+HKTest.state.happiness = 3
+HK.FeedPet.Refresh()
+check("highlight off when the pet is happy", fb.textures[2].color[4] == 0,
+  table.concat(fb.textures[2].color, ","))
+HKTest.state.happiness = 2
+HKTest.state.combatLockdown = true
+HK.FeedPet.Refresh()
+check("highlight off in combat even when hungry", fb.textures[2].color[4] == 0,
+  table.concat(fb.textures[2].color, ","))
+HKTest.state.combatLockdown = false
+HKTest.state.happiness = nil
+HKTest.state.bags = nil
+HKTest.state.bagItems = nil
 
 say(string.format("\n%d passed, %d failed", passes, #failures))
 if #failures > 0 then
