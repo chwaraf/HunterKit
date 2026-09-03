@@ -3,6 +3,26 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.26] - 2026-09-03
+
+### Fixed
+- **Marks rendered as neon-green squares**: the 0.9.21 conversion wrapped the
+  textures in **BLP1** -- the 2004-vanilla container. The Classic Era client
+  runs the modern texture pipeline and only decodes **BLP2**; BLP1 shows up
+  as the bright-green "unreadable texture" placeholder. All 18 textures are
+  now BLP2/DXT5. The DXT5 payload is byte-identical between the two
+  containers, so image quality and file size are exactly as measured in
+  0.9.21 (crosshairs lossless, marks 33.9-41.0 dB PSNR, 7.08 MB -> 1.77 MB,
+  4.0x smaller). `tools/tga_to_blp.py` now emits BLP2, and a new docs test
+  asserts the BLP2 magic of every shipped texture so a wrong container can
+  never ship again.
+
+### Tests
+- 119 + 55 + 102 + 79 = **355 green** (36 new checks: existence + BLP2
+  magic for all 18 textures).
+
+---
+
 ## [0.9.25] - 2026-09-03
 
 ### Fixed

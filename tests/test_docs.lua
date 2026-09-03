@@ -96,6 +96,31 @@ check("README documents the pet mend marker", readme:find("Pet Mend Marker", 1, 
 check("CHANGELOG documents the pet mend marker",
   changelog:find("Pet Mend Marker", 1, true) ~= nil)
 
+-- BLP2 guard: the Classic Era client cannot decode BLP1 textures -- they
+-- render as bright-green "unreadable texture" squares (the 0.9.21-0.9.25
+-- regression). Every shipped texture must carry the BLP2 magic.
+do
+  local textures = {
+    "crosshair", "crosshair-x", "crosshair-outline",
+    "mark-ok-reticle", "mark-ok-plus", "mark-ok-ticks", "mark-ok-diamond",
+    "mark-ok-chevrons",
+    "mark-far-ban", "mark-far-halo", "mark-far-dashring", "mark-far-sides",
+    "mark-far-slashes",
+    "mark-dead-cross", "mark-dead-block", "mark-dead-burst", "mark-dead-bars",
+    "mark-dead-hexx",
+  }
+  for _, n in ipairs(textures) do
+    local fh = io.open("../Media/" .. n .. ".blp", "rb")
+    check("texture " .. n .. ".blp exists", fh ~= nil)
+    if fh then
+      local magic = fh:read(4)
+      fh:close()
+      check("texture " .. n .. ".blp is BLP2 (engine-readable)",
+        magic == "BLP2", tostring(magic))
+    end
+  end
+end
+
 say(string.format("\n%d passed, %d failed", passes, #failures))
 if #failures > 0 then
   for _, f in ipairs(failures) do say("  - " .. f) end
