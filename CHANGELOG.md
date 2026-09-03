@@ -3,6 +3,19 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.10] - 2026-09-03
+
+### Fixed
+- **Voice clips re-recorded (third take) with the user-picked voice.** The
+  previous takes auditioned a long paragraph but generated three-word
+  exclamations, and the voice model drifts to a generic read on inputs that
+  short. The clips now say exactly the auditioned phrases, lengthened to two
+  short sentences so the voice stays in character:
+  `voice_noarrows.mp3` — "No arrows, lad! The quiver's empty!",
+  `voice_noammo.mp3` — "No ammo, lad! We're out of ammo!"
+
+---
+
 ## [0.9.9] - 2026-09-03
 
 ### Fixed
