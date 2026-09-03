@@ -24,12 +24,12 @@ local lastWarn = 0
 local lastVoice = 0
 local shownUntil = 0
 
--- Voice cooldowns, scaled by the frequency option: the empty tier speaks at
--- most once per VOICE_COOLDOWN, the low tiers once per LOW_VOICE_COOLDOWN.
+-- Voice cooldowns, scaled by the frequency option: 45 s is the user's floor
+-- for ANY voice (the icon may repeat more often; the voice must not spam).
 -- Cooldown-driven, NOT escalation-driven: the old "only when the tier gets
 -- worse" rule was fragile on the live client (bag-update-driven re-warns,
 -- cold sound cache) and the user often never heard the low call at all.
-local VOICE_COOLDOWN = 30
+local VOICE_COOLDOWN = 45
 local LOW_VOICE_COOLDOWN = 60
 
 local ARROW_ICON  = "Interface\\Icons\\INV_Arrow_02"
@@ -164,6 +164,15 @@ local function BuildFrame()
   label:SetShadowColor(0, 0, 0, 1)
   label:SetShadowOffset(1, -1)
 
+  -- Pulse while shown (user): the whole warning breathes at ~1 Hz so it
+  -- reads as an active alert, not a stale icon. OnUpdate only runs while
+  -- the frame is shown, so it costs nothing between warnings.
+  local pulseT = 0
+  frame:SetScript("OnUpdate", function(self, elapsed)
+    pulseT = pulseT + (elapsed or 0.03)
+    self:SetScale(1 + 0.12 * math.sin(pulseT * 6.0))
+  end)
+
   AmmoWarn.ApplyPosition()
   frame:SetShown(false)
 end
@@ -231,7 +240,14 @@ local function Tick()
       end
     end
   end
-  if tier == 0 then lastVoice = 0 end
+  if tier == 0 then
+    -- Fresh-episode arming: when the ammo is back above the threshold, clear
+    -- the warn timer too, so the NEXT time the threshold is reached the
+    -- warning (and its voice) fires that very tick -- no waiting out a
+    -- period left over from the previous episode.
+    lastWarn = 0
+    lastVoice = 0
+  end
   if now > shownUntil then
     frame:SetShown(false)
   end

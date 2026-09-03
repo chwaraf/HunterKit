@@ -346,9 +346,9 @@ ammoTicker:Tick()
 check("voice does not nag: silent re-warn inside the 30 s cooldown",
   HK.AmmoWarn.IsShown() and #HKTest.soundsPlayed == v1,
   tostring(HK.AmmoWarn.IsShown()) .. "/" .. tostring(#HKTest.soundsPlayed))
-HKTest.state.now = 4041
+HKTest.state.now = 4046
 ammoTicker:Tick()
-check("voice returns once the cooldown is over", #HKTest.soundsPlayed == v1 + 1,
+check("voice returns once the 45 s cooldown is over", #HKTest.soundsPlayed == v1 + 1,
   tostring(#HKTest.soundsPlayed))
 -- frequency multiplier: 4x divides the warn periods (90 -> 22.5 s at tier 1)
 HK.db.ammo.sound = false
@@ -378,6 +378,9 @@ check("icon is the equipped ammo's own art",
 check("red X crosses the icon",
   aw.textures[2].texture == "Interface\\Buttons\\UI-GroupLoot-Pass-Up",
   tostring(aw.textures[2].texture))
+aw.scripts["OnUpdate"](aw, 0.25)
+check("warning icon pulses while shown", aw.scale ~= nil and aw.scale ~= 1,
+  tostring(aw.scale))
 -- ammo id fallback: if GetInventoryItemID comes back empty (client quirk),
 -- the slot link must still resolve the projectile -- else a half-full quiver
 -- is misread as tier 4 and the "No ammo!" voice fires while ammo is low.
@@ -390,6 +393,22 @@ check("slot-link fallback resolves the ammo (no false 'no ammo')",
   HK.AmmoWarn.IsShown() and aw.fontstrings[1]:GetText() == "AMMO: 60",
   tostring(HK.AmmoWarn.IsShown()) .. "/" .. tostring(aw.fontstrings[1]:GetText()))
 HKTest.state.ammoLink = nil
+-- Fresh episode: the moment the threshold is reached, the warning AND the
+-- voice fire -- no period left over from the previous episode delays them.
+HK.db.ammo.sound = true
+HKTest.state.ammoID = 2515
+HKTest.state.items = { [2515] = 800 }
+HKTest.state.now = 7000
+ammoTicker:Tick()
+check("stocked: hidden again", not HK.AmmoWarn.IsShown(),
+  tostring(HK.AmmoWarn.IsShown()))
+local e1 = #HKTest.soundsPlayed
+HKTest.state.items[2515] = 190
+HKTest.state.now = 7001
+ammoTicker:Tick()
+check("threshold reached: warns and speaks that same tick",
+  HK.AmmoWarn.IsShown() and #HKTest.soundsPlayed == e1 + 1,
+  tostring(HK.AmmoWarn.IsShown()) .. "/" .. tostring(#HKTest.soundsPlayed))
 HKTest.state.items = nil
 HKTest.state.ammoID = nil
 HK.db.ammo.sound = false

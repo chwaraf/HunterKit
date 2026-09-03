@@ -472,9 +472,9 @@ function BuildWindow()
     function(v) db.feed.hungryOnly = v; RefreshFeed() end,
     "Hide the button once the pet is content.")
   y = y - CHK
-  MakeCheckbox(content, y, "Feed Pet spell icon", function() return db.feed.useSpellIcon end,
+  MakeCheckbox(content, y, "Use default Feed Pet icon", function() return db.feed.useSpellIcon end,
     function(v) db.feed.useSpellIcon = v; RefreshFeed() end,
-    "Show the Feed Pet spell icon on the button instead of the chosen food's own icon. The count of available food stays either way.")
+    "Replace the chosen food's icon on the button with the default Feed Pet spell icon. The count of available food stays on the button either way.")
   y = y - CHK
   MakeSlider(content, y, "Button size", 24, 48, 1, function() return db.feed.size end,
     function(v) db.feed.size = v; RefreshFeed() end, "Size of the feed button, in pixels.")

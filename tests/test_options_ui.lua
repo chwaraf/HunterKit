@@ -393,6 +393,17 @@ HK.MendMark.Update()
 check("pet back and locked: on screen again", HK.MendMark.IsShown() == true)
 
 -- ---------------------------------------------------------------------------
+-- The feed-icon swap option must actually be in the built window (a user
+-- reported not finding it -- an option that exists in code but not on screen
+-- is the same as no option at all).
+local feedIconOpt = false
+for _, f in ipairs(HKTest.frames) do
+  for _, fs in ipairs(f.fontstrings or {}) do
+    if fs.text == "Use default Feed Pet icon" then feedIconOpt = true end
+  end
+end
+check("feed icon swap option is present in the UI", feedIconOpt)
+
 say(string.format("\n%d passed, %d failed", passes, #failures))
 if #failures > 0 then
   for _, f in ipairs(failures) do say("  - " .. f) end

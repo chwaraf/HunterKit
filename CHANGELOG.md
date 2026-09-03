@@ -3,6 +3,29 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.18] - 2026-09-03
+
+### Changed
+- **Voice floor raised to 45 s** (user: the icon may repeat often, the voice
+  must not spam): empty-tier voice cooldown 30 -> 45 s; low tiers stay at
+  60 s. The icon's own warn periods are untouched.
+- **First warning of an episode fires the moment the threshold is reached**:
+  crossing back above the threshold now also clears the warn timer, so the
+  next drop below warns (and speaks) on that very tick instead of waiting
+  out a period left over from the previous episode -- important at the
+  rarer frequency settings.
+- **The low/no ammo warning icon now pulses** (~1 Hz scale breathing) while
+  shown; the OnUpdate only runs while the frame is visible.
+- Feed option renamed for findability: "Feed Pet spell icon" ->
+  **"Use default Feed Pet icon"** (it swaps the food icon for the Feed Pet
+  spell icon; the food count stays on the button). A test now asserts the
+  option is physically present in the built options window.
+
+### Tests
+- 119 + 55 + 79 + 43 = **296 green**.
+
+---
+
 ## [0.9.17] - 2026-09-03
 
 ### Added
