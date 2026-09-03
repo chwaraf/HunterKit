@@ -329,7 +329,7 @@ local sliderCount = 0
 local SLIDER_LABEL_H = 15
 local SLIDER_BAR_H   = 18
 local SLIDER_VALUE_W = 88
-local function MakeSlider(parent, y, labelText, min, max, step, get, set, tooltip)
+local function MakeSlider(parent, y, labelText, min, max, step, get, set, tooltip, compact)
   sliderCount = sliderCount + 1
   local name = "HunterKitOptSlider" .. sliderCount
   local w = (parent:GetWidth() or 436)
@@ -339,27 +339,43 @@ local function MakeSlider(parent, y, labelText, min, max, step, get, set, toolti
   lbl:SetFontObject(GameFontNormal)
   lbl:SetJustifyH("LEFT")
   lbl:SetWordWrap(false)
-  -- The number sits dead centre of the row, so the label may only use the left
-  -- half minus that column, or a long label would run underneath the number.
-  lbl:SetWidth(math.max(80, math.floor((w - SLIDER_VALUE_W) / 2) - 8))
+  if compact then
+    -- Small slider on the RIGHT of the text: label keeps the left column.
+    lbl:SetWidth(200)
+  else
+    -- The number sits dead centre of the row, so the label may only use the left
+    -- half minus that column, or a long label would run underneath the number.
+    lbl:SetWidth(math.max(80, math.floor((w - SLIDER_VALUE_W) / 2) - 8))
+  end
   lbl:SetText(labelText)
   lbl:SetTextColor(0.9, 0.9, 0.9)
 
   -- Always visible and centred over the bar: the template's own value text is
   -- empty until you drag, and a right-aligned column collided with long labels.
   local val = parent:CreateFontString(nil, "OVERLAY")
-  val:SetPoint("TOP", parent, "TOP", 0, y)
+  if compact then
+    val:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -2, y - 2)
+    val:SetWidth(30)
+  else
+    val:SetPoint("TOP", parent, "TOP", 0, y)
+  end
   val:SetFontObject(GameFontHighlight)
   val:SetJustifyH("CENTER")
   val:SetWordWrap(false)
-  val:SetWidth(SLIDER_VALUE_W)
+  if not compact then val:SetWidth(SLIDER_VALUE_W) end
   val:SetTextColor(0.35, 1, 0.35)
   val:SetText(tostring(get()))
 
   local sl = CreateFrame("Slider", name, parent, "OptionsSliderTemplate")
-  sl:SetWidth(math.max(120, w - 16))
-  sl:SetHeight(SLIDER_BAR_H)
-  sl:SetPoint("TOPLEFT", parent, "TOPLEFT", 8, y - SLIDER_LABEL_H)
+  if compact then
+    sl:SetWidth(150)
+    sl:SetHeight(SLIDER_BAR_H)
+    sl:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -36, y - 2)
+  else
+    sl:SetWidth(math.max(120, w - 16))
+    sl:SetHeight(SLIDER_BAR_H)
+    sl:SetPoint("TOPLEFT", parent, "TOPLEFT", 8, y - SLIDER_LABEL_H)
+  end
   sl:SetMinMaxValues(min, max)
   sl:SetValueStep(step)
   sl:SetObeyStepOnDrag(true)
@@ -471,14 +487,14 @@ function BuildWindow()
     function(v) db.range.size = v; RefreshRange() end, "Size of the reticle, in pixels.")
   y = y - ROW
   MakeSlider(content, y, "IN RANGE brightness", 10, 100, 5, function() return db.range.brightOK or 100 end,
-    function(v) db.range.brightOK = v; RefreshRange() end, "Glow intensity of the IN RANGE mark.")
-  y = y - ROW
+    function(v) db.range.brightOK = v; RefreshRange() end, "Glow intensity of the IN RANGE mark.", true)
+  y = y - CHK
   MakeSlider(content, y, "TOO CLOSE brightness", 10, 100, 5, function() return db.range.brightDead or 100 end,
-    function(v) db.range.brightDead = v; RefreshRange() end, "Glow intensity of the TOO CLOSE mark.")
-  y = y - ROW
+    function(v) db.range.brightDead = v; RefreshRange() end, "Glow intensity of the TOO CLOSE mark.", true)
+  y = y - CHK
   MakeSlider(content, y, "OUT OF RANGE brightness", 10, 100, 5, function() return db.range.brightFar or 100 end,
-    function(v) db.range.brightFar = v; RefreshRange() end, "Glow intensity of the OUT OF RANGE mark.")
-  y = y - ROW
+    function(v) db.range.brightFar = v; RefreshRange() end, "Glow intensity of the OUT OF RANGE mark.", true)
+  y = y - CHK
   MakeDropdown(content, y, "IN RANGE shape", ShapeNames("OK", { "crosshair", "diamond", "brackets" }),
     function() return db.range.markOK or "crosshair" end,
     function(v) db.range.markOK = v; RefreshRange() end,

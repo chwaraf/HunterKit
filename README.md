@@ -7,7 +7,7 @@ For **WoW Classic Era & Hardcore** (patch 1.15.x).
 A self-contained, dependency-free (no Ace3/LibDBIcon) addon built for the
 hardcore-first hunter. Every action is a deliberate click; nothing is automated.
 
-Current version: **0.9.4** — see [`CHANGELOG.md`](CHANGELOG.md).
+Current version: **0.9.5** — see [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Features
 
@@ -47,7 +47,8 @@ away. All marks ship as white-on-alpha `.tga` so the state colour tints them:
 The new art is generated on a black field and luminance-keyed to alpha by
 `tools/build_mark_art.py` (black → transparent, mark → white), cropped, squared and
 resized to 256px, and **every** style is now art (the whole OUT OF RANGE and
-TOO CLOSE sets included), and each state has its own **brightness slider** in Options (10–100%).
+TOO CLOSE sets included), and each state has its own compact **brightness slider** in Options (10–100%,
+sitting small on the right of its label).
 The colour always carries the state as well, so the mark stays
 readable for colourblind players who pick a shape per state.
 
@@ -106,8 +107,9 @@ pet-frame fallback. Any CVar an older build changed is still restored on
 load/logout, and `/htk mend` marks those with a `*`.
 
 **3. Otherwise fall back to the pet unit frame — under the avatar, looking like
-a plate anyway.** The fallback sits centred just under the pet avatar (the
-portrait circle) and draws a nameplate-style widget under the icon (pet name + a
+a plate anyway.** The fallback sits centred on the avatar's vertical axis with a
+clear gap below the frame (never overlapping it) and draws a nameplate-style
+widget under the icon (pet name + a
 green→red health bar), so it still reads like a plate rather than a stray icon.
 The pet unit frame is used **even when you've hidden it in Edit Mode** (a hidden
 frame keeps its layout), so the marker doesn't vanish for players following the

@@ -450,14 +450,20 @@ end
 -- The fallback spot: centred just under the pet avatar (the portrait circle),
 -- not above the frame — it reads as attached to the pet and never off-screen.
 local function AnchorUnderAvatar(pf, ox, oy)
+  -- Centred on the avatar's vertical axis, a clear gap BELOW the frame bottom so
+  -- the mark never overlaps the pet frame. The portrait's exact centre is
+  -- measured when allowed (out of combat); 32 is the stock avatar centre.
+  local cx = 32
   local portrait = _G["PetFramePortrait"] or _G["PetFramePetPortrait"]
   if portrait then
-    frame:SetPoint("TOP", portrait, "BOTTOM", ox, oy)
-  else
-    -- No portrait region on this client: sit under the avatar's corner of the
-    -- pet frame (portrait is the left circle).
-    frame:SetPoint("TOP", pf, "BOTTOMLEFT", 30 + ox, 6 + oy)
+    local okw, pw = pcall(portrait.GetWidth, portrait)
+    local okl, pl = pcall(portrait.GetLeft, portrait)
+    local okf, fl = pcall(pf.GetLeft, pf)
+    if okw and pw and pw > 0 and okl and pl and okf and fl then
+      cx = (pl + pw / 2) - fl
+    end
   end
+  frame:SetPoint("TOP", pf, "BOTTOMLEFT", cx + ox, -6 + oy)
 end
 
 -- Re-resolved every tick: the pet moves, and plate frames come and go. Returns

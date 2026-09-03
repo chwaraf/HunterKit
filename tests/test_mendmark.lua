@@ -82,8 +82,9 @@ do
   check("anchored under the pet avatar",
     p and p[1] == "TOP" and p[2] == _G["PetFrame"] and p[3] == "BOTTOMLEFT",
     p and tostring(p[1]) .. "/" .. tostring(p[3]))
-  check("uses the saved offsets under the avatar",
-    p and p[5] == 6 + HK.db.mend.offsetY, p and tostring(p[5]))
+  check("clear of the frame, centred on the avatar",
+    p and p[4] == 32 + HK.db.mend.offsetX and p[5] == -6 + HK.db.mend.offsetY,
+    p and (tostring(p[4]) .. "," .. tostring(p[5])))
 end
 
 -- The ticker must keep it alive (this is what tracks a moving pet).

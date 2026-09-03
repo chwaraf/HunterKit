@@ -236,6 +236,24 @@ check("master on restores the mark", HK.Range.IsFrameValid(),
   tostring(HK.Range.IsFrameValid()))
 
 -- ---------------------------------------------------------------------------
+-- 3b) Secure feed button: no SetSize/SetPoint while in combat
+-- ---------------------------------------------------------------------------
+-- Regression: ticking "Enable HunterKit" in combat threw ADDON_ACTION_BLOCKED on
+-- HunterKitFeedButton:SetSize(). The resize/anchor must defer to regen.
+local keepSize = HK.db.feed.size
+HK.db.feed.size = 40
+HKTest.state.combatLockdown = true
+HK.FeedPet.RescanSettings()
+check("no secure resize while in combat", HK.FeedPet.ButtonSize() ~= 40,
+  tostring(HK.FeedPet.ButtonSize()))
+HKTest.state.combatLockdown = false
+HKTest.Fire("PLAYER_REGEN_ENABLED")
+check("deferred resize applied after combat", HK.FeedPet.ButtonSize() == 40,
+  tostring(HK.FeedPet.ButtonSize()))
+HK.db.feed.size = keepSize
+HKTest.Fire("PLAYER_REGEN_ENABLED")
+
+-- ---------------------------------------------------------------------------
 -- 4) Per-state brightness sliders scale the drawn glow
 -- ---------------------------------------------------------------------------
 SetState("OK")

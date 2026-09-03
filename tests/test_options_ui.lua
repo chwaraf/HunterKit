@@ -127,6 +127,14 @@ check("the settings window built its sliders", #sliders >= 6, tostring(#sliders)
 
 local LABEL_ROW = 15   -- MakeSlider's SLIDER_LABEL_H
 
+-- Compact sliders (the per-mark brightness ones) sit small on the RIGHT of their
+-- label; the full-row rules (value centred over the bar, bar inset from the left
+-- edge) apply only to regular sliders.
+local function isCompact(sl)
+  local p = sl.points[1]
+  return p ~= nil and p[1] == "TOPRIGHT"
+end
+
 -- The value fontstring belonging to a slider: visible, centred, showing the
 -- slider's current number, on the row directly above the bar.
 local function ValueTextFor(sl)
@@ -144,7 +152,14 @@ end
 local noValue, templateTextVisible, lowVisible, highVisible, overlapping = 0, 0, 0, 0, 0
 local valueWidths = {}
 for _, sl in ipairs(sliders) do
-  if not ValueTextFor(sl) then noValue = noValue + 1 end
+  if isCompact(sl) then
+    local want = string.format("%d", sl:GetValue())
+    local found = false
+    for _, fs in ipairs(content.fontstrings) do
+      if fs:IsShown() and fs:GetText() == want then found = true end
+    end
+    if not found then noValue = noValue + 1 end
+  elseif not ValueTextFor(sl) then noValue = noValue + 1 end
   if _G[sl.name .. "Text"] and _G[sl.name .. "Text"]:IsShown() then
     templateTextVisible = templateTextVisible + 1
   end
@@ -157,9 +172,12 @@ check("every slider shows its value before any interaction", noValue == 0,
 -- the number is centred on the row, over the bar
 local offCentre = 0
 for _, sl in ipairs(sliders) do
-  local fs = ValueTextFor(sl)
-  local p = fs and fs.points[1]
-  if not p or p[1] ~= "TOP" or (p[4] or 0) ~= 0 then offCentre = offCentre + 1 end
+  if isCompact(sl) then -- compact values sit right of the bar, not centred
+  else
+    local fs = ValueTextFor(sl)
+    local p = fs and fs.points[1]
+    if not p or p[1] ~= "TOP" or (p[4] or 0) ~= 0 then offCentre = offCentre + 1 end
+  end
 end
 check("slider values are centred", offCentre == 0, tostring(offCentre))
 check("the template's empty value text is hidden", templateTextVisible == 0,
@@ -176,7 +194,8 @@ for _, sl in ipairs(sliders) do
       if fs.justifyH == "LEFT" then lbl = fs elseif fs.justifyH == "CENTER" then val = fs end
     end
   end
-  if lbl and val and (lbl.width > (content.width - val.width) / 2 - 8) then
+  if isCompact(sl) then -- label left + small bar right: no centred column to guard
+  elseif lbl and val and (lbl.width > (content.width - val.width) / 2 - 8) then
     overlapping = overlapping + 1
     valueWidths[#valueWidths + 1] = sl.name .. "(" .. lbl.width .. ">" ..
       math.floor((content.width - val.width) / 2 - 8) .. ")"
@@ -213,8 +232,11 @@ check("no content text is anchored off the left edge", #clipped == 0, table.conc
 -- (centred on the bar's ends) have nowhere to be drawn.
 local tightBar = 0
 for _, sl in ipairs(sliders) do
-  local p = sl.points[1]
-  if not p or (p[4] or 0) < 4 then tightBar = tightBar + 1 end
+  if isCompact(sl) then -- anchored from the right by design
+  else
+    local p = sl.points[1]
+    if not p or (p[4] or 0) < 4 then tightBar = tightBar + 1 end
+  end
 end
 check("slider bars are inset from the clipping edge", tightBar == 0, tostring(tightBar))
 

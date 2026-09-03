@@ -96,6 +96,10 @@ function FeedPet.Init()
   HK.On("PLAYER_ENTERING_WORLD", RefreshEverything)
   HK.On("PLAYER_REGEN_ENABLED", function()
     if pending then pending = false end
+    if button and not InCombatLockdown() then
+      button:SetSize(db.size, db.size)   -- deferred secure resize
+      FeedPet.ApplyPosition()
+    end
     RefreshEverything()            -- re-applies show/hide + macro now that we're safe
   end)
   HK.On("BAG_UPDATE_DELAYED", OnBagUpdate)
@@ -301,13 +305,19 @@ end
 function FeedPet.RescanSettings()
   db = HK.db.feed
   if not button then return end
-  button:SetSize(db.size, db.size)
-  FeedPet.ApplyPosition()
+  -- SECURE button: SetSize/SetPoint are protected actions in combat and throw
+  -- ADDON_ACTION_BLOCKED; defer both to PLAYER_REGEN_ENABLED.
+  if not InCombatLockdown() then
+    button:SetSize(db.size, db.size)
+    FeedPet.ApplyPosition()
+  end
   -- Apply visibility on toggle: unchecking "Enable feed button" must hide it.
   UpdateState()
   -- RefreshMacro is a FeedPet method (not a local), so call it on the table.
   FeedPet:RefreshMacro()
 end
+
+function FeedPet.ButtonSize() return button and button:GetWidth() or nil end
 
 -- ---------------------------------------------------------------------------
 -- Diet detection

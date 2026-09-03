@@ -3,6 +3,25 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.5] - 2026-09-03
+### Fixed
+- **Ticking "Enable HunterKit" in combat threw `ADDON_ACTION_BLOCKED`** on
+  `HunterKitFeedButton:SetSize()`. The feed button is a secure action button, and
+  SetSize/SetPoint on it are protected actions in combat. Both now defer to
+  `PLAYER_REGEN_ENABLED`; regression-tested (no resize while in combat, applied on
+  regen).
+- **Mend fallback no longer overlaps the pet frame.** It now sits a clear 6px gap
+  below the frame bottom, centred on the avatar's vertical axis (the portrait
+  centre is measured out of combat; a stock-frame constant otherwise).
+
+### Changed
+- **Brightness sliders are compact** — small bars on the right of their label
+  instead of full-width rows, as requested.
+
+### Added (tests)
+- Combat-defer resize checks; options-window tests taught the compact slider
+  class; suite now 117 + 54 + 40 + 40 = 251, all passing.
+
 ## [0.9.4] - 2026-09-03
 ### Fixed / explained
 - **"Name anchoring doesn't work when nameplates are off but the name shows."**
