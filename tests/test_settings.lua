@@ -317,14 +317,20 @@ check("periodic: no re-warn inside the period", #HKTest.soundsPlayed == s1,
   tostring(#HKTest.soundsPlayed))
 HKTest.state.now = 2100
 ammoTicker:Tick()
-check("re-warn after the period is visual only (sound stays rare)",
-  HK.AmmoWarn.IsShown() and #HKTest.soundsPlayed == s1,
+check("re-warn after the period; the low voice repeats past its cooldown",
+  HK.AmmoWarn.IsShown() and #HKTest.soundsPlayed == s1 + 1,
   tostring(HK.AmmoWarn.IsShown()) .. "/" .. tostring(#HKTest.soundsPlayed))
 HKTest.state.items[2515] = 10
 HKTest.state.now = 3000
 ammoTicker:Tick()
-check("escalation sounds again", #HKTest.soundsPlayed == s1 + 1,
+check("escalation warns and speaks again", #HKTest.soundsPlayed == s1 + 2,
   tostring(#HKTest.soundsPlayed))
+local s3 = #HKTest.soundsPlayed
+HKTest.state.now = 3016
+ammoTicker:Tick()
+check("low voice cooldown: re-warn without voice inside 60 s",
+  HK.AmmoWarn.IsShown() and #HKTest.soundsPlayed == s3,
+  tostring(HK.AmmoWarn.IsShown()) .. "/" .. tostring(#HKTest.soundsPlayed))
 HKTest.state.items[2515] = 0
 HKTest.state.now = 4000
 ammoTicker:Tick()
@@ -344,6 +350,22 @@ HKTest.state.now = 4041
 ammoTicker:Tick()
 check("voice returns once the cooldown is over", #HKTest.soundsPlayed == v1 + 1,
   tostring(#HKTest.soundsPlayed))
+-- frequency multiplier: 4x divides the warn periods (90 -> 22.5 s at tier 1)
+HK.db.ammo.sound = false
+HK.db.ammo.frequency = 4
+HKTest.state.items[2515] = 150
+HKTest.state.now = 5000
+ammoTicker:Tick()
+check("frequency x4 warns", HK.AmmoWarn.IsShown(), tostring(HK.AmmoWarn.IsShown()))
+HKTest.state.now = 5010
+ammoTicker:Tick()
+check("frequency x4: display window unchanged (4 s), so hidden again",
+  not HK.AmmoWarn.IsShown(), tostring(HK.AmmoWarn.IsShown()))
+HKTest.state.now = 5030
+ammoTicker:Tick()
+check("frequency x4: re-warns after ~22 s, not 90", HK.AmmoWarn.IsShown(),
+  tostring(HK.AmmoWarn.IsShown()))
+HK.db.ammo.frequency = 1
 local allVoice = true
 for _, s in ipairs(HKTest.soundsPlayed) do
   if not s:find("Interface\\AddOns\\HunterKit\\Media\\", 1, true) then allVoice = false end
@@ -407,6 +429,16 @@ HK.FeedPet.Refresh()
 check("highlight off in combat even when hungry", fb.textures[2].color[4] == 0,
   table.concat(fb.textures[2].color, ","))
 HKTest.state.combatLockdown = false
+HK.db.feed.useSpellIcon = true
+HK.FeedPet.Refresh()
+check("spell-icon option replaces the food icon", fb.textures[1].texture ==
+  "Interface\\Icons\\Ability_Hunter_FeedPet", tostring(fb.textures[1].texture))
+check("food count stays with the spell icon",
+  fb.fontstrings[1]:GetText() == "35", tostring(fb.fontstrings[1]:GetText()))
+HK.db.feed.useSpellIcon = false
+HK.FeedPet.Refresh()
+check("food icon returns when the option is off", fb.textures[1].texture ==
+  "Interface\\Icons\\INV_Misc_Food_01", tostring(fb.textures[1].texture))
 HKTest.state.happiness = nil
 HKTest.state.bags = nil
 HKTest.state.bagItems = nil

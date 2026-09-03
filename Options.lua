@@ -472,6 +472,10 @@ function BuildWindow()
     function(v) db.feed.hungryOnly = v; RefreshFeed() end,
     "Hide the button once the pet is content.")
   y = y - CHK
+  MakeCheckbox(content, y, "Feed Pet spell icon", function() return db.feed.useSpellIcon end,
+    function(v) db.feed.useSpellIcon = v; RefreshFeed() end,
+    "Show the Feed Pet spell icon on the button instead of the chosen food's own icon. The count of available food stays either way.")
+  y = y - CHK
   MakeSlider(content, y, "Button size", 24, 48, 1, function() return db.feed.size end,
     function(v) db.feed.size = v; RefreshFeed() end, "Size of the feed button, in pixels.")
   y = y - ROW
@@ -616,9 +620,13 @@ function BuildWindow()
     function(v) db.ammo.threshold = v; RefreshAmmo() end,
     "Warn when the equipped ammo count drops to this or lower.", true)
   y = y - CHK
+  MakeSlider(content, y, "Warn frequency", 1, 4, 1, function() return db.ammo.frequency or 1 end,
+    function(v) db.ammo.frequency = v; RefreshAmmo() end,
+    "How often the warnings repeat: 1x is the default rhythm (low ~90 s, empty ~10 s), 4x repeats four times as often. Voice cooldowns scale with it.", true)
+  y = y - CHK
   MakeCheckbox(content, y, "Warning sound", function() return db.ammo.sound end,
     function(v) db.ammo.sound = v end,
-    "Voice only -- no game sounds. Bundled clips speak the situation: \"Low arrows!\"/\"Low ammo!\" when the count gets worse (rare, not on every re-warn), \"No arrows!\"/\"No ammo!\" when the slot is empty (at most once every 30 s). Off by default.")
+    "Voice only -- no game sounds. Bundled clips speak the situation: \"Low arrows!\"/\"Low ammo!\" while low (at most once a minute), \"No arrows!\"/\"No ammo!\" when the slot is empty (at most once every 30 s); the frequency option scales both. Off by default.")
   y = y - CHK
 
   -- Sound

@@ -13,6 +13,7 @@ HK.FeedPet = FeedPet
 local db
 local button, iconTex, countText, border
 local pending = false           -- attribute refresh deferred (combat)
+local bagsDirty = true          -- food rescan needed (CPU: scan only on real changes)
 local initialised = false
 -- forward declarations (referenced before their bodies are defined in this chunk)
 local ApplyVisibility, UpdateState, RefreshEverything, OnBagUpdate
@@ -22,6 +23,7 @@ local dietsReady = false
 
 local HAPPINESS_COLOR = { [3] = {0.2,1,0.2}, [2] = {1,0.8,0}, [1] = {1,0.2,0.2} }
 local QUESTION_ICON = 134400
+local FEED_PET_ICON = "Interface\\Icons\\Ability_Hunter_FeedPet"
 local DIET_KEYWORDS = { "meat", "fish", "fruit", "fungus", "bread", "cheese" }
 
 local scanTip
@@ -84,19 +86,21 @@ function FeedPet.Init()
   BuildButton()
 
   HK.On("UNIT_PET", function(u)
-    if u == "pet" then ResetDiets() end
+    if u == "pet" then ResetDiets(); bagsDirty = true end
     RefreshEverything()
   end)
   HK.On("PET_BAR_UPDATE", function()
     ResetDiets()
+    bagsDirty = true
     RefreshEverything()
   end)
   HK.On("UNIT_HAPPINESS", function(u) if u == "pet" then RefreshEverything() end end)
   HK.On("UNIT_HEALTH", function(u) if u == "pet" then RefreshEverything() end end)
-  HK.On("PLAYER_ENTERING_WORLD", RefreshEverything)
+  HK.On("PLAYER_ENTERING_WORLD", function() bagsDirty = true; RefreshEverything() end)
   HK.On("PLAYER_REGEN_DISABLED", RefreshEverything)   -- kill the highlight on combat start
   HK.On("PLAYER_REGEN_ENABLED", function()
     if pending then pending = false end
+    bagsDirty = true
     if button and not InCombatLockdown() then
       button:SetSize(db.size, db.size)   -- deferred secure resize
       FeedPet.ApplyPosition()
@@ -518,7 +522,7 @@ function FeedPet:RefreshMacro()
     button:SetAttribute("target-item", ("%d %d"):format(food.bag, food.slot))
     button:SetAttribute("target-bag", food.bag)
     button:SetAttribute("target-slot", food.slot)
-    local icon = food.icon or QUESTION_ICON
+    local icon = (db.useSpellIcon and FEED_PET_ICON) or food.icon or QUESTION_ICON
     iconTex:SetTexture(icon)
     iconTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     FeedPet.SetCount((self.foodTotals and self.foodTotals[food.itemID]) or food.count or 0)
@@ -527,11 +531,12 @@ function FeedPet:RefreshMacro()
     button:ClearAttribute("target-item")
     button:ClearAttribute("target-bag")
     button:ClearAttribute("target-slot")
-    iconTex:SetTexture(QUESTION_ICON)
+    iconTex:SetTexture(db.useSpellIcon and FEED_PET_ICON or QUESTION_ICON)
     iconTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
     FeedPet.SetCount(0)
   end
   self.lastFood = food
+  bagsDirty = false
 end
 
 UpdateState = function()
@@ -553,9 +558,14 @@ UpdateState = function()
   ApplyVisibility(show)
   -- Icon + count refresh FIRST: whatever happens with the highlight below must
   -- never stop the button from showing the picked food and its amount.
+  -- CPU: the full bag scan (PickFood) runs ONLY when something real changed
+  -- (bags, pet, login, combat end, options) -- NOT on every UNIT_HEALTH tick,
+  -- which fired the whole scan per damage event in combat before.
   if not InCombatLockdown() then
-    if pending then pending = false end
-    FeedPet:RefreshMacro()
+    if pending or bagsDirty then
+      pending = false
+      FeedPet:RefreshMacro()
+    end
   else
     pending = true
   end
@@ -595,12 +605,14 @@ RefreshEverything = function()
 end
 
 function FeedPet.Refresh()
+  bagsDirty = true      -- manual/options refresh: force the food rescan
   RefreshEverything()
 end
 
 OnBagUpdate = function()
-  -- bags changed; invalidate caches and rescan
-  FeedPet:RefreshMacro()
+  -- bags changed; that (and only that) triggers the full food rescan
+  bagsDirty = true
+  RefreshEverything()
 end
 
 -- ---------------------------------------------------------------------------

@@ -21,13 +21,16 @@ HK.AmmoWarn = AmmoWarn
 local db
 local frame, icon, cross, label
 local lastWarn = 0
-local lastTier = 0
 local lastVoice = 0
 local shownUntil = 0
 
--- The empty-tier voice must not nag: it speaks at most once per cooldown,
--- while the VISUAL re-warns keep the 10 s period.
+-- Voice cooldowns, scaled by the frequency option: the empty tier speaks at
+-- most once per VOICE_COOLDOWN, the low tiers once per LOW_VOICE_COOLDOWN.
+-- Cooldown-driven, NOT escalation-driven: the old "only when the tier gets
+-- worse" rule was fragile on the live client (bag-update-driven re-warns,
+-- cold sound cache) and the user often never heard the low call at all.
 local VOICE_COOLDOWN = 30
+local LOW_VOICE_COOLDOWN = 60
 
 local ARROW_ICON  = "Interface\\Icons\\INV_Arrow_02"
 local BULLET_ICON = "Interface\\Icons\\INV_Ammo_Bullet_03"
@@ -106,8 +109,13 @@ end
 
 -- What is equipped in the ammo slot: "arrows" / "bullets" / nil (unknown),
 -- plus the item's own icon so the warning shows the real projectile art.
+-- Memoised per item id: GetItemInfo is the only non-trivial call in the 1 s
+-- tick path, and the equipped ammo id changes rarely (CPU-friendly ticks).
+local typeId, typeKind, typeTex
 local function AmmoType(id)
-  if not id or not GetItemInfo then return nil, nil end
+  if not id then return nil, nil end
+  if id == typeId then return typeKind, typeTex end
+  if not GetItemInfo then return nil, nil end
   local ok, name, _, _, _, _, subclass, _, _, _, texture = pcall(GetItemInfo, id)
   if not ok then return nil, nil end
   local low = (type(name) == "string") and name:lower() or ""
@@ -117,6 +125,7 @@ local function AmmoType(id)
   elseif low:find("shot", 1, true) or low:find("bullet", 1, true) or subclass == 3 then
     kind = "bullets"
   end
+  typeId, typeKind, typeTex = id, kind, texture
   return kind, texture
 end
 
@@ -183,8 +192,9 @@ local function Tick()
   end
   local tier = TierFor(n, id)
   local now = GetTime()
+  local freq = math.max(1, db.frequency or 1)   -- user's frequency multiplier
   local kind, tex = AmmoType(id)
-  if tier > 0 and now >= lastWarn + PERIOD[tier] then
+  if tier > 0 and now >= lastWarn + PERIOD[tier] / freq then
     lastWarn = now
     shownUntil = now + DURA[tier]
     local c = TIER_COLOR[tier]
@@ -197,26 +207,22 @@ local function Tick()
     label:SetTextColor(c[1], c[2], c[3])
     frame:SetShown(true)
     -- Sound policy: ONLY the bundled voice -- never a game sound (user).
-    -- It speaks the situation: "Low arrows!"/"Low ammo!" on a worsening
-    -- (first entry or escalation), "No arrows!"/"No ammo!" when empty, at
-    -- most once per VOICE_COOLDOWN so it never nags.
+    -- Cooldown-driven so the low call is GUARANTEED to be heard while the
+    -- situation lasts: low tiers speak at most once per LOW_VOICE_COOLDOWN,
+    -- the empty tier per VOICE_COOLDOWN, both scaled by the frequency option.
     if db.sound then
-      if tier == 4 then
-        if now >= lastVoice + VOICE_COOLDOWN then
-          lastVoice = now
+      local cd = (tier == 4 and VOICE_COOLDOWN or LOW_VOICE_COOLDOWN) / freq
+      if now >= lastVoice + cd then
+        lastVoice = now
+        if tier == 4 then
           VoiceSound(kind == "arrows" and "arrows" or "bullets")
+        else
+          VoiceSound(kind == "arrows" and "low_arrows" or "low_bullets")
         end
-      elseif tier > lastTier then
-        VoiceSound(kind == "arrows" and "low_arrows" or "low_bullets")
       end
     end
-    -- lastTier updates ONLY when a warn actually fires. Updating it every
-    -- tick (the old bug) let the tier "catch up" before the period elapsed,
-    -- so the escalation voice was skipped -- the user never heard the
-    -- low-ammo call at all.
-    lastTier = tier
   end
-  if tier == 0 then lastTier = 0; lastVoice = 0 end
+  if tier == 0 then lastVoice = 0 end
   if now > shownUntil then
     frame:SetShown(false)
   end

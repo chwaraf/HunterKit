@@ -6,7 +6,7 @@
 
 local ADDON_NAME, HK = ...
 
-HK.version = "0.9.15"
+HK.version = "0.9.16"
 
 -- ---------------------------------------------------------------------------
 -- Defaults (schema). This is the source of truth for the options window and
@@ -14,7 +14,7 @@ HK.version = "0.9.15"
 -- ---------------------------------------------------------------------------
 HK.defaults = {
   enabled   = true,
-  dbVersion = 19,
+  dbVersion = 20,
   firstRun  = true,
 
   ui = {
@@ -33,12 +33,14 @@ HK.defaults = {
     exclude        = {},
     rule           = "best",
     hungryOnly     = false,        -- show the button only when the pet is hungry (<3)
+    useSpellIcon   = false,        -- show the Feed Pet spell icon instead of the food's
   },
 
   ammo = {
     enabled   = true,
     threshold = 200,   -- warn at or below this many arrows/bullets left
     sound     = false, -- voice warnings (user: off by default)
+    frequency = 1,     -- warn-frequency multiplier (1x..4x), user option
   },
 
   range = {
@@ -709,6 +711,13 @@ local function LoadDB()
   -- option were added; MergeDefaults fills the new keys with their defaults.
   if db.dbVersion < 17 then
     db.dbVersion = 17
+  end
+
+  if db.dbVersion < 20 then
+    -- 0.9.16: warn-frequency multiplier + feed spell-icon option.
+    if db.ammo and db.ammo.frequency == nil then db.ammo.frequency = 1 end
+    if db.feed and db.feed.useSpellIcon == nil then db.feed.useSpellIcon = false end
+    db.dbVersion = 20
   end
 
   if db.dbVersion < 19 then

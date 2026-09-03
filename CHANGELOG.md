@@ -3,6 +3,40 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.16] - 2026-09-03
+
+### Added
+- **Warn frequency option** (Ammo section, 1×–4× compact slider): divides the
+  warn periods (low 90/45/15 s, empty 10 s) and the voice cooldowns. Default
+  1× keeps the old rhythm.
+- **Feed Pet spell icon option** (Feed section): the button shows the Feed
+  Pet spell icon instead of the chosen food's own icon. The food count stays
+  on the button either way.
+
+### Fixed
+- **The low-ammo voice is now guaranteed**: it no longer depends on catching
+  the exact tick the tier worsens (that edge was swallowed live by
+  bag-update-driven re-warns) -- the low clips speak on a 60 s cooldown
+  (empty: 30 s) for as long as the situation lasts, scaled by the frequency
+  option.
+
+### Changed (CPU)
+- **Feed button no longer rescans all bags on every pet health tick.** The
+  full `PickFood` scan (5 bags x every slot x item-info/tooltip lookups) used
+  to run on every `UNIT_HEALTH`/`UNIT_HAPPINESS` event -- i.e. per damage
+  event in combat. It now runs only on real changes (bag update, pet change,
+  login, combat end, options); the per-event path is just visibility +
+  highlight math.
+- **Ammo tick is allocation-free**: `GetItemInfo` (the only non-trivial call)
+  is memoised per equipped item id; the 1 s tick otherwise touches three
+  cheap inventory APIs.
+
+### Tests
+- dbVersion 20. 119 + 54 + 75 + 43 = **291 green** (voice-cooldown repeats,
+  frequency x4 periods, spell-icon option, count persistence).
+
+---
+
 ## [0.9.15] - 2026-09-03
 
 ### Changed
