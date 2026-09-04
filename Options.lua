@@ -634,7 +634,7 @@ function BuildWindow()
   y = y - HDR
   MakeCheckbox(content, y, "Enable ammo auto-buy", function() return db.ammobuy.enabled end,
     function(v) db.ammobuy.enabled = v; RefreshAmmoBuy() end,
-    "Refill your quiver / ammo pouch from a vendor. Works out how many arrows or bullets are missing and buys them in the 200-per-stack bundles vendors sell. Gold reserve and spend cap are always respected.")
+    "Refill your quiver / ammo pouch from a vendor. Works out exactly how many arrows or bullets are missing and buys precisely that many -- a 63-arrow top-up costs one click, not a whole spare stack. Gold reserve and spend cap are always respected.")
   y = y - CHK
   MakeDropdown(content, y, "When at a vendor", { "confirm", "auto", "manual" },
     function() return db.ammobuy.mode end,
@@ -666,7 +666,7 @@ function BuildWindow()
   MakeSlider(content, y, "Max spend per visit", 0, 100, 1,
     function() return db.ammobuy.maxSpendGold or 0 end,
     function(v) db.ammobuy.maxSpendGold = v; RefreshAmmoBuy() end,
-    "Hard cap on what a single refill may cost, in gold. 0 = no cap. If the budget is short, only whole stacks that fit it are bought.", true)
+    "Hard cap on what a single refill may cost, in gold. 0 = no cap. If the budget is short it buys as many rounds as it covers.", true)
   y = y - CHK
   MakeCheckbox(content, y, "Merchant 'Refill ammo' button",
     function() return db.ammobuy.showButton end,

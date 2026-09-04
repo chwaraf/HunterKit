@@ -152,8 +152,9 @@ local plan, reason = AB.Plan()
 check("plans a refill for an empty quiver", plan ~= nil, reason)
 check("buys the equipped arrow", plan and plan.id == 2515, plan and plan.name)
 check("buys exactly the missing 800", plan and plan.amount == 800, plan and plan.amount)
-check("in 4 stacks of 200", plan and plan.bundles == 4 and plan.perStack == 200,
-  plan and (plan.bundles .. "x" .. plan.perStack))
+check("in 4 calls of 200 (the per-call stack cap)",
+  plan and plan.calls == 4 and plan.perCall == 200,
+  plan and (plan.calls .. "x" .. plan.perCall))
 check("and prices them correctly (4 x 1g)", plan and plan.cost == 40000, plan and plan.cost)
 
 -- Top-up: 750 in a 800 quiver is less than one bundle short -> refuse rather
@@ -162,9 +163,14 @@ Scene({ quiver = { slots = 4, family = 1,
         contents = { [1] = { id = 2515, count = 200 }, [2] = { id = 2515, count = 200 },
                      [3] = { id = 2515, count = 200 }, [4] = { id = 2515, count = 150 } } },
         equipped = 2515, sells = fullLadder() })
-plan, reason = AB.Plan()
-check("never buys a stack that would not fit", plan == nil, plan and plan.amount)
-check("...and says why", tostring(reason):find("short") ~= nil, reason)
+plan = AB.Plan()
+-- 750/800: the vendor is told the EXACT 50 missing, in a single call. The old
+-- round-down-to-whole-stacks rule refused this outright and left the quiver
+-- short, which is the whole point of buying by the unit.
+check("tops up the exact remainder", plan and plan.amount == 50, plan and plan.amount)
+check("...in one call", plan and plan.calls == 1, plan and plan.calls)
+check("...and never exceeds the quiver", plan and plan.have + plan.amount == 800,
+  plan and (plan.have + plan.amount))
 
 -- One free slot: exactly one bundle fits.
 Scene({ quiver = { slots = 4, family = 1,
@@ -194,10 +200,11 @@ check("50% of a 2000 quiver is 1000 arrows", plan and plan.amount == 1000, plan 
 Scene({ quiver = { slots = 10, family = 1 }, equipped = 2515, sells = fullLadder(),
         full = false, percent = 25 })
 plan = AB.Plan()
--- 25% of 2000 is 500, which is 2.5 stacks: round DOWN to 400 rather than
--- overshoot a deliberately small target.
-check("a between-stacks percentage rounds down, never over",
-  plan and plan.amount == 400, plan and plan.amount)
+-- 25% of 2000 is 500. Buying by the unit hits that exactly -- no rounding to
+-- stacks in either direction.
+check("a between-stacks percentage is hit exactly",
+  plan and plan.amount == 500, plan and plan.amount)
+check("...spread over the fewest calls", plan and plan.calls == 3, plan and plan.calls)
 
 Scene({ quiver = { slots = 10, family = 1 }, equipped = 2515, sells = fullLadder(),
         full = true, percent = 25 })
@@ -209,8 +216,9 @@ check("'fill completely' overrides the percentage", plan and plan.amount == 2000
 Scene({ quiver = { slots = 3, family = 1 }, equipped = 2515, sells = fullLadder(),
         full = false, percent = 90 })   -- 90% of 600 = 540 -> 2 stacks (400)... 3 fit (600)
 plan = AB.Plan()
-check("a between-stacks target still fits the quiver",
-  plan and plan.amount <= 600 and plan.amount % 200 == 0, plan and plan.amount)
+-- 90% of 600 = 540, bought exactly, and it still fits the 600 quiver.
+check("a between-stacks target is exact and still fits",
+  plan and plan.amount == 540 and plan.amount <= 600, plan and plan.amount)
 
 -- ---------------------------------------------------------------------------
 -- 4) Tier selection
@@ -262,25 +270,37 @@ check("an empty ammo slot still plans from the vendor's best", plan ~= nil, reas
 Scene({ quiver = { slots = 10, family = 1 }, equipped = 2515, sells = fullLadder(),
         money = 25000 })          -- 2g 50s: only 2 whole 1g stacks
 plan = AB.Plan()
-check("buys only the whole stacks the gold pays for", plan and plan.bundles == 2,
-  plan and plan.bundles)
+-- 2g50s at 1g/200 = 0.5c each -> 500 arrows. The budget no longer has to
+-- stretch to a whole stack; it buys every round it covers.
+check("spends the budget down to the unit", plan and plan.amount == 500,
+  plan and plan.amount)
 check("and flags that gold, not space, decided it", plan and plan.trimmed == true)
 
 Scene({ quiver = { slots = 10, family = 1 }, equipped = 2515, sells = fullLadder(),
         money = 100000, reserveGold = 8 })     -- 10g on hand, keep 8g -> 2 stacks
 plan = AB.Plan()
-check("the gold reserve is respected", plan and plan.bundles == 2, plan and plan.bundles)
+check("the gold reserve is respected", plan and plan.amount == 400, plan and plan.amount)
+check("...spending no more than the budget", plan and plan.cost <= 20000, plan and plan.cost)
 
 Scene({ quiver = { slots = 10, family = 1 }, equipped = 2515, sells = fullLadder(),
         money = 10000000, maxSpendGold = 3 })
 plan = AB.Plan()
-check("the per-visit spend cap is respected", plan and plan.bundles == 3, plan and plan.bundles)
+check("the per-visit spend cap is respected", plan and plan.cost <= 30000, plan and plan.cost)
+check("...buying what 3g covers", plan and plan.amount == 600, plan and plan.amount)
 
 Scene({ quiver = { slots = 10, family = 1 }, equipped = 2515, sells = fullLadder(),
         money = 5000 })            -- 50s, one stack costs 1g
+plan = AB.Plan()
+-- 50s at 0.5c each = 100 arrows. Buying by the unit means a thin purse still
+-- gets ammo instead of the old "cannot afford a whole 200-stack" refusal.
+check("a thin purse still buys what it can", plan and plan.amount == 100,
+  plan and plan.amount)
+
+-- Genuinely too poor for even ONE round still refuses.
+Scene({ quiver = { slots = 10, family = 1 }, equipped = 2515, sells = fullLadder(),
+        money = 0 })
 plan, reason = AB.Plan()
-check("too poor for even one stack refuses cleanly",
-  plan == nil and tostring(reason):find("not enough gold") ~= nil, reason)
+check("no money at all refuses cleanly", plan == nil, plan and plan.amount)
 
 Scene({ quiver = { slots = 10, family = 1 }, equipped = 2515, sells = fullLadder(),
         money = 50000, reserveGold = 100 })
@@ -311,7 +331,7 @@ check("token-cost ammo is never bought", plan == nil, plan and plan.name)
 Scene({ quiver = { slots = 10, family = 1 }, equipped = 2515,
         sells = { { id = 2515, price = 10000, quantity = 200, numAvailable = 3 } } })
 plan = AB.Plan()
-check("limited stock clamps the amount", plan and plan.bundles == 3, plan and plan.bundles)
+check("limited stock clamps the amount", plan and plan.amount == 600, plan and plan.amount)
 
 Scene({ quiver = { slots = 10, family = 1 }, equipped = 2515,
         sells = { { id = 2515, price = 10000, quantity = 200, numAvailable = 0 } } })
@@ -323,8 +343,11 @@ check("an out-of-stock vendor refuses",
 Scene({ quiver = { slots = 2, family = 1 }, equipped = 2515,
         sells = { { id = 2515, price = 500, quantity = 20 } } })
 plan = AB.Plan()
-check("a non-200 vendor bundle is used verbatim",
-  plan and plan.perStack == 20 and plan.amount == 400, plan and plan.amount)
+-- A 20-per-batch vendor at 5s a batch = 0.25s each. The quiver still wants its
+-- exact 400, and the price is charged per unit from the batch price.
+check("a non-200 batch prices per unit and still fills exactly",
+  plan and plan.perStack == 20 and plan.amount == 400 and plan.cost == 10000,
+  plan and (plan.amount .. " for " .. plan.cost))
 
 -- No quiver at all.
 Scene({ quiver = nil, equipped = 2515, sells = fullLadder() })
@@ -358,11 +381,60 @@ AB.Execute(plan)
 TickBuy(10)
 local bought = 0
 for _, b in ipairs(HKTest.buys) do bought = bought + b.qty end
-check("the run buys every planned stack", bought == 4, tostring(bought))
-check("each call buys at most one 200-stack",
-  (function() for _, b in ipairs(HKTest.buys) do if b.qty > 1 then return false end end
-     return true end)())
+check("the run buys every planned UNIT", bought == 800, tostring(bought))
+-- The regression this whole change is about: the executor used to pass the
+-- STACK COUNT as BuyMerchantItem's quantity, which that API reads as a number
+-- of items -- so an 800-arrow refill bought 4 arrows, one per tick. It must now
+-- be 4 calls of 200.
+check("in exactly 4 calls, not 800", #HKTest.buys == 4, tostring(#HKTest.buys))
+check("each call moves a full 200-stack",
+  (function() for _, b in ipairs(HKTest.buys) do if b.qty ~= 200 then return false end end
+     return true end)(),
+  HKTest.buys[1] and tostring(HKTest.buys[1].qty))
 check("the run finishes and clears itself", AB.IsRunning() == false)
+
+-- A small top-up is ONE call, not one call per arrow.
+Scene({ quiver = { slots = 4, family = 1,
+        contents = { [1] = { id = 2515, count = 200 }, [2] = { id = 2515, count = 200 },
+                     [3] = { id = 2515, count = 200 }, [4] = { id = 2515, count = 137 } } },
+        equipped = 2515, sells = fullLadder(), mode = "manual" })
+plan = AB.Plan()
+check("a 63-arrow top-up is planned exactly", plan and plan.amount == 63, plan and plan.amount)
+AB.Execute(plan)
+TickBuy(10)
+check("...and bought in a single call", #HKTest.buys == 1 and HKTest.buys[1].qty == 63,
+  #HKTest.buys .. " calls / " .. (HKTest.buys[1] and HKTest.buys[1].qty or "?"))
+
+-- A big refill is chunked at the per-call stack cap, never above it (the server
+-- silently drops an oversized call, which the stub models).
+Scene({ quiver = { slots = 20, family = 1 }, equipped = 2515, sells = fullLadder(),
+        mode = "manual" })
+plan = AB.Plan()
+check("a 4000-arrow refill is planned in full", plan and plan.amount == 4000,
+  plan and plan.amount)
+AB.Execute(plan)
+TickBuy(40)
+bought = 0
+for _, b in ipairs(HKTest.buys) do bought = bought + b.qty end
+check("a big refill completes", bought == 4000, tostring(bought))
+check("...in 20 calls of 200", #HKTest.buys == 20, tostring(#HKTest.buys))
+
+-- GetMerchantItemMaxStack famously returns 1 for stacking goods on some
+-- clients. Trusting it would buy one arrow per call again, so the addon must
+-- fall back to the item's real stack size.
+Scene({ quiver = { slots = 4, family = 1 }, equipped = 2515, sells = fullLadder(),
+        mode = "manual" })
+HKTest.state.brokenMaxStack = true
+plan = AB.Plan()
+check("a broken max-stack of 1 falls back to the item stack size",
+  plan and plan.perCall == 200, plan and plan.perCall)
+AB.Execute(plan)
+TickBuy(20)
+bought = 0
+for _, b in ipairs(HKTest.buys) do bought = bought + b.qty end
+check("...and still buys everything in 4 calls",
+  bought == 800 and #HKTest.buys == 4, bought .. "/" .. #HKTest.buys)
+HKTest.state.brokenMaxStack = false
 
 -- The client silently refuses (bags full / server hiccup): the queue must abort
 -- after a few no-progress attempts, not spin forever.

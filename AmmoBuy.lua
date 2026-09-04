@@ -3,7 +3,7 @@
 
  Opens a merchant, works out how many arrows/bullets are missing from the
  AMMO-SPECIFIC bags (quiver for arrows, ammo pouch for bullets), and buys
- exactly that many -- in the 200-per-stack bundles vendors actually sell.
+ exactly that many -- the EXACT count, in as few vendor calls as allowed.
 
  The whole feature is a planner (`AmmoBuy.Plan`) plus an executor
  (`AmmoBuy.Execute`). The planner is pure: it reads the client and returns a
@@ -23,9 +23,9 @@
                                                 the client's own isUsable flag
    * token / honor / currency cost ammo      -> extendedCost items are skipped
    * limited stock (numAvailable)            -> purchase clamped to stock
-   * not enough gold                         -> buy as many WHOLE bundles as the
-                                                money (minus the reserve, minus
-                                                the per-visit cap) pays for
+   * not enough gold                         -> buy as many UNITS as the money
+                                                (minus the reserve, minus the
+                                                per-visit cap) pays for
    * quiver already full / over target       -> reason "already full"
    * a partial stack in the quiver           -> capacity math is count-based
                                                 (slots x 200), so top-ups work
@@ -247,7 +247,7 @@ function AmmoBuy.ScanMerchant()
             unit = price / quantity,
             numAvailable = tonumber(numAvailable) or -1,
             reqLevel = facts.reqLevel, iLevel = facts.iLevel,
-            texture = facts.texture,
+            texture = facts.texture, maxStack = facts.stack,
           }
         end
       end
@@ -365,25 +365,34 @@ function AmmoBuy.Plan()
     return nil, string.format("already at %d/%d %s (%d%% target)", have, capacity, pick.kind, pct)
   end
 
-  -- Vendors move ammo in whole bundles (`perStack`, normally 200), so the
-  -- amount is ALWAYS rounded DOWN to whole bundles. Rounding up would either
-  -- overflow the quiver (the stack has nowhere to go) or blow past a
-  -- deliberately small fill percentage -- both are the player's gold wasted.
-  -- A target that is less than one bundle away is simply left alone.
+  -- The amount is the EXACT number of units missing -- no rounding to stacks.
+  --
+  -- BuyMerchantItem(index, quantity) takes a count of ITEMS, not of stacks
+  -- (that changed in 4.1 and Classic Era runs the modern engine -- it is why
+  -- the well-known `/run BuyMerchantItem(1,200)` macro yields 200 arrows from
+  -- one call). So the vendor can be told to hand over precisely 750 arrows to
+  -- top a quiver up, and there is no reason to leave a partial slot empty or to
+  -- overshoot a fill percentage.
+  --
+  -- `perStack` is the merchant's BATCH size and only matters for pricing: the
+  -- merchant's `price` is the price per batch, so the unit price is
+  -- price / batch. Cost is charged per unit from there.
   local perStack = pick.perStack
-  local bundles = math.floor(need / perStack)
-  if bundles <= 0 then
-    return nil, string.format("less than one %d-stack short (%d/%d)", perStack, have, capacity)
-  end
+  local unitPrice = pick.price / perStack
+  local amount = math.min(need, capacity - have)   -- never exceed real room
 
-  -- Limited stock.
+  -- Limited stock. `numAvailable` counts purchasable BATCHES, so the unit
+  -- ceiling is that times the batch size. (Ammo is virtually always unlimited
+  -- (-1); when a capped vendor does under-deliver, the queue's stall detector
+  -- catches it and stops cleanly.)
   if pick.numAvailable and pick.numAvailable >= 0 then
-    bundles = math.min(bundles, pick.numAvailable)
-    if bundles <= 0 then return nil, "the vendor is out of stock" end
+    amount = math.min(amount, pick.numAvailable * perStack)
+    if amount <= 0 then return nil, "the vendor is out of stock" end
   end
 
-  -- Money: keep the reserve, respect the per-visit cap, and only ever buy WHOLE
-  -- bundles we can actually pay for.
+  -- Money: keep the reserve, respect the per-visit cap. Because we buy by the
+  -- unit, the budget no longer has to stretch to a whole stack -- it buys
+  -- however many individual rounds it covers.
   local money = Money()
   local reserve = math.max(0, math.floor((tonumber(db.reserveGold) or 0) * 10000))
   local capSpend = math.max(0, math.floor((tonumber(db.maxSpendGold) or 0) * 10000))
@@ -392,13 +401,22 @@ function AmmoBuy.Plan()
   if budget <= 0 then
     return nil, "gold reserve reached (" .. AmmoBuy.MoneyString(money) .. " on hand)"
   end
-  local affordable = math.floor(budget / pick.price)
-  local trimmed = affordable < bundles
-  bundles = math.min(bundles, affordable)
-  if bundles <= 0 then
-    return nil, string.format("not enough gold: one %d-stack costs %s, budget is %s",
-      perStack, AmmoBuy.MoneyString(pick.price), AmmoBuy.MoneyString(budget))
+  local affordable = math.floor(budget / unitPrice)
+  local trimmed = affordable < amount
+  amount = math.min(amount, affordable)
+  if amount <= 0 then
+    return nil, string.format("not enough gold: %s each, budget is %s",
+      AmmoBuy.MoneyString(math.ceil(unitPrice)), AmmoBuy.MoneyString(budget))
   end
+
+  -- One BuyMerchantItem call may not exceed the item's max stack size, so a
+  -- big refill is split into that many chunks: 2000 arrows is 10 calls of 200,
+  -- not 2000 calls of one. Prefer the merchant's own answer, fall back to the
+  -- item's stack size, then to the 200 every basic projectile uses.
+  local perCall = tonumber(Call(GetMerchantItemMaxStack, pick.index)) or 0
+  if perCall <= 1 then perCall = pick.maxStack or 0 end
+  if perCall <= 1 then perCall = MAX_PER_BUY end
+  perCall = math.min(perCall, MAX_PER_BUY)
 
   return {
     index    = pick.index,
@@ -406,10 +424,11 @@ function AmmoBuy.Plan()
     name     = pick.name,
     kind     = pick.kind,
     texture  = pick.texture,
-    perStack = perStack,
-    bundles  = bundles,
-    amount   = bundles * perStack,
-    cost     = bundles * pick.price,
+    perStack = perStack,           -- the merchant's batch size (pricing unit)
+    perCall  = perCall,            -- max units a single BuyMerchantItem may move
+    calls    = math.ceil(amount / perCall),
+    amount   = amount,             -- EXACT units to buy
+    cost     = math.floor(amount * unitPrice + 0.5),
     have     = have,
     capacity = capacity,
     target   = target,
@@ -419,8 +438,8 @@ function AmmoBuy.Plan()
 end
 
 function AmmoBuy.Describe(plan)
-  return string.format("%d x %s (%d stacks) for %s -- quiver %d/%d -> %d",
-    plan.amount, plan.name, plan.bundles, AmmoBuy.MoneyString(plan.cost),
+  return string.format("%d x %s for %s -- quiver %d/%d -> %d",
+    plan.amount, plan.name, AmmoBuy.MoneyString(plan.cost),
     plan.have, plan.capacity, math.min(plan.capacity, plan.have + plan.amount))
 end
 
@@ -452,7 +471,7 @@ local function Finish(msg)
   if msg then
     Say(msg)
   elseif plan then
-    Say(string.format("bought %d %s (%d stacks).", done * plan.perStack, plan.name, done))
+    Say(string.format("bought %d %s.", done, plan.name))
   end
 end
 
@@ -465,10 +484,10 @@ local function Step()
   local plan = run.plan
   -- The merchant can close (or the player walk away) at any moment.
   if (tonumber(Call(GetMerchantNumItems)) or 0) <= 0 then
-    Finish("vendor closed -- stopped after " .. run.done .. " stack(s).")
+    Finish(string.format("vendor closed -- stopped after %d %s.", run.done, plan.kind))
     return
   end
-  if run.done >= plan.bundles then
+  if run.done >= plan.amount then
     Finish(nil)
     return
   end
@@ -483,7 +502,7 @@ local function Step()
     if now <= run.lastCount then
       run.stalls = run.stalls + 1
       if run.stalls >= MAX_STALLS then
-        Finish(string.format("stopped after %d stack(s) -- the purchase stopped going through (bags full, out of stock or out of gold).", run.done))
+        Finish(string.format("stopped after %d %s -- the purchase stopped going through (bags full, out of stock or out of gold).", run.done, plan.kind))
         return
       end
       return       -- give the server another tick before trying again
@@ -491,15 +510,17 @@ local function Step()
     run.stalls = 0
   end
 
-  -- A single call may never move more than one 200-unit stack.
-  local perCall = math.max(1, math.floor(MAX_PER_BUY / plan.perStack))
-  local left = plan.bundles - run.done
-  local buyNow = math.min(perCall, left)
+  -- Buy as many UNITS as one call is allowed to move (a full 200-arrow stack
+  -- for basic ammo), not one item and not one stack-count. `run.done` counts
+  -- units, so an 800-arrow refill is 4 calls, and a 137-arrow top-up is 1.
+  local left = plan.amount - run.done
+  local buyNow = math.min(plan.perCall, left)
 
   -- Re-check gold every step: the player may have spent elsewhere (repair,
   -- another addon) between ticks.
-  if Money() < plan.cost / plan.bundles * buyNow then
-    Finish(string.format("stopped after %d stack(s) -- out of gold.", run.done))
+  local unitPrice = plan.cost / plan.amount
+  if Money() < unitPrice * buyNow then
+    Finish(string.format("stopped after %d -- out of gold.", run.done))
     return
   end
 
@@ -508,7 +529,7 @@ local function Step()
   if BuyMerchantItem then
     local ok = pcall(BuyMerchantItem, plan.index, buyNow)
     if not ok then
-      Finish("the client refused the purchase -- stopped after " .. run.done .. " stack(s).")
+      Finish("the client refused the purchase -- stopped after " .. run.done .. ".")
       return
     end
   end
@@ -705,7 +726,7 @@ function AmmoBuy.Init()
 
   HK.On("MERCHANT_SHOW", OnMerchantShow)
   HK.On("MERCHANT_CLOSED", function()
-    AmmoBuy.Cancel(run and ("vendor closed -- stopped after " .. run.done .. " stack(s).") or nil)
+    AmmoBuy.Cancel(run and string.format("vendor closed -- stopped after %d.", run.done) or nil)
     if button then button:Hide() end
   end)
   HK.On("BAG_UPDATE_DELAYED", function()

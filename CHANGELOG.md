@@ -3,6 +3,47 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.31] - 2026-09-04
+
+### Fixed
+- **The refill bought one arrow at a time (and never finished).** This was a
+  genuine bug, not just slowness: `BuyMerchantItem(index, quantity)` takes a
+  count of **items**, not of stacks -- that changed in 4.1 and Classic Era runs
+  the modern engine (it is why the familiar `/run BuyMerchantItem(1,200)` macro
+  yields 200 arrows from a single call). The executor was passing the *stack
+  count* as the quantity, so a planned 800-arrow refill issued four calls for
+  **one arrow each** and delivered 4 arrows for 4 x the unit price. Purchases
+  are now issued in units: 800 arrows is 4 calls of 200.
+
+### Changed
+- **Amounts are exact -- the round-down-to-whole-stacks rule is gone.** Since
+  the vendor can be told any number, there is no reason to leave a partial slot
+  empty. A quiver at 750/800 is topped up with a single call for **50**; 25% of
+  a 2000 quiver is exactly **500**, not 400. The previous behaviour refused
+  top-ups smaller than a full stack outright, which left the quiver short.
+- **Gold limits now work per round.** A thin purse buys as many individual
+  rounds as it covers (50s at 0.5c each = 100 arrows) instead of refusing
+  because it could not afford a whole 200-stack.
+- **Pricing is per unit.** The merchant's `price` is per *batch*
+  (`GetMerchantItemInfo`'s `quantity`), so cost is computed as
+  `price / batch * units`. This is correct for the odd vendor that sells in
+  batches that are not 200.
+- Large refills are chunked at the per-call stack cap, read from
+  `GetMerchantItemMaxStack` with a fallback to the item's own stack size --
+  that API is documented to return **1** for stacking goods on some clients,
+  and trusting it would have reintroduced one-arrow-per-call.
+
+### Tests
+- `tests/test_ammobuy.lua` grows to **78 checks**. The stub's
+  `BuyMerchantItem` now models the real unit semantics *and* the server
+  silently dropping a call above the stack cap, so the old bug fails loudly.
+  New coverage: 800 arrows in exactly 4 calls of 200 (the regression), a
+  63-arrow top-up in one call, a 4000-arrow refill in 20 calls, the
+  max-stack-returns-1 fallback, exact percentages, and per-unit gold limits.
+- 119 + 55 + 102 + 78 + 86 = **440 green**.
+
+---
+
 ## [0.9.30] - 2026-09-04
 
 ### Changed

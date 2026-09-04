@@ -352,6 +352,18 @@ function GetMerchantItemInfo(i)
          m.numAvailable == nil and -1 or m.numAvailable,
          m.isPurchasable ~= false, m.isUsable ~= false, m.extendedCost
 end
+-- Max units one BuyMerchantItem call may move. The live client often reports 1
+-- for stacking goods (a documented quirk), which the addon has to survive by
+-- falling back to the item's own stack size -- HKTest.state.brokenMaxStack
+-- models exactly that.
+function GetMerchantItemMaxStack(i)
+  if HKTest.state.brokenMaxStack then return 1 end
+  local m = (HKTest.state.merchant or {})[i]
+  if not m then return 1 end
+  local info = (HKTest.state.itemInfo or {})[m.id] or {}
+  return m.maxStack or info.stack or 200
+end
+
 -- Models the server: the purchase costs money and lands in the ammo bags.
 HKTest.buys = {}
 function BuyMerchantItem(index, qty)
@@ -360,10 +372,17 @@ function BuyMerchantItem(index, qty)
   if not m then error("BuyMerchantItem: no such merchant index " .. tostring(index)) end
   HKTest.buys[#HKTest.buys + 1] = { index = index, qty = qty, id = m.id }
   if HKTest.state.refuseBuys then return end
-  local units = qty * (m.quantity or 1)
-  HKTest.state.money = (HKTest.state.money or 0) - qty * (m.price or 0)
+  -- `qty` is a number of ITEMS, not of stacks (the 4.1+ behaviour Classic Era
+  -- runs). The only limit is the max stack the merchant allows per call; the
+  -- real server silently ignores a call that exceeds it.
+  local info = (HKTest.state.itemInfo or {})[m.id] or {}
+  local capPerCall = m.maxStack or info.stack or 200
+  if qty > capPerCall then return end
+  -- price is per BATCH (m.quantity), so charge per unit from there.
+  local unit = (m.price or 0) / (m.quantity or 1)
+  HKTest.state.money = (HKTest.state.money or 0) - qty * unit
   HKTest.state.items = HKTest.state.items or {}
-  HKTest.state.items[m.id] = (HKTest.state.items[m.id] or 0) + units
+  HKTest.state.items[m.id] = (HKTest.state.items[m.id] or 0) + qty
 end
 
 StaticPopupDialogs = {}
