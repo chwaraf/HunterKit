@@ -271,7 +271,7 @@ function UnitIsDead(u)
   if u == "target" then return HKTest.state.targetDead and true or false end
   return false
 end
-function UnitLevel() return 60 end
+function UnitLevel() return HKTest.state.level or 60 end
 function UnitCanAttack(a, b)
   if b == "target" then return HKTest.state.targetAttackable ~= false end
   return false
@@ -322,6 +322,61 @@ function GetContainerItemID(bag, slot)
   return it and it.id or nil
 end
 function UseContainerItem() end
+-- ---------------------------------------------------------------------------
+-- Merchant / money / bag-family stubs (ammo auto-buy)
+-- ---------------------------------------------------------------------------
+function GetMoney() return HKTest.state.money or 0 end
+
+-- HKTest.state.bagFamily[bag] = bit field (1 = quiver, 2 = ammo pouch)
+local function bagFree(bag)
+  local n = (HKTest.state.bags or {})[bag] or 0
+  local used = 0
+  for _ in pairs(((HKTest.state.bagItems or {})[bag] or {})) do used = used + 1 end
+  return n - used, ((HKTest.state.bagFamily or {})[bag] or 0)
+end
+function GetContainerNumFreeSlots(bag) return bagFree(bag) end
+C_Container.GetContainerNumFreeSlots = function(bag) return bagFree(bag) end
+
+-- HKTest.state.merchant = { { id=, price=, quantity=, numAvailable=,
+--                            isPurchasable=, isUsable=, extendedCost= }, ... }
+function GetMerchantNumItems() return #(HKTest.state.merchant or {}) end
+function GetMerchantItemLink(i)
+  local m = (HKTest.state.merchant or {})[i]
+  return m and ("|Hitem:" .. m.id .. "::::::::60:::|h[x]|h") or nil
+end
+function GetMerchantItemInfo(i)
+  local m = (HKTest.state.merchant or {})[i]
+  if not m then return nil end
+  local info = (HKTest.state.itemInfo or {})[m.id] or {}
+  return info.name, info.texture, m.price or 0, m.quantity or 1,
+         m.numAvailable == nil and -1 or m.numAvailable,
+         m.isPurchasable ~= false, m.isUsable ~= false, m.extendedCost
+end
+-- Models the server: the purchase costs money and lands in the ammo bags.
+HKTest.buys = {}
+function BuyMerchantItem(index, qty)
+  qty = qty or 1
+  local m = (HKTest.state.merchant or {})[index]
+  if not m then error("BuyMerchantItem: no such merchant index " .. tostring(index)) end
+  HKTest.buys[#HKTest.buys + 1] = { index = index, qty = qty, id = m.id }
+  if HKTest.state.refuseBuys then return end
+  local units = qty * (m.quantity or 1)
+  HKTest.state.money = (HKTest.state.money or 0) - qty * (m.price or 0)
+  HKTest.state.items = HKTest.state.items or {}
+  HKTest.state.items[m.id] = (HKTest.state.items[m.id] or 0) + units
+end
+
+StaticPopupDialogs = {}
+HKTest.popups = {}
+function StaticPopup_Show(which, text, _, data)
+  HKTest.popups[#HKTest.popups + 1] = { which = which, text = text, data = data }
+  return { which = which, data = data }
+end
+function StaticPopup_Hide() end
+
+-- The merchant window the Refill button parents itself to.
+MerchantFrame = newFrame("Frame", "MerchantFrame", UIParent)
+
 function GetCursorPosition() return HKTest.cursorX or 0, HKTest.cursorY or 0 end
 function PlaySoundFile(f) HKTest.soundsPlayed[#HKTest.soundsPlayed + 1] = f end
 function MuteSoundFile(id) HKTest.mutedSounds[#HKTest.mutedSounds + 1] = id end

@@ -6,7 +6,7 @@
 
 local ADDON_NAME, HK = ...
 
-HK.version = "0.9.28"
+HK.version = "0.9.29"
 
 -- ---------------------------------------------------------------------------
 -- Defaults (schema). This is the source of truth for the options window and
@@ -14,7 +14,7 @@ HK.version = "0.9.28"
 -- ---------------------------------------------------------------------------
 HK.defaults = {
   enabled   = true,
-  dbVersion = 20,
+  dbVersion = 21,
   firstRun  = true,
 
   ui = {
@@ -41,6 +41,19 @@ HK.defaults = {
     threshold = 200,   -- warn at or below this many arrows/bullets left
     sound     = false, -- voice warnings (user: off by default)
     frequency = 1,     -- warn-frequency multiplier (1x..4x), user option
+  },
+
+  -- Ammo auto-buy: refill the quiver / ammo pouch at a vendor.
+  ammobuy = {
+    enabled      = true,
+    mode         = "confirm",  -- auto | confirm | manual (button + /htk buy only)
+    tier         = "equipped", -- equipped | best | capped
+    tierCap      = 60,         -- highest ammo required-level to buy in "capped"
+    full         = true,       -- fill to 100% of the ammo bags
+    percent      = 100,        -- when `full` is off: fill to this % of capacity
+    reserveGold  = 0,          -- never spend below this many gold
+    maxSpendGold = 0,          -- 0 = no per-visit cap
+    showButton   = true,       -- "Refill ammo" button on the merchant frame
   },
 
   range = {
@@ -406,7 +419,7 @@ function HK.ResetAll()
   -- Re-apply everywhere. RescanSettings re-reads the db slice and rebuilds what
   -- the setting controls; the mend marker also puts any leftover forced
   -- nameplate CVar back.
-  for _, name in ipairs({ "FeedPet", "Range", "Sounds", "PassivePulse", "AmmoWarn", "MendMark" }) do
+  for _, name in ipairs({ "FeedPet", "Range", "Sounds", "PassivePulse", "AmmoWarn", "AmmoBuy", "MendMark" }) do
     local m = HK[name]
     if m and m.RescanSettings then pcall(m.RescanSettings) end
   end
@@ -724,6 +737,14 @@ local function LoadDB()
     db.dbVersion = 20
   end
 
+  -- v20 -> v21: ammo auto-buy arrives. MergeDefaults already filled the new
+  -- `ammobuy` table; the only thing worth forcing is the SAFE default -- the
+  -- confirm popup -- so nobody who upgrades finds gold spent without a click.
+  if db.dbVersion < 21 then
+    if type(db.ammobuy) == "table" then db.ammobuy.mode = "confirm" end
+    db.dbVersion = 21
+  end
+
   if db.dbVersion < 19 then
     -- 0.9.15: voice warnings are opt-in now; force the new default once so
     -- it reaches existing profiles too (the checkbox re-enables it).
@@ -790,7 +811,8 @@ local function FeatureStatus()
   return string.format("feed=%s range=%s sound=%s pulse=%s mend=%s",
     tostring(d.feed and d.feed.enabled), tostring(d.range and d.range.enabled),
     tostring(d.sound and d.sound.enabled), tostring(d.pulse and d.pulse.enabled),
-    tostring(d.mend and d.mend.enabled))
+    tostring(d.mend and d.mend.enabled)) ..
+    string.format(" ammobuy=%s", tostring(d.ammobuy and d.ammobuy.enabled))
 end
 
 local function PrintHelp()
@@ -802,6 +824,8 @@ local function PrintHelp()
   print("  /htk sound         — preview pews")
   print("  /htk feed          — show the current feed macro + food")
   print("  /htk mend          — pet mend marker diagnostics")
+  print("  /htk buy           — refill ammo at the open vendor")
+  print("  /htk buyinfo       — ammo auto-buy diagnostics")
   print("  /htk selfcheck     — API diagnostics")
   print("  /htk gunlist       — list muted gun-sound FileDataIDs")
   print("  /htk debug         — toggle verbose logging")
@@ -830,6 +854,10 @@ SlashCmdList["HUNTERKIT"] = function(msg)
     if HK.FeedPet then HK.FeedPet:PrintFeed() else print("HunterKit: FeedPet not initialised.") end
   elseif msg == "mend" then
     if HK.MendMark then HK.MendMark.PrintDiag() else print("HunterKit: MendMark not initialised.") end
+  elseif msg == "buy" then
+    if HK.AmmoBuy then HK.AmmoBuy.Refill(true) else print("HunterKit: AmmoBuy not initialised.") end
+  elseif msg == "buyinfo" then
+    if HK.AmmoBuy then HK.AmmoBuy.PrintDiag() else print("HunterKit: AmmoBuy not initialised.") end
   elseif msg == "gunlist" then
     if HK.Sounds then HK.Sounds.PrintGunList() end
   elseif msg == "selfcheck" then

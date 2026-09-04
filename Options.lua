@@ -629,6 +629,51 @@ function BuildWindow()
     "Voice only -- no game sounds. Bundled clips speak the situation: \"Low arrows!\"/\"Low ammo!\" while low (at most once a minute), \"No arrows!\"/\"No ammo!\" when the slot is empty (at most once every 30 s); the frequency option scales both. Off by default.")
   y = y - CHK
 
+  -- Ammo auto-buy
+  AddSection(content, y, "Ammo auto-buy")
+  y = y - HDR
+  MakeCheckbox(content, y, "Enable ammo auto-buy", function() return db.ammobuy.enabled end,
+    function(v) db.ammobuy.enabled = v; RefreshAmmoBuy() end,
+    "Refill your quiver / ammo pouch from a vendor. Works out how many arrows or bullets are missing and buys them in the 200-per-stack bundles vendors sell. Gold reserve and spend cap are always respected.")
+  y = y - CHK
+  MakeDropdown(content, y, "When at a vendor", { "confirm", "auto", "manual" },
+    function() return db.ammobuy.mode end,
+    function(v) db.ammobuy.mode = v; RefreshAmmoBuy() end,
+    "confirm = a popup asks before spending (default). auto = buys silently as soon as the merchant opens. manual = only the 'Refill ammo' button or /htk buy.")
+  y = y - ROW
+  MakeDropdown(content, y, "Ammo tier", { "equipped", "best", "capped" },
+    function() return db.ammobuy.tier end,
+    function(v) db.ammobuy.tier = v; RefreshAmmoBuy() end,
+    "equipped = more of what is in your ammo slot (falls back to the best of the same kind if the vendor lacks it). best = the highest tier you can use. capped = best, but never above the level cap below.")
+  y = y - ROW
+  MakeSlider(content, y, "Tier level cap", 1, 70, 1, function() return db.ammobuy.tierCap or 60 end,
+    function(v) db.ammobuy.tierCap = v; RefreshAmmoBuy() end,
+    "Only used by the 'capped' tier mode: never buy ammo whose required level is above this. Handy for staying on cheap arrows while levelling.", true)
+  y = y - CHK
+  MakeCheckbox(content, y, "Fill completely (100%)", function() return db.ammobuy.full end,
+    function(v) db.ammobuy.full = v; RefreshAmmoBuy() end,
+    "Fill every slot of the quiver / ammo pouch. Untick to use the percentage slider below instead.")
+  y = y - CHK
+  MakeSlider(content, y, "Fill to", 5, 100, 5, function() return db.ammobuy.percent or 100 end,
+    function(v) db.ammobuy.percent = v; RefreshAmmoBuy() end,
+    "How full to keep the quiver / pouch, as a percentage of its total capacity (slots x 200). Ignored while 'Fill completely' is ticked.", true)
+  y = y - CHK
+  MakeSlider(content, y, "Keep gold in reserve", 0, 100, 1,
+    function() return db.ammobuy.reserveGold or 0 end,
+    function(v) db.ammobuy.reserveGold = v; RefreshAmmoBuy() end,
+    "Never spend your last gold: the refill stops once your money would drop below this. 0 = no reserve.", true)
+  y = y - CHK
+  MakeSlider(content, y, "Max spend per visit", 0, 100, 1,
+    function() return db.ammobuy.maxSpendGold or 0 end,
+    function(v) db.ammobuy.maxSpendGold = v; RefreshAmmoBuy() end,
+    "Hard cap on what a single refill may cost, in gold. 0 = no cap. If the budget is short, only whole stacks that fit it are bought.", true)
+  y = y - CHK
+  MakeCheckbox(content, y, "Merchant 'Refill ammo' button",
+    function() return db.ammobuy.showButton end,
+    function(v) db.ammobuy.showButton = v; RefreshAmmoBuy() end,
+    "Show a Refill ammo button on the vendor window. It shows the exact amount it would buy in its tooltip, or the reason it cannot.")
+  y = y - CHK
+
   -- Sound
   AddSection(content, y, "Gun Sound")
   y = y - HDR
@@ -752,7 +797,7 @@ function RefreshModules()
     if HK.PassivePulse and HK.PassivePulse.Refresh then HK.PassivePulse.Refresh() end
     if HK.MendMark and HK.MendMark.Update then HK.MendMark.Update() end
   else
-    RefreshFeed(); RefreshRange(); RefreshSound(); RefreshPulse(); RefreshAmmo(); RefreshMend()
+    RefreshFeed(); RefreshRange(); RefreshSound(); RefreshPulse(); RefreshAmmo(); RefreshAmmoBuy(); RefreshMend()
   end
 end
 function RefreshFeed() if HK.FeedPet and HK.FeedPet.RescanSettings then HK.FeedPet.RescanSettings() end end
@@ -761,6 +806,7 @@ function RefreshPulse() if HK.PassivePulse and HK.PassivePulse.RescanSettings th
 function RefreshMend() if HK.MendMark and HK.MendMark.RescanSettings then HK.MendMark.RescanSettings() end end
 function RefreshSound() if HK.Sounds and HK.Sounds.RescanSettings then HK.Sounds.RescanSettings() end end
 function RefreshAmmo() if HK.AmmoWarn and HK.AmmoWarn.RescanSettings then HK.AmmoWarn.RescanSettings() end end
+function RefreshAmmoBuy() if HK.AmmoBuy and HK.AmmoBuy.RescanSettings then HK.AmmoBuy.RescanSettings() end end
 
 -- ---------------------------------------------------------------------------
 -- Minimap button
