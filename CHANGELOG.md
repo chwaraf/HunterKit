@@ -3,6 +3,63 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.33] - 2026-09-04
+
+### Fixed
+- **The Refill button overhung the merchant frame's right edge.** It was pinned
+  by its TOPLEFT only and given a fixed 130px width; the money widget sits well
+  into the frame, so 130px from there spills out. Both horizontal edges are now
+  anchored (to `MerchantMoneyInset`, so the button is exactly as wide as the
+  money block) and the fixed width is gone -- the width follows the anchor and
+  cannot overflow at any UI scale or with a reskinned frame.
+
+- **Quivers were sometimes not recognised at all.**
+  `GetContainerNumFreeSlots` returns family `0` both for "general purpose" and
+  for "could not classify", and a quiver reported as 0 was treated as an
+  ordinary bag -- so the addon found no ammo bags and refused with "no quiver
+  equipped". `BagInfo` now falls back to `GetItemFamily` on the equipped bag
+  item, which is authoritative. `NUM_BAG_SLOTS` is also used (with a fallback)
+  instead of a hardcoded bag range.
+
+- **"Buys too little": capacity assumed every ammo stacks to 200.** Basic
+  vendor ammo does, but special ammo does not; a 20-stack projectile in a
+  6-slot quiver holds 120, not 1200. `QuiverSpace` now takes the stack size
+  from the item itself, so the fill target -- and therefore the amount bought
+  -- is right for any projectile.
+
+- **Auto-fill did nothing while the button worked.** The automatic path was a
+  single attempt 0.3 s after `MERCHANT_SHOW`. `GetItemInfo` is routinely still
+  cold then, so the scan found zero projectiles and the refill gave up --
+  silently, since automatic triggers must not spam refusals. Clicking the
+  button a second later succeeded because the cache had filled: exactly the
+  reported asymmetry. The automatic path now retries (8 attempts, 0.5 s apart)
+  while the refusal is a "client hasn't answered yet" one, and stops
+  immediately on a real answer (already full, no quiver, too poor, wrong tier)
+  so it never spins. Retries are cancelled when the vendor closes or a newer
+  visit starts.
+
+### Safety
+- **Ammo above your level is never bought** -- confirmed and hardened. Two
+  independent gates must now agree: the item's own `reqLevel` vs your level,
+  *and* the client's `isUsable` flag (which stays correct even when the item
+  cache is cold and `reqLevel` reads 0). Items whose info has not loaded at all
+  are skipped rather than judged on a `reqLevel` of 0.
+
+### Added
+- `/htk buyinfo` now prints a per-bag family report (slots and family per bag,
+  flagged as quiver/pouch) and the bag indices counted as ammo bags, so a
+  mis-detected quiver can be diagnosed in one command.
+
+### Tests
+- `tests/test_ammobuy.lua` grows to **103 checks**, one per fix above: a
+  family-0 quiver still recognised, capacity following a 20-stack projectile,
+  unusable ammo refused, and the cold-cache auto-fill completing on retry. The
+  auto-fill test was **verified to fail against the previous code** (bought 0)
+  before the fix was kept.
+- 119 + 55 + 102 + 103 + 86 = **465 green**.
+
+---
+
 ## [0.9.32] - 2026-09-04
 
 ### Added

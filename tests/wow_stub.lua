@@ -334,7 +334,29 @@ local function bagFree(bag)
   for _ in pairs(((HKTest.state.bagItems or {})[bag] or {})) do used = used + 1 end
   return n - used, ((HKTest.state.bagFamily or {})[bag] or 0)
 end
-function GetContainerNumFreeSlots(bag) return bagFree(bag) end
+function GetContainerNumFreeSlots(bag)
+  local free, fam = bagFree(bag)
+  -- HKTest.state.hideBagFamily models the live client reporting 0 (= could not
+  -- classify / general purpose) for a bag that really is a quiver.
+  if HKTest.state.hideBagFamily then return free, 0 end
+  return free, fam
+end
+NUM_BAG_SLOTS = 4
+function ContainerIDToInventoryID(bag) return 19 + bag end
+function GetInventoryItemLink(unit, invID)
+  local bag = (invID or 0) - 19
+  if ((HKTest.state.bagFamily or {})[bag] or 0) > 0 then
+    return "|Hitem:9999::::::::60:::|h[Bag]|h"
+  end
+  return nil
+end
+function GetItemFamily(link)
+  -- Only the quiver/pouch bag link has a family, mirroring the real API.
+  for bag, fam in pairs(HKTest.state.bagFamily or {}) do
+    if fam > 0 and link then return fam end
+  end
+  return 0
+end
 C_Container.GetContainerNumFreeSlots = function(bag) return bagFree(bag) end
 
 -- HKTest.state.merchant = { { id=, price=, quantity=, numAvailable=,

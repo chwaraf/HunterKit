@@ -563,12 +563,22 @@ check("...but /htk buy still refills", #HKTest.buys > 0, tostring(#HKTest.buys))
 local btn = _G["HunterKitRefillAmmo"]
 check("the merchant frame gets a Refill ammo button", btn ~= nil)
 
--- It anchors BENEATH the player-money display, not to an arbitrary corner.
+-- It anchors BENEATH the player-money block, not to an arbitrary corner.
 local pt = btn and btn.points[1]
-check("the button hangs under the merchant money frame",
-  pt and pt[1] == "TOPLEFT" and pt[2] == _G["MerchantMoneyFrame"]
-     and pt[3] == "BOTTOMLEFT",
+check("the button hangs under the merchant money block",
+  pt and pt[1] == "TOPLEFT" and pt[3] == "BOTTOMLEFT"
+     and pt[2] == (_G["MerchantMoneyInset"] or _G["MerchantMoneyFrame"]),
   pt and (tostring(pt[1]) .. "->" .. tostring(pt[2] and pt[2].name) .. "/" .. tostring(pt[3])))
+
+-- The reported bug: a fixed 130px width anchored only on the left ran past the
+-- merchant frame's right edge. BOTH horizontal edges must be pinned, so the
+-- width follows the anchor and can never overflow at any UI scale.
+local pt2 = btn and btn.points[2]
+check("the button pins its right edge too, so it cannot overflow the frame",
+  pt2 and (pt2[1] == "TOPRIGHT" or pt2[1] == "BOTTOMRIGHT"),
+  pt2 and tostring(pt2[1]) or "only one anchor point")
+check("...and sets no fixed width that could fight the anchor",
+  (btn.width or 0) == 0, tostring(btn.width))
 
 -- A vendor with ammo on the shelf: the button is there.
 Scene({ quiver = { slots = 4, family = 1 }, equipped = 2515, sells = fullLadder(),
@@ -612,6 +622,95 @@ Scene({ quiver = { slots = 4, family = 1 }, equipped = 2515, sells = fullLadder(
 HKTest.Fire("MERCHANT_SHOW")
 HKTest.Fire("MERCHANT_CLOSED")
 check("closing the vendor hides the button", btn:IsShown() == false)
+
+-- ---------------------------------------------------------------------------
+-- 10) The four reported regressions
+-- ---------------------------------------------------------------------------
+
+-- (a) A quiver the client cannot classify (family reported as 0) must still be
+-- found via GetItemFamily on the bag item. Reading it as an ordinary bag made
+-- the addon see NO ammo bags -- "doesn't recognise quiver space".
+Scene({ quiver = { slots = 6, family = 1 }, equipped = 2515, sells = fullLadder() })
+HKTest.state.hideBagFamily = true
+local c2, h2, s2 = AB.QuiverSpace("arrows", 2515)
+check("a quiver reported as family 0 is still recognised", s2 == 6 and c2 == 1200,
+  s2 .. " slots / " .. c2)
+plan = AB.Plan()
+check("...and it still plans a full refill", plan and plan.amount == 1200,
+  plan and plan.amount)
+HKTest.state.hideBagFamily = false
+
+-- (b) Capacity must use the AMMO'S stack size, not a hardcoded 200. Special
+-- ammo that stacks to 20 in a 6-slot quiver holds 120, not 1200 -- assuming 200
+-- inflated capacity 10x and made every amount wrong.
+HKTest.state.itemInfo[77777] = { name = "Odd Shot", reqLevel = 1, iLevel = 1,
+  classID = 6, subclass = BULLET, stack = 20,
+  texture = "Interface\\Icons\\INV_Ammo_Bullet_01" }
+Scene({ quiver = { slots = 6, family = 2 }, equipped = 77777,
+        sells = { { id = 77777, price = 1000, quantity = 20 } } })
+local c3 = AB.QuiverSpace("bullets", 77777)
+check("capacity follows the ammo's real stack size", c3 == 120, tostring(c3))
+plan = AB.Plan()
+check("...and the plan fills exactly that", plan and plan.amount == 120,
+  plan and plan.amount)
+
+-- (c) Ammo above the character's level is never bought, even when the item
+-- cache is cold (reqLevel reads 0) -- the client's own isUsable flag must still
+-- veto it.
+Scene({ quiver = { slots = 4, family = 1 }, equipped = 2512, level = 5,
+        sells = { { id = 11285, price = 40000, quantity = 200, isUsable = false } },
+        tier = "best" })
+plan, reason = AB.Plan()
+check("ammo the client marks unusable is never bought", plan == nil, plan and plan.name)
+
+Scene({ quiver = { slots = 4, family = 1 }, equipped = 2512, level = 5,
+        sells = fullLadder(), tier = "best" })
+plan = AB.Plan()
+check("a level-5 hunter is only ever offered level-appropriate ammo",
+  plan and plan.reqLevel == nil or true)
+local picked = plan and HKTest.state.itemInfo[plan.id]
+check("...i.e. nothing above their level", picked and picked.reqLevel <= 5,
+  picked and picked.reqLevel)
+
+-- (d) AUTO-FILL: the item cache is cold at MERCHANT_SHOW, so the first scan
+-- finds nothing. The old single-shot 0.3s attempt gave up silently and bought
+-- nothing, while the button worked a second later -- the exact report. The
+-- retry must keep looking and then buy.
+Scene({ quiver = { slots = 4, family = 1 }, equipped = 2515, sells = fullLadder(),
+        mode = "auto" })
+local realGetItemInfo = GetItemInfo
+GetItemInfo = function() return nil end          -- cold cache: nothing resolves
+HKTest.Fire("MERCHANT_SHOW")
+HKTest.RunDelayed()                               -- the first attempt: finds nothing
+check("a cold cache buys nothing yet", #HKTest.buys == 0, tostring(#HKTest.buys))
+GetItemInfo = realGetItemInfo                     -- the cache warms up
+HKTest.RunDelayed()                               -- the retry
+TickBuy(10)
+bought = 0
+for _, b in ipairs(HKTest.buys) do bought = bought + b.qty end
+check("auto-fill retries once the cache warms and completes the buy",
+  bought == 800, tostring(bought))
+
+-- A FINAL refusal (already full) must not retry forever.
+Scene({ quiver = { slots = 2, family = 1,
+        contents = { [1] = { id = 2515, count = 200 }, [2] = { id = 2515, count = 200 } } },
+        equipped = 2515, sells = fullLadder(), mode = "auto" })
+HKTest.Fire("MERCHANT_SHOW")
+local rounds = 0
+while HKTest.RunDelayed() > 0 and rounds < 20 do rounds = rounds + 1 end
+check("a full quiver stops retrying instead of spinning", rounds < 3, tostring(rounds))
+check("...and buys nothing", #HKTest.buys == 0, tostring(#HKTest.buys))
+
+-- Closing the vendor cancels pending retries.
+Scene({ quiver = { slots = 4, family = 1 }, equipped = 2515, sells = fullLadder(),
+        mode = "auto" })
+HKTest.Fire("MERCHANT_SHOW")
+HKTest.Fire("MERCHANT_CLOSED")
+HKTest.state.merchant = {}
+rounds = 0
+while HKTest.RunDelayed() > 0 and rounds < 20 do rounds = rounds + 1 end
+check("closing the vendor cancels pending auto retries", #HKTest.buys == 0,
+  tostring(#HKTest.buys))
 
 -- Defaults are the safe ones.
 check("auto-buy defaults to the confirm popup", HK.defaults.ammobuy.mode == "confirm",

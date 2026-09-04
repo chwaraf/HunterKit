@@ -106,6 +106,16 @@ local function Call(fn, ...)
 end
 
 -- freeSlots, bagFamily for a bag index.
+-- freeSlots, bagFamily for a bag index.
+--
+-- Two independent sources, because neither is reliable alone:
+--   * GetContainerNumFreeSlots returns the family, but it reports 0 for a bag
+--     it cannot classify AND 0 legitimately means "general purpose" -- so a
+--     zero can never be trusted as a final answer.
+--   * GetItemFamily on the equipped bag item is authoritative for a quiver, and
+--     is what actually works when the container call comes back 0.
+-- A quiver read as family 0 was seen by the addon as an ordinary bag, so it
+-- found NO ammo bags at all -- the "doesn't recognise quiver space" report.
 local function BagInfo(bag)
   local free, family
   if C_Container and C_Container.GetContainerNumFreeSlots then
@@ -113,6 +123,19 @@ local function BagInfo(bag)
   end
   if family == nil and GetContainerNumFreeSlots then
     free, family = Call(GetContainerNumFreeSlots, bag)
+  end
+  if (family == nil or family == 0) then
+    -- Ask the bag ITEM what family it belongs to. Bag N lives in inventory slot
+    -- ContainerIDToInventoryID(N); GetItemFamily on its link gives the same
+    -- bitfield the container API should have returned.
+    local invID = Call(ContainerIDToInventoryID, bag)
+    if invID then
+      local link = Call(GetInventoryItemLink, "player", invID)
+      if link then
+        local fam = Call(GetItemFamily, link)
+        if type(fam) == "number" and fam > 0 then family = fam end
+      end
+    end
   end
   return free, family
 end
@@ -191,11 +214,28 @@ end
 --
 -- Returns: capacity, have, slots, bags (list of bag indices)
 -- ---------------------------------------------------------------------------
-function AmmoBuy.QuiverSpace(kind, itemID)
+-- `perSlot` is the STACK SIZE OF THE AMMO ITSELF, not a hardcoded 200. Every
+-- basic vendor projectile stacks to 200, but quest/engineering/special ammo
+-- does not (Thorium Headed Arrow stacks to 200, but some special shot stacks to
+-- 20), and assuming 200 there computed a capacity several times the real one --
+-- which the "already full" arithmetic then read as a huge deficit, or, once
+-- clamped by real room, as a tiny one. Ask the item and fall back to 200.
+function AmmoBuy.QuiverSpace(kind, itemID, perSlot)
+  perSlot = tonumber(perSlot) or 0
+  if perSlot <= 0 then
+    local facts = itemID and ItemFacts(itemID) or nil
+    perSlot = (facts and facts.stack) or MAX_PER_BUY
+  end
+  if perSlot <= 1 then perSlot = MAX_PER_BUY end
+
   local family = FamilyForKind(kind)
   local slots, have, bags = 0, 0, {}
-  for bag = 1, 4 do
+  for bag = 1, (NUM_BAG_SLOTS or 4) do
     local _, fam = BagInfo(bag)
+    -- A quiver reports family 1 and an ammo pouch 2. Some clients report the
+    -- family only through GetItemFamily on the equipped bag, so BagInfo falls
+    -- back to that; without it every bag looked family-less and the addon saw
+    -- NO quiver at all.
     if fam and HasBit(fam, family) then
       local n = HK.GetBagNumSlots(bag) or 0
       if n > 0 then
@@ -216,7 +256,7 @@ function AmmoBuy.QuiverSpace(kind, itemID)
       end
     end
   end
-  return slots * MAX_PER_BUY, have, slots, bags
+  return slots * perSlot, have, slots, bags
 end
 
 -- ---------------------------------------------------------------------------
@@ -241,7 +281,17 @@ function AmmoBuy.ScanMerchant()
         price = tonumber(price) or 0
         quantity = math.max(1, tonumber(quantity) or 1)
         local kind = KindOfSubclass(facts.subclassID)
-        if kind and not hasExtended and price > 0
+        -- LEVEL SAFETY, two independent gates, because either can be wrong:
+        --   * facts.reqLevel <= level -- the item's own requirement vs ours.
+        --     Authoritative when GetItemInfo is warm, but reqLevel reads 0
+        --     while the cache is cold, which would let anything through...
+        --   * isUsable -- the client's own verdict for THIS character, which
+        --     stays correct even then (it is what greys the vendor icon out).
+        -- Both must agree, so ammo above the character's level is never bought.
+        -- `nameKnown` additionally refuses to judge an item whose info has not
+        -- loaded at all, rather than guessing from a reqLevel of 0.
+        local nameKnown = type(name) == "string" and name ~= ""
+        if kind and nameKnown and not hasExtended and price > 0
            and isPurchasable ~= false and isUsable ~= false
            and facts.reqLevel <= level then
           out[#out + 1] = {
@@ -382,7 +432,9 @@ function AmmoBuy.Plan()
     return nil, refused or ("this vendor sells no usable " .. (wantKind or "ammo"))
   end
 
-  local capacity, have, slots = AmmoBuy.QuiverSpace(pick.kind, pick.id)
+  -- Size the quiver by the stack size of the ammo we are about to buy, taken
+  -- from the item itself rather than assumed to be 200.
+  local capacity, have, slots = AmmoBuy.QuiverSpace(pick.kind, pick.id, pick.maxStack)
   if slots <= 0 then
     return nil, (pick.kind == "arrows" and "no quiver equipped (or it is full of other items)")
                  or "no ammo pouch equipped (or it is full of other items)"
@@ -666,24 +718,41 @@ AmmoBuy.UpdateButton = UpdateButton
 -- time (not cached at file scope) because the merchant UI is loaded on demand,
 -- and we fall back to the frame's own bottom-left corner if neither exists so a
 -- reskinning addon can never leave the button unanchored.
+-- Anchor BOTH horizontal edges, never just one.
+--
+-- The previous version pinned only TOPLEFT to the money frame and kept a fixed
+-- 130px width, so the button's right edge ran past the merchant window: the
+-- money widget sits well into the frame, and 130px from there overflows it.
+-- Pinning left AND right makes the width follow the anchor instead of fighting
+-- it, so the button can never extend beyond the vendor frame at any UI scale or
+-- with any reskinning addon.
 local function AnchorButton()
   if not button then return end
   button:ClearAllPoints()
-  local money = _G["MerchantMoneyFrame"]
   local inset = _G["MerchantMoneyInset"]
-  if money and money.GetObjectType then
+  local money = _G["MerchantMoneyFrame"]
+  if inset and inset.GetObjectType then
+    -- Match the money inset's exact width: that block is already sized to sit
+    -- neatly inside the frame's bottom-left, so the button lines up with it.
+    button:SetPoint("TOPLEFT", inset, "BOTTOMLEFT", 0, -3)
+    button:SetPoint("TOPRIGHT", inset, "BOTTOMRIGHT", 0, -3)
+  elseif money and money.GetObjectType then
     button:SetPoint("TOPLEFT", money, "BOTTOMLEFT", 0, -6)
-  elseif inset and inset.GetObjectType then
-    button:SetPoint("TOPLEFT", inset, "BOTTOMLEFT", 4, -4)
+    button:SetPoint("TOPRIGHT", money, "BOTTOMRIGHT", 0, -6)
   else
-    button:SetPoint("BOTTOMLEFT", MerchantFrame, "BOTTOMLEFT", 22, 32)
+    -- No money widget (heavily reskinned UI): inset from both edges of the
+    -- merchant frame itself, which is still guaranteed to be inside it.
+    button:SetPoint("BOTTOMLEFT", MerchantFrame, "BOTTOMLEFT", 16, 32)
+    button:SetPoint("BOTTOMRIGHT", MerchantFrame, "BOTTOMRIGHT", -16, 32)
   end
 end
 
 local function BuildButton()
   if button or not MerchantFrame then return end
   button = CreateFrame("Button", "HunterKitRefillAmmo", MerchantFrame, "UIPanelButtonTemplate")
-  button:SetSize(130, 22)
+  -- Height only: the width comes from anchoring both horizontal edges in
+  -- AnchorButton(), so a fixed width can never push it past the frame.
+  button:SetHeight(22)
   AnchorButton()
   button:SetText("Refill ammo")
   button:SetScript("OnClick", function() AmmoBuy.Refill(true) end)
@@ -703,6 +772,46 @@ end
 -- ---------------------------------------------------------------------------
 -- Wiring
 -- ---------------------------------------------------------------------------
+-- Retry the automatic refill until the client can actually answer.
+--
+-- THE AUTO-FILL BUG: this used to be a single shot 0.3 s after MERCHANT_SHOW.
+-- At that moment GetItemInfo is frequently still cold for items the player has
+-- not seen this session, so ItemFacts returns nil, ScanMerchant finds zero
+-- projectiles, and the refill gives up with "this vendor sells no usable ammo"
+-- -- silently, because an automatic trigger must not spam refusals. Clicking
+-- the button a second later worked because the cache had filled in by then,
+-- which is exactly the "button fine, auto broken" report.
+--
+-- The fix is to keep looking while the answer can still change. GET_ITEM_INFO_
+-- RECEIVED would be the event-driven way, but it does not fire for items
+-- already cached, so a short poll is both simpler and strictly more reliable.
+local AUTO_TRIES    = 8      -- ~4 s of attempts
+local AUTO_INTERVAL = 0.5
+local autoToken = 0          -- invalidates in-flight retries when the vendor closes
+
+local function TryAutoRefill(token, tries)
+  if token ~= autoToken then return end                 -- a newer visit superseded us
+  if (tonumber(Call(GetMerchantNumItems)) or 0) <= 0 then return end
+  if run then return end                                 -- already buying
+
+  local plan, reason = AmmoBuy.Plan()
+  if plan then
+    AmmoBuy.Refill(false)
+    UpdateButton()
+    return
+  end
+
+  -- Only a "the client has not told me yet" refusal is worth retrying. A real
+  -- answer -- already full, no quiver, too poor, wrong tier -- is final, and
+  -- retrying it would just burn ticks.
+  local retryable = reason == nil or tostring(reason):find("no usable") ~= nil
+  if retryable and tries < AUTO_TRIES and C_Timer and C_Timer.After then
+    C_Timer.After(AUTO_INTERVAL, function() TryAutoRefill(token, tries + 1) end)
+  else
+    UpdateButton()
+  end
+end
+
 local function OnMerchantShow()
   BuildButton()
   -- Re-anchor every time: Blizzard's merchant UI can load after our first
@@ -712,16 +821,10 @@ local function OnMerchantShow()
   if not db or db.enabled == false or not HK.isHunter then return end
   local mode = db.mode or "confirm"
   if mode == "manual" then return end
-  -- One tick late: at MERCHANT_SHOW the merchant list and the item cache are
-  -- still filling in, so an immediate scan can see zero items (or unnamed ones)
-  -- and wrongly report "this vendor sells no usable ammo".
+  autoToken = autoToken + 1
+  local token = autoToken
   if C_Timer and C_Timer.After then
-    C_Timer.After(0.3, function()
-      if (tonumber(Call(GetMerchantNumItems)) or 0) > 0 then
-        AmmoBuy.Refill(false)
-        UpdateButton()
-      end
-    end)
+    C_Timer.After(0.3, function() TryAutoRefill(token, 1) end)
   else
     AmmoBuy.Refill(false)
   end
@@ -732,8 +835,18 @@ function AmmoBuy.PrintDiag()
   Say("ammo auto-buy diagnostics:")
   print("  equipped: " .. tostring(wantID) .. " (" .. tostring(wantKind) .. ")")
   if wantKind then
-    local cap, have, slots = AmmoBuy.QuiverSpace(wantKind, wantID)
-    print(string.format("  ammo bags: %d slots, %d/%d %s", slots, have, cap, wantKind))
+    local cap, have, slots, bags = AmmoBuy.QuiverSpace(wantKind, wantID)
+    print(string.format("  ammo bags: %d slots, %d/%d %s (bags: %s)", slots, have, cap,
+      wantKind, #bags > 0 and table.concat(bags, ",") or "NONE FOUND"))
+  end
+  -- Per-bag family report: the fastest way to see why a quiver was missed.
+  for bag = 1, (NUM_BAG_SLOTS or 4) do
+    local free, fam = BagInfo(bag)
+    local n = HK.GetBagNumSlots(bag) or 0
+    if n > 0 then
+      print(string.format("    bag %d: %d slots, family %s%s", bag, n, tostring(fam),
+        (fam == FAMILY_QUIVER and " (quiver)") or (fam == FAMILY_POUCH and " (pouch)") or ""))
+    end
   end
   print("  money: " .. AmmoBuy.MoneyString(Money()))
   local offers = AmmoBuy.ScanMerchant()
@@ -757,6 +870,7 @@ function AmmoBuy.Init()
 
   HK.On("MERCHANT_SHOW", OnMerchantShow)
   HK.On("MERCHANT_CLOSED", function()
+    autoToken = autoToken + 1     -- cancel any in-flight auto-refill retries
     AmmoBuy.Cancel(run and string.format("vendor closed -- stopped after %d.", run.done) or nil)
     if button then button:Hide() end
   end)
