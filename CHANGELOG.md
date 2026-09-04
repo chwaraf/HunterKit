@@ -3,6 +3,45 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.32] - 2026-09-04
+
+### Added
+- **"Only buy highest usable ammo" -- ON by default.** Low-level vendors often
+  stock nothing above Rough Arrow / Light Shot, and the refill would happily
+  fill a level-60 hunter's quiver with 1 DPS junk. With this on, the refill
+  **refuses to downgrade** and says exactly why ("this vendor only sells
+  lower-tier arrows (Rough Arrow, level 1) than the level-40 ammo you use")
+  rather than silently wasting gold and gutting your damage.
+
+  The yardstick is the **required level of the ammo you currently have
+  equipped**, deliberately *not* a hardcoded ladder of what your character
+  level theoretically allows. A level-60 hunter's best possible arrow is Wicked
+  (55), but the overwhelming majority of vendors stop at Jagged (40) -- testing
+  against the ladder would refuse nearly everywhere and make the feature
+  useless. Comparing against the equipped tier self-calibrates: restocking the
+  same tier is always allowed, upgrading is always allowed, and only a genuine
+  downgrade is blocked.
+
+  Exemptions, so the guard never becomes a nuisance: **`capped` tier mode**
+  ignores it (there the player has explicitly asked for cheaper ammo), an
+  **empty ammo slot** has no yardstick so nothing is blocked, and in
+  **`equipped` mode** the vendor stocking your exact item is never treated as a
+  downgrade even when better ammo sits beside it.
+
+### Tests
+- `tests/test_ammobuy.lua` grows to **89 checks**, covering the reported case
+  (Jagged user at a Rough-only vendor), the option off, same-tier restock,
+  upgrades, both `equipped`-mode paths, the tier-cap and empty-slot exemptions,
+  and the wording of the refusal.
+- One older assertion was **retargeted, not deleted**: the "falls back when the
+  vendor lacks the equipped ammo" case happened to equip Jagged and offer only
+  Sharp, which is precisely the downgrade now being blocked. It is re-cast as
+  Sharp -> Razor so it still tests the fallback without conflating it with the
+  new guard, which has its own dedicated section.
+- 119 + 55 + 102 + 89 + 85 = **450 green**.
+
+---
+
 ## [0.9.31] - 2026-09-04
 
 ### Fixed

@@ -251,11 +251,14 @@ Scene({ quiver = { slots = 4, family = 2 }, equipped = 2516, sells = fullLadder(
 plan = AB.Plan()
 check("a gun user only ever gets bullets", plan and plan.id == 11284, plan and plan.name)
 
--- Equipped ammo the vendor does not stock falls back to the best of the SAME kind.
-Scene({ quiver = { slots = 4, family = 1 }, equipped = 11285,
-        sells = { { id = 2515, price = 10000, quantity = 200 } }, tier = "equipped" })
+-- Equipped ammo the vendor does not stock falls back to the best of the SAME
+-- kind. Equipped is Sharp (10) and the vendor offers Razor (25), so this
+-- exercises the fallback WITHOUT tripping the never-downgrade guard -- that
+-- interaction is covered on its own in section 4b.
+Scene({ quiver = { slots = 4, family = 1 }, equipped = 2515,
+        sells = { { id = 3030, price = 20000, quantity = 200 } }, tier = "equipped" })
 plan = AB.Plan()
-check("falls back when the vendor lacks the equipped ammo", plan and plan.id == 2515,
+check("falls back when the vendor lacks the equipped ammo", plan and plan.id == 3030,
   plan and plan.name)
 
 -- Empty ammo slot: guess from what the vendor sells (best usable).
@@ -263,6 +266,77 @@ Scene({ quiver = { slots = 4, family = 1 }, equipped = nil, sells = fullLadder()
         tier = "best" })
 plan, reason = AB.Plan()
 check("an empty ammo slot still plans from the vendor's best", plan ~= nil, reason)
+
+-- ---------------------------------------------------------------------------
+-- 4b) Never buy worse ammo than you already shoot (on by default)
+-- ---------------------------------------------------------------------------
+check("the never-downgrade guard is on by default", HK.defaults.ammobuy.bestOnly == true)
+
+-- The reported case: a level-60 hunter shooting Jagged Arrow (40) walks into a
+-- starter-zone vendor that stocks only Rough Arrow (1).
+local ONLY_ROUGH = { { id = 2512, price = 2000, quantity = 200 } }
+Scene({ quiver = { slots = 4, family = 1 }, equipped = 11285, sells = ONLY_ROUGH,
+        tier = "best" })
+plan, reason = AB.Plan()
+check("refuses to downgrade at a low-tier vendor", plan == nil, plan and plan.name)
+check("...and names the tiers in the reason",
+  tostring(reason):find("lower%-tier") ~= nil and tostring(reason):find("Rough Arrow") ~= nil,
+  reason)
+
+-- Turning the option off restores the old behaviour.
+Scene({ quiver = { slots = 4, family = 1 }, equipped = 11285, sells = ONLY_ROUGH,
+        tier = "best" })
+HK.db.ammobuy.bestOnly = false
+plan = AB.Plan()
+check("with the guard off it buys the lower tier", plan and plan.id == 2512,
+  plan and plan.name)
+HK.db.ammobuy.bestOnly = true
+
+-- Restocking the SAME tier is not a downgrade.
+Scene({ quiver = { slots = 4, family = 1 }, equipped = 2512, sells = ONLY_ROUGH,
+        tier = "best" })
+plan = AB.Plan()
+check("restocking the same tier is always allowed", plan and plan.id == 2512,
+  plan and plan.name)
+
+-- Upgrading is obviously fine.
+Scene({ quiver = { slots = 4, family = 1 }, equipped = 2512, sells = fullLadder(),
+        tier = "best" })
+plan = AB.Plan()
+check("upgrading is always allowed", plan and plan.id == 11285, plan and plan.name)
+
+-- "equipped" mode: the vendor stocks our exact arrow, which can never be a
+-- downgrade even though better ammo sits beside it.
+Scene({ quiver = { slots = 4, family = 1 }, equipped = 2512, sells = fullLadder(),
+        tier = "equipped" })
+plan = AB.Plan()
+check("the exact equipped item is never blocked by the guard",
+  plan and plan.id == 2512, plan and plan.name)
+
+-- "equipped" mode at a vendor lacking our arrow: the fallback is still guarded.
+Scene({ quiver = { slots = 4, family = 1 }, equipped = 11285, sells = ONLY_ROUGH,
+        tier = "equipped" })
+plan, reason = AB.Plan()
+check("the equipped-mode fallback is guarded too", plan == nil, plan and plan.name)
+
+-- "capped" mode is a deliberate request for cheaper ammo, so the guard defers.
+Scene({ quiver = { slots = 4, family = 1 }, equipped = 11285, sells = fullLadder(),
+        tier = "capped", tierCap = 10 })
+plan = AB.Plan()
+check("an explicit tier cap outranks the guard", plan and plan.id == 2515,
+  plan and plan.name)
+
+-- An empty ammo slot has no yardstick, so the guard cannot block the refill.
+Scene({ quiver = { slots = 4, family = 1 }, equipped = nil, sells = ONLY_ROUGH,
+        tier = "best" })
+plan, reason = AB.Plan()
+check("an empty ammo slot still buys what is on offer", plan ~= nil, reason)
+
+-- A level-gated vendor: the guard must not mask the real reason.
+Scene({ quiver = { slots = 4, family = 1 }, equipped = 2515, sells = ONLY_ROUGH,
+        tier = "best", level = 5 })
+plan, reason = AB.Plan()
+check("a downgrade refusal reads clearly at low level", plan == nil, plan and plan.name)
 
 -- ---------------------------------------------------------------------------
 -- 5) Gold limits

@@ -646,6 +646,11 @@ function BuildWindow()
     function(v) db.ammobuy.tier = v; RefreshAmmoBuy() end,
     "equipped = more of what is in your ammo slot (falls back to the best of the same kind if the vendor lacks it). best = the highest tier you can use. capped = best, but never above the level cap below.")
   y = y - ROW
+  MakeCheckbox(content, y, "Only buy highest usable ammo",
+    function() return db.ammobuy.bestOnly end,
+    function(v) db.ammobuy.bestOnly = v; RefreshAmmoBuy() end,
+    "Never buy ammo weaker than what you already shoot. Low-level vendors often stock only Rough Arrow / Light Shot -- with this ticked the refill refuses there and tells you why, instead of downgrading your quiver. Restocking the same tier or upgrading is always allowed. Ignored in 'capped' tier mode, where you have deliberately asked for cheaper ammo. On by default.")
+  y = y - CHK
   MakeSlider(content, y, "Tier level cap", 1, 70, 1, function() return db.ammobuy.tierCap or 60 end,
     function(v) db.ammobuy.tierCap = v; RefreshAmmoBuy() end,
     "Only used by the 'capped' tier mode: never buy ammo whose required level is above this. Handy for staying on cheap arrows while levelling.", true)

@@ -174,7 +174,10 @@ function AmmoBuy.EquippedAmmo()
   end
   if not id then return nil, nil end
   local facts = ItemFacts(id)
-  return id, facts and KindOfSubclass(facts.subclassID) or nil
+  if not facts then return id, nil, nil end
+  -- The third return is the equipped ammo's required level: the yardstick the
+  -- "never downgrade" guard compares vendor offers against.
+  return id, KindOfSubclass(facts.subclassID), facts.reqLevel
 end
 
 -- ---------------------------------------------------------------------------
@@ -296,7 +299,11 @@ end
 --   "best"     : the highest tier the vendor sells that the player may use
 --   "capped"   : "best", but never above db.tierCap (stay on cheap ammo)
 -- ---------------------------------------------------------------------------
-function AmmoBuy.Choose(offers, wantKind, wantID)
+-- Returns pick, nil  |  nil, reason
+--
+-- `wantReq` is the required level of the ammo currently in the slot -- the
+-- yardstick for the "never downgrade" guard (see below).
+function AmmoBuy.Choose(offers, wantKind, wantID, wantReq)
   local mode = db.tier or "equipped"
   local cap = tonumber(db.tierCap) or 60
 
@@ -311,23 +318,45 @@ function AmmoBuy.Choose(offers, wantKind, wantID)
     return p
   end
 
+  -- "Never buy worse than what I already shoot."
+  --
+  -- Measured against the EQUIPPED ammo's required level, deliberately NOT
+  -- against a hardcoded ladder of what the player's level theoretically allows.
+  -- A level-60 hunter's best possible arrow is Wicked (55), but the overwhelming
+  -- majority of vendors stop at Jagged (40) -- a ladder test would refuse almost
+  -- everywhere and make the feature useless. The equipped tier is the yardstick
+  -- the player actually cares about, and it self-calibrates: restocking the same
+  -- tier is always allowed, upgrading is always allowed, and only a genuine
+  -- downgrade is refused.
+  --
+  -- In "capped" mode the player has explicitly asked to stay on cheap ammo, so
+  -- their cap outranks this guard and it is skipped.
+  local function guard(pick)
+    if not pick then return nil end
+    if db.bestOnly == false or mode == "capped" then return pick end
+    if not wantReq or pick.reqLevel >= wantReq then return pick end
+    return nil, string.format(
+      "this vendor only sells lower-tier %s (%s, level %d) than the level-%d ammo you use",
+      pick.kind, pick.name, pick.reqLevel, wantReq)
+  end
+
   if mode == "equipped" and wantID then
     for _, o in ipairs(offers) do
-      if o.id == wantID then return o end
+      if o.id == wantID then return o end     -- same item: never a downgrade
     end
     -- The vendor doesn't stock what we shoot; fall through to the best of the
     -- SAME kind so a bullet user is never handed arrows.
   end
 
   local same = pool(wantKind)
-  if same[1] then return same[1] end
+  if same[1] then return guard(same[1]) end
   if wantKind ~= nil then
     -- Nothing of our kind. Only guess the kind when the ammo slot was empty
     -- (wantKind nil) -- otherwise refuse rather than buy the wrong projectile.
     return nil
   end
   local any = pool(nil)
-  return any[1]
+  return guard(any[1])
 end
 
 -- ---------------------------------------------------------------------------
@@ -342,13 +371,15 @@ function AmmoBuy.Plan()
     return nil, "no merchant open"
   end
 
-  local wantID, wantKind = AmmoBuy.EquippedAmmo()
+  local wantID, wantKind, wantReq = AmmoBuy.EquippedAmmo()
   local offers = AmmoBuy.ScanMerchant()
   if #offers == 0 then return nil, "this vendor sells no usable ammo" end
 
-  local pick = AmmoBuy.Choose(offers, wantKind, wantID)
+  local pick, refused = AmmoBuy.Choose(offers, wantKind, wantID, wantReq)
   if not pick then
-    return nil, "this vendor sells no usable " .. (wantKind or "ammo")
+    -- `refused` is set when ammo WAS on offer but the never-downgrade guard
+    -- rejected it: say that plainly rather than the misleading "sells no ammo".
+    return nil, refused or ("this vendor sells no usable " .. (wantKind or "ammo"))
   end
 
   local capacity, have, slots = AmmoBuy.QuiverSpace(pick.kind, pick.id)

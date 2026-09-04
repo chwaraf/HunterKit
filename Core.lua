@@ -6,7 +6,7 @@
 
 local ADDON_NAME, HK = ...
 
-HK.version = "0.9.31"
+HK.version = "0.9.32"
 
 -- ---------------------------------------------------------------------------
 -- Defaults (schema). This is the source of truth for the options window and
@@ -14,7 +14,7 @@ HK.version = "0.9.31"
 -- ---------------------------------------------------------------------------
 HK.defaults = {
   enabled   = true,
-  dbVersion = 21,
+  dbVersion = 22,
   firstRun  = true,
 
   ui = {
@@ -48,6 +48,7 @@ HK.defaults = {
     enabled      = true,
     mode         = "confirm",  -- auto | confirm | manual (button + /htk buy only)
     tier         = "equipped", -- equipped | best | capped
+    bestOnly     = true,       -- never buy ammo weaker than what is equipped
     tierCap      = 60,         -- highest ammo required-level to buy in "capped"
     full         = true,       -- fill to 100% of the ammo bags
     percent      = 100,        -- when `full` is off: fill to this % of capacity
@@ -743,6 +744,15 @@ local function LoadDB()
   if db.dbVersion < 21 then
     if type(db.ammobuy) == "table" then db.ammobuy.mode = "confirm" end
     db.dbVersion = 21
+  end
+
+  -- v21 -> v22: the never-downgrade guard arrives, ON by default (a low-level
+  -- vendor stocking only Rough Arrow must not replace a level-60 hunter's
+  -- Jagged Arrow). MergeDefaults fills the new key; force it on for anyone
+  -- upgrading so the safer behaviour reaches existing profiles too.
+  if db.dbVersion < 22 then
+    if type(db.ammobuy) == "table" then db.ammobuy.bestOnly = true end
+    db.dbVersion = 22
   end
 
   if db.dbVersion < 19 then
