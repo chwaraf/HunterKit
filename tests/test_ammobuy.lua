@@ -56,6 +56,9 @@ end
 -- name, link, quality, iLevel, reqLevel, type, subType, stack, equipLoc,
 -- texture, sellPrice, classID, subclassID.
 function GetItemInfo(id)
+  -- The live API takes an id, a name OR an item link; the addon passes a link
+  -- for equipped gear, so resolve one to its id the way the client does.
+  if type(id) == "string" then id = tonumber(id:match("item:(%d+)")) or id end
   local it = (HKTest.state.itemInfo or {})[id]
   if not it then return nil end
   return it.name, "link", it.quality or 1, it.iLevel or 1, it.reqLevel or 0,
@@ -73,6 +76,7 @@ local function Scene(o)
   HKTest.state.level = o.level or 60
   HKTest.state.money = o.money or 10000000          -- 1000g unless told otherwise
   HKTest.state.ammoID = o.equipped                  -- nil = empty ammo slot
+  HKTest.state.rangedID = o.ranged                  -- nil = no ranged weapon
   HKTest.state.items = o.items or {}
   HKTest.state.refuseBuys = o.refuseBuys or false
 
@@ -711,6 +715,140 @@ rounds = 0
 while HKTest.RunDelayed() > 0 and rounds < 20 do rounds = rounds + 1 end
 check("closing the vendor cancels pending auto retries", #HKTest.buys == 0,
   tostring(#HKTest.buys))
+
+-- ---------------------------------------------------------------------------
+-- 11) The follow-up reports
+-- ---------------------------------------------------------------------------
+
+-- (a) BUTTON OVERFLOW. Pinning to the money widget is only safe while that
+-- widget sits inside the merchant frame. When it does not (rescaled or
+-- re-parented by another addon), the button inherited the overflow and stuck
+-- out past the frame's right edge. The anchor must be MEASURED and re-pinned
+-- to the frame itself when it escapes.
+local mf, inset = _G["MerchantFrame"], _G["MerchantMoneyInset"]
+mf.edgeLeft, mf.width = 0, 340
+inset.edgeLeft, inset.width = 20, 300         -- comfortably inside
+Scene({ quiver = { slots = 4, family = 1 }, equipped = 2515, sells = fullLadder(),
+        mode = "manual" })
+HKTest.Fire("MERCHANT_SHOW")
+check("a money block inside the frame keeps its anchor",
+  btn.points[1] and btn.points[1][2] == inset,
+  btn.points[1] and tostring(btn.points[1][2] and btn.points[1][2].name))
+
+inset.edgeLeft, inset.width = 20, 400         -- right edge at 420, frame ends at 340
+HKTest.Fire("MERCHANT_SHOW")
+check("a money block that overflows makes the button re-pin to the frame",
+  btn.points[1] and btn.points[1][2] == mf,
+  btn.points[1] and tostring(btn.points[1][2] and btn.points[1][2].name))
+check("...still pinning BOTH edges, so it stays inside",
+  #btn.points == 2 and btn.points[2][1]:find("RIGHT") ~= nil,
+  #btn.points)
+check("...and inside the frame by a real margin",
+  btn:GetRight() <= mf:GetRight() and btn:GetLeft() >= mf:GetLeft())
+inset.edgeLeft, inset.width = 20, 300
+mf.edgeLeft, mf.width = nil, nil
+inset.edgeLeft, inset.width = nil, nil
+
+-- (b) NEVER BUY AMMO THE WEAPON CANNOT FIRE. With an empty ammo slot -- which
+-- is exactly when a refill is wanted -- the old fallback took the "best"
+-- projectile of EITHER kind on the shelf. A bow user at a vendor stocking
+-- better bullets went home with a quiver of unusable shot.
+HKTest.state.itemInfo[2504] = { name = "Worn Shortbow", reqLevel = 1, iLevel = 1,
+  classID = 2, subclass = 2, stack = 1, texture = "bow" }        -- Bow
+HKTest.state.itemInfo[2508] = { name = "Old Blunderbuss", reqLevel = 1, iLevel = 1,
+  classID = 2, subclass = 3, stack = 1, texture = "gun" }        -- Gun
+HKTest.state.itemInfo[2507] = { name = "Light Crossbow", reqLevel = 1, iLevel = 1,
+  classID = 2, subclass = 18, stack = 1, texture = "xbow" }      -- Crossbow
+
+Scene({ quiver = { slots = 4, family = 1 }, ranged = 2504, tier = "best",
+        sells = fullLadder(), mode = "manual" })
+check("a bow is read as an arrow weapon", AB.WeaponKind() == "arrows",
+  tostring(AB.WeaponKind()))
+plan = AB.Plan()
+check("an empty ammo slot + a bow buys ARROWS, never bullets",
+  plan and plan.kind == "arrows", plan and (plan.kind .. "/" .. plan.name))
+
+Scene({ quiver = { slots = 4, family = 2 }, ranged = 2508, tier = "best",
+        sells = fullLadder(), mode = "manual" })
+check("a gun is read as a bullet weapon", AB.WeaponKind() == "bullets",
+  tostring(AB.WeaponKind()))
+plan = AB.Plan()
+check("an empty ammo slot + a gun buys BULLETS", plan and plan.kind == "bullets",
+  plan and (plan.kind .. "/" .. plan.name))
+
+Scene({ quiver = { slots = 4, family = 1 }, ranged = 2507, tier = "best",
+        sells = fullLadder(), mode = "manual" })
+check("a crossbow is an arrow weapon too", AB.WeaponKind() == "arrows",
+  tostring(AB.WeaponKind()))
+
+-- A bow user at a vendor who ONLY sells bullets must buy nothing at all rather
+-- than fill the quiver with shot.
+Scene({ quiver = { slots = 4, family = 1 }, ranged = 2504, tier = "best",
+        sells = { { id = 2516, price = 2000, quantity = 200 },
+                  { id = 11284, price = 40000, quantity = 200 } }, mode = "manual" })
+plan, reason = AB.Plan()
+check("a bow user at a bullets-only vendor buys nothing", plan == nil,
+  plan and plan.name)
+
+-- The equipped ammo still outranks the weapon guess when both are known.
+Scene({ quiver = { slots = 4, family = 1 }, equipped = 2515, ranged = 2508,
+        tier = "equipped", sells = fullLadder(), mode = "manual" })
+plan = AB.Plan()
+check("the ammo actually in the slot still wins over the weapon guess",
+  plan and plan.id == 2515, plan and plan.name)
+
+-- Level safety survives the weapon fallback: a level-5 hunter with a bow and an
+-- empty quiver is still never sold level-40 arrows.
+Scene({ quiver = { slots = 4, family = 1 }, ranged = 2504, tier = "best", level = 5,
+        sells = fullLadder(), mode = "manual" })
+plan = AB.Plan()
+picked = plan and HKTest.state.itemInfo[plan.id]
+check("the weapon fallback still respects the character's level",
+  picked and picked.reqLevel <= 5, picked and picked.reqLevel)
+
+-- (c) "BUYS TOO LITTLE": a laggy server applies the purchase before the bag
+-- count catches up. Judging progress on the bag count alone read those frames
+-- as stalls and aborted a healthy refill part way through. The money going
+-- down is proof the buy landed.
+Scene({ quiver = { slots = 20, family = 1 }, equipped = 2515, sells = fullLadder(),
+        mode = "manual" })
+plan = AB.Plan()
+check("a 4000-arrow refill is planned", plan and plan.amount == 4000, plan and plan.amount)
+AB.Execute(plan)
+HKTest.state.laggyBags = true      -- gold moves, the bag count does not
+TickBuy(60)
+HKTest.state.laggyBags = false
+bought = 0
+for _, b in ipairs(HKTest.buys) do bought = bought + b.qty end
+check("a laggy bag count no longer aborts the run early", bought == 4000,
+  tostring(bought))
+
+-- A GENUINE refusal (no gold leaves, no items arrive) must still abort.
+Scene({ quiver = { slots = 20, family = 1 }, equipped = 2515, sells = fullLadder(),
+        mode = "manual", refuseBuys = true })
+plan = AB.Plan()
+AB.Execute(plan)
+TickBuy(60)
+check("a genuinely refused purchase still aborts", AB.IsRunning() == false)
+check("...without spinning forever", #HKTest.buys <= 12, tostring(#HKTest.buys))
+
+-- (d) AUTO-FILL when the MERCHANT LIST is late. GetMerchantNumItems returns 0
+-- for the first frames after MERCHANT_SHOW; the retry used to bail out on that
+-- instead of trying again, so nothing was ever bought automatically.
+Scene({ quiver = { slots = 4, family = 1 }, equipped = 2515, sells = fullLadder(),
+        mode = "auto" })
+local stocked = HKTest.state.merchant
+HKTest.state.merchant = {}                        -- list not populated yet
+HKTest.Fire("MERCHANT_SHOW")
+HKTest.RunDelayed()
+check("an empty merchant list buys nothing yet", #HKTest.buys == 0, tostring(#HKTest.buys))
+HKTest.state.merchant = stocked                   -- the list arrives
+HKTest.RunDelayed()
+TickBuy(20)
+bought = 0
+for _, b in ipairs(HKTest.buys) do bought = bought + b.qty end
+check("auto-fill waits for a late merchant list and then buys", bought == 800,
+  tostring(bought))
 
 -- Defaults are the safe ones.
 check("auto-buy defaults to the confirm popup", HK.defaults.ammobuy.mode == "confirm",

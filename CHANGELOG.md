@@ -3,6 +3,43 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.34] - 2026-09-04
+
+### Fixed
+- **The Refill button still overhung the merchant frame.** Anchoring both edges
+  to `MerchantMoneyInset` only helps while that widget is itself inside the
+  frame -- on some clients, and under any addon that rescales or re-parents the
+  money block, it is not, and the button inherited the overflow. The anchor is
+  now **measured** after it is applied: if either edge has escaped
+  `MerchantFrame`, the button re-pins to the frame itself with a 12px margin,
+  which cannot overflow by construction.
+
+- **Ammo the character's weapon cannot fire could be bought.** With an empty
+  ammo slot -- exactly the state a refill is for -- the fallback picked the best
+  projectile of *either* kind the vendor stocked, so a bow user at a vendor with
+  good bullets went home with a quiver of unusable shot. The ranged weapon is
+  now consulted (bow/crossbow -> arrows, gun -> bullets) and a vendor with only
+  the wrong kind buys nothing. Ammo in the slot still wins when it is known, and
+  the existing required-level / `isUsable` gates apply to the fallback too.
+
+- **Refills stopped part way through ("buys too little").** The queue judged
+  progress purely on the bag count, with only three ticks of patience. On a
+  laggy realm the server takes the gold immediately but the item lands a few
+  frames later, so healthy purchases read as stalls and the run aborted after a
+  stack or two. Progress is now credited when **either** the bag count rises or
+  the money falls, and the patience is 8 ticks. A genuine refusal -- no gold
+  spent, no items received -- still aborts cleanly.
+
+- **Auto-fill did nothing while the button worked.** The automatic retry gave up
+  immediately whenever `GetMerchantNumItems` returned 0, which it routinely does
+  for the first frames after `MERCHANT_SHOW`; a vendor whose list was a moment
+  slow was abandoned entirely. A late merchant list is now treated as "not
+  answered yet" and retried like a cold item cache, over ~6 seconds. Final
+  refusals (full quiver, no quiver, too poor, wrong tier) still stop at once.
+
+### Added
+- `/htk ammo diag` reports what the equipped ranged weapon fires.
+
 ## [0.9.33] - 2026-09-04
 
 ### Fixed

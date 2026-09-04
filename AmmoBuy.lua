@@ -63,7 +63,16 @@ local SUBCLASS_BULLET  = 3
 local MAX_PER_BUY = 200
 
 local BUY_INTERVAL = 0.35   -- seconds between purchases (server round-trip)
-local MAX_STALLS   = 3      -- consecutive no-progress buys before we give up
+-- How many consecutive no-progress ticks before the run gives up.
+--
+-- This used to be 3, i.e. about a second of patience. On a laggy realm the
+-- server simply had not applied the purchase yet, the bag count had not moved,
+-- and a perfectly healthy refill aborted after the first stack or two --
+-- reported as "buys too little". Progress is now also credited when the money
+-- went down (the buy DID land, the bag count just has not caught up), and the
+-- patience is several seconds, which costs nothing when things are healthy
+-- because a real refusal still ends the run.
+local MAX_STALLS   = 8
 
 local COLOR = "|cff39ff14HunterKit|r "
 
@@ -201,6 +210,42 @@ function AmmoBuy.EquippedAmmo()
   -- The third return is the equipped ammo's required level: the yardstick the
   -- "never downgrade" guard compares vendor offers against.
   return id, KindOfSubclass(facts.subclassID), facts.reqLevel
+end
+
+-- ---------------------------------------------------------------------------
+-- What the player can actually SHOOT: "arrows", "bullets", or nil (no ranged
+-- weapon, or the client did not answer).
+--
+-- Weapon subclasses: 2 = Bow, 3 = Gun, 18 = Crossbow. Bows and crossbows eat
+-- arrows, guns eat bullets, and buying the other kind is money set on fire --
+-- the ammo cannot even be equipped. The ammo slot is the primary signal, but it
+-- is empty exactly when the player has run dry, which is precisely when a
+-- refill is wanted, so the weapon is the fallback that keeps that case safe
+-- instead of guessing from whatever the vendor happens to stock.
+-- ---------------------------------------------------------------------------
+local CLASS_WEAPON      = 2
+local SUBCLASS_BOW      = 2
+local SUBCLASS_GUN      = 3
+local SUBCLASS_CROSSBOW = 18
+
+function AmmoBuy.WeaponKind()
+  local slot = Call(GetInventorySlotInfo, "RangedSlot")
+  if not slot then return nil end
+  local link = Call(GetInventoryItemLink, "player", slot)
+  if type(link) ~= "string" then return nil end
+  local facts = ItemFacts(link)
+  if not facts then return nil end
+  if facts.classID ~= nil and facts.classID ~= CLASS_WEAPON then return nil end
+  local sub = facts.subclassID
+  if sub == SUBCLASS_BOW or sub == SUBCLASS_CROSSBOW then return "arrows" end
+  if sub == SUBCLASS_GUN then return "bullets" end
+  -- classID was nil (cold cache): the name is the last resort, and only when it
+  -- is unambiguous.
+  local low = (facts.name or ""):lower()
+  if low:find("bow", 1, true) or low:find("crossbow", 1, true) then return "arrows" end
+  if low:find("gun", 1, true) or low:find("rifle", 1, true)
+     or low:find("blunderbuss", 1, true) or low:find("musket", 1, true) then return "bullets" end
+  return nil
 end
 
 -- ---------------------------------------------------------------------------
@@ -422,6 +467,12 @@ function AmmoBuy.Plan()
   end
 
   local wantID, wantKind, wantReq = AmmoBuy.EquippedAmmo()
+  -- Ammo slot empty (just ran dry -- the very moment a refill matters most):
+  -- ask the RANGED WEAPON what it fires rather than letting the vendor decide.
+  -- Without this the fallback picked the "best" projectile of either kind on
+  -- the shelf, which for a bow-user at a gun vendor meant a quiver's worth of
+  -- bullets that can never be equipped.
+  if not wantKind then wantKind = AmmoBuy.WeaponKind() end
   local offers = AmmoBuy.ScanMerchant()
   if #offers == 0 then return nil, "this vendor sells no usable ammo" end
 
@@ -582,7 +633,14 @@ local function Step()
   -- a stall, which aborted the run after the very first stack.)
   if run.done > 0 then
     local now = BagCountOf(plan.id)
-    if now <= run.lastCount then
+    -- Two independent progress signals, because the bag count alone is not
+    -- trustworthy on a laggy realm: the gold LEAVES the player the instant the
+    -- server accepts the purchase, while the item arriving in the bag (and the
+    -- container cache updating) can trail by several ticks. Judging on the bag
+    -- count alone read those frames as stalls and aborted a healthy refill part
+    -- way through -- the "buys too little" report.
+    local spent = run.lastMoney and Money() < run.lastMoney
+    if now <= run.lastCount and not spent then
       run.stalls = run.stalls + 1
       if run.stalls >= MAX_STALLS then
         Finish(string.format("stopped after %d %s -- the purchase stopped going through (bags full, out of stock or out of gold).", run.done, plan.kind))
@@ -607,8 +665,10 @@ local function Step()
     return
   end
 
-  -- Sample the count BEFORE the call: that is the baseline the next tick judges.
+  -- Sample the count AND the purse BEFORE the call: both are the baseline the
+  -- next tick judges progress against.
   run.lastCount = BagCountOf(plan.id)
+  run.lastMoney = Money()
   if BuyMerchantItem then
     local ok = pcall(BuyMerchantItem, plan.index, buyNow)
     if not ok then
@@ -622,7 +682,8 @@ end
 function AmmoBuy.Execute(plan)
   if run then return false, "a refill is already running" end
   if type(plan) ~= "table" then return false, "no plan" end
-  run = { plan = plan, done = 0, stalls = 0, lastCount = BagCountOf(plan.id) }
+  run = { plan = plan, done = 0, stalls = 0, lastCount = BagCountOf(plan.id),
+          lastMoney = Money() }
   Say("refilling: " .. AmmoBuy.Describe(plan))
   Step()                                   -- first buy immediately
   if run then run.ticker = HK.Ticker(BUY_INTERVAL, Step) end
@@ -726,6 +787,15 @@ AmmoBuy.UpdateButton = UpdateButton
 -- Pinning left AND right makes the width follow the anchor instead of fighting
 -- it, so the button can never extend beyond the vendor frame at any UI scale or
 -- with any reskinning addon.
+local FRAME_PAD = 12       -- breathing room kept inside the merchant frame
+
+-- Read an edge coordinate without ever throwing: a frame that has not been laid
+-- out yet returns nil, and reskinning addons replace these widgets wholesale.
+local function Edge(frame, which)
+  if type(frame) ~= "table" or type(frame[which]) ~= "function" then return nil end
+  return tonumber(Call(frame[which], frame))
+end
+
 local function AnchorButton()
   if not button then return end
   button:ClearAllPoints()
@@ -742,8 +812,39 @@ local function AnchorButton()
   else
     -- No money widget (heavily reskinned UI): inset from both edges of the
     -- merchant frame itself, which is still guaranteed to be inside it.
-    button:SetPoint("BOTTOMLEFT", MerchantFrame, "BOTTOMLEFT", 16, 32)
-    button:SetPoint("BOTTOMRIGHT", MerchantFrame, "BOTTOMRIGHT", -16, 32)
+    button:SetPoint("BOTTOMLEFT", MerchantFrame, "BOTTOMLEFT", FRAME_PAD, 32)
+    button:SetPoint("BOTTOMRIGHT", MerchantFrame, "BOTTOMRIGHT", -FRAME_PAD, 32)
+    return
+  end
+
+  -- OVERFLOW CLAMP.
+  --
+  -- Anchoring to the money widget assumes that widget sits neatly inside the
+  -- merchant frame. On several clients (and under any addon that rescales or
+  -- re-parents the money block) it does NOT: MerchantMoneyInset is wider than
+  -- the visible frame area, or is offset, and the button inherits that and
+  -- pokes out past the frame's right edge -- exactly what was reported.
+  --
+  -- So after anchoring, MEASURE. If either edge has escaped the merchant
+  -- frame, throw the anchor away and pin to the frame itself, which cannot
+  -- overflow by construction. Measuring beats guessing, and a client that
+  -- cannot answer (nil edges, pre-layout) simply keeps the money anchor.
+  -- Measure the ANCHOR, not the button: the button's own rectangle is only
+  -- valid after the next layout pass, whereas the widget we just pinned to has
+  -- real coordinates right now -- and since both our edges are glued to it, its
+  -- overflow IS our overflow.
+  local anchor = (inset and inset.GetObjectType) and inset or money
+  local fl, fr = Edge(MerchantFrame, "GetLeft"), Edge(MerchantFrame, "GetRight")
+  local bl, br = Edge(anchor, "GetLeft"), Edge(anchor, "GetRight")
+  -- A frame that has not been laid out yet reports zero width; there is nothing
+  -- to measure against, so leave the anchor alone rather than "correcting" it
+  -- against a degenerate rectangle.
+  if fl and fr and bl and br and (fr - fl) > 1 and (br - bl) > 1 then
+    if br > fr - FRAME_PAD * 0.5 or bl < fl + FRAME_PAD * 0.5 then
+      button:ClearAllPoints()
+      button:SetPoint("TOPLEFT", MerchantFrame, "BOTTOMLEFT", FRAME_PAD, 30)
+      button:SetPoint("TOPRIGHT", MerchantFrame, "BOTTOMRIGHT", -FRAME_PAD, 30)
+    end
   end
 end
 
@@ -785,26 +886,43 @@ end
 -- The fix is to keep looking while the answer can still change. GET_ITEM_INFO_
 -- RECEIVED would be the event-driven way, but it does not fire for items
 -- already cached, so a short poll is both simpler and strictly more reliable.
-local AUTO_TRIES    = 8      -- ~4 s of attempts
+local AUTO_TRIES    = 12     -- ~6 s of attempts
 local AUTO_INTERVAL = 0.5
 local autoToken = 0          -- invalidates in-flight retries when the vendor closes
 
+-- Is this refusal one the client might still take back?
+--
+-- Everything here means "I have not been told yet", not "no": the merchant list
+-- arrives a frame or two after MERCHANT_SHOW, and GetItemInfo is cold for any
+-- item the player has not seen this session. A real answer -- already full, no
+-- quiver, too poor, wrong tier -- is final and must NOT be retried.
+local function Retryable(reason)
+  if reason == nil then return true end
+  reason = tostring(reason)
+  return reason:find("no usable", 1, true) ~= nil
+      or reason:find("no merchant open", 1, true) ~= nil
+end
+
 local function TryAutoRefill(token, tries)
   if token ~= autoToken then return end                 -- a newer visit superseded us
-  if (tonumber(Call(GetMerchantNumItems)) or 0) <= 0 then return end
   if run then return end                                 -- already buying
 
-  local plan, reason = AmmoBuy.Plan()
+  -- The merchant's item list is populated asynchronously, so at the first tick
+  -- it is routinely still empty. Bailing out here (as this used to) abandoned
+  -- the whole automatic refill on any vendor that was a few frames slow, while
+  -- clicking the button later worked -- half of the "auto-fill doesn't" report.
+  -- Fall through to the retry instead.
+  local plan, reason
+  if (tonumber(Call(GetMerchantNumItems)) or 0) > 0 then
+    plan, reason = AmmoBuy.Plan()
+  end
   if plan then
     AmmoBuy.Refill(false)
     UpdateButton()
     return
   end
 
-  -- Only a "the client has not told me yet" refusal is worth retrying. A real
-  -- answer -- already full, no quiver, too poor, wrong tier -- is final, and
-  -- retrying it would just burn ticks.
-  local retryable = reason == nil or tostring(reason):find("no usable") ~= nil
+  local retryable = Retryable(reason)
   if retryable and tries < AUTO_TRIES and C_Timer and C_Timer.After then
     C_Timer.After(AUTO_INTERVAL, function() TryAutoRefill(token, tries + 1) end)
   else
@@ -834,6 +952,7 @@ function AmmoBuy.PrintDiag()
   local wantID, wantKind = AmmoBuy.EquippedAmmo()
   Say("ammo auto-buy diagnostics:")
   print("  equipped: " .. tostring(wantID) .. " (" .. tostring(wantKind) .. ")")
+  print("  ranged weapon fires: " .. tostring(AmmoBuy.WeaponKind()))
   if wantKind then
     local cap, have, slots, bags = AmmoBuy.QuiverSpace(wantKind, wantID)
     print(string.format("  ammo bags: %d slots, %d/%d %s (bags: %s)", slots, have, cap,

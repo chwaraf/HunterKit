@@ -44,7 +44,10 @@ function Frame:SetHeight(h) self.height = h end
 function Frame:GetWidth() return self.width end
 function Frame:GetHeight() return self.height end
 function Frame:GetCenter() return (self.width or 0) / 2, (self.height or 0) / 2 end
-function Frame:GetLeft() return 0 end
+-- Screen edges. Tests that care about layout overflow set `edgeLeft` / `width`
+-- on a frame; everything else keeps the old 0-origin answer.
+function Frame:GetLeft() return self.edgeLeft or 0 end
+function Frame:GetRight() return (self.edgeLeft or 0) + (self.width or 0) end
 function Frame:GetBottom() return 0 end
 function Frame:GetRect() return 0, 0, self.width, self.height end
 function Frame:SetShown(v) self.shown = v and true or false end
@@ -276,7 +279,11 @@ function UnitCanAttack(a, b)
   if b == "target" then return HKTest.state.targetAttackable ~= false end
   return false
 end
-function GetInventorySlotInfo(n) return n == "AmmoSlot" and 100 or nil end
+function GetInventorySlotInfo(n)
+  if n == "AmmoSlot" then return 100 end
+  if n == "RangedSlot" then return 101 end
+  return nil
+end
 function GetInventorySlotLink(unit, slot)
   if slot == 100 then return HKTest.state.ammoLink end
   return nil
@@ -344,6 +351,11 @@ end
 NUM_BAG_SLOTS = 4
 function ContainerIDToInventoryID(bag) return 19 + bag end
 function GetInventoryItemLink(unit, invID)
+  -- The ranged weapon slot: HKTest.state.rangedID names the equipped bow/gun.
+  if invID == 101 then
+    local id = HKTest.state.rangedID
+    return id and ("|Hitem:" .. id .. "::::::::60:::|h[Ranged]|h") or nil
+  end
   local bag = (invID or 0) - 19
   if ((HKTest.state.bagFamily or {})[bag] or 0) > 0 then
     return "|Hitem:9999::::::::60:::|h[Bag]|h"
@@ -404,6 +416,11 @@ function BuyMerchantItem(index, qty)
   local unit = (m.price or 0) / (m.quantity or 1)
   HKTest.state.money = (HKTest.state.money or 0) - qty * unit
   HKTest.state.items = HKTest.state.items or {}
+  -- `laggyBags` models a slow realm: the server takes the gold immediately but
+  -- the item (and the container cache) lags behind by several frames. The
+  -- addon must read the money moving as proof the purchase landed instead of
+  -- calling it a stall.
+  if HKTest.state.laggyBags then return end
   HKTest.state.items[m.id] = (HKTest.state.items[m.id] or 0) + qty
 end
 
