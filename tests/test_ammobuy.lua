@@ -411,9 +411,61 @@ AB.Refill(true)
 TickBuy(10)
 check("...but /htk buy still refills", #HKTest.buys > 0, tostring(#HKTest.buys))
 
--- The merchant button exists and reports the amount it would buy.
+-- ---------------------------------------------------------------------------
+-- 9) The merchant button: only at ammo vendors, anchored under the money frame
+-- ---------------------------------------------------------------------------
 local btn = _G["HunterKitRefillAmmo"]
 check("the merchant frame gets a Refill ammo button", btn ~= nil)
+
+-- It anchors BENEATH the player-money display, not to an arbitrary corner.
+local pt = btn and btn.points[1]
+check("the button hangs under the merchant money frame",
+  pt and pt[1] == "TOPLEFT" and pt[2] == _G["MerchantMoneyFrame"]
+     and pt[3] == "BOTTOMLEFT",
+  pt and (tostring(pt[1]) .. "->" .. tostring(pt[2] and pt[2].name) .. "/" .. tostring(pt[3])))
+
+-- A vendor with ammo on the shelf: the button is there.
+Scene({ quiver = { slots = 4, family = 1 }, equipped = 2515, sells = fullLadder(),
+        mode = "manual" })
+HKTest.Fire("MERCHANT_SHOW")
+check("the button shows at a vendor selling ammo", btn:IsShown())
+
+-- A general-goods vendor / weaponsmith: no projectiles at all -> no button.
+Scene({ quiver = { slots = 4, family = 1 }, equipped = 2515, mode = "manual",
+        sells = { { id = 9999, price = 100, quantity = 1 } } })
+HKTest.Fire("MERCHANT_SHOW")
+check("the button hides at a vendor with no ammo", btn:IsShown() == false)
+check("SellsAmmo() says so too", AB.SellsAmmo() == false)
+
+-- Ammo you cannot use YET still counts as an ammo vendor: the button stays so
+-- its tooltip can explain, rather than vanishing and leaving the player unsure.
+Scene({ quiver = { slots = 4, family = 1 }, equipped = 2515, mode = "manual", level = 5,
+        sells = { { id = 11285, price = 40000, quantity = 200 } } })
+HKTest.Fire("MERCHANT_SHOW")
+check("a vendor selling only too-high ammo is still an ammo vendor", AB.SellsAmmo() == true)
+check("...so the button stays, to explain why", btn:IsShown())
+plan, reason = AB.Plan()
+check("...and the plan refuses on level", plan == nil, plan and plan.name)
+
+-- Token-cost ammo is still ammo on the shelf.
+Scene({ quiver = { slots = 4, family = 1 }, equipped = 2515, mode = "manual",
+        sells = { { id = 2515, price = 0, quantity = 200, extendedCost = 1 } } })
+check("token-cost ammo still counts as an ammo vendor", AB.SellsAmmo() == true)
+
+-- Turning the option off hides it even at an ammo vendor.
+Scene({ quiver = { slots = 4, family = 1 }, equipped = 2515, sells = fullLadder(),
+        mode = "manual" })
+HK.db.ammobuy.showButton = false
+AB.UpdateButton()
+check("the show-button option hides it", btn:IsShown() == false)
+HK.db.ammobuy.showButton = true
+
+-- Closing the vendor hides it again.
+Scene({ quiver = { slots = 4, family = 1 }, equipped = 2515, sells = fullLadder(),
+        mode = "manual" })
+HKTest.Fire("MERCHANT_SHOW")
+HKTest.Fire("MERCHANT_CLOSED")
+check("closing the vendor hides the button", btn:IsShown() == false)
 
 -- Defaults are the safe ones.
 check("auto-buy defaults to the confirm popup", HK.defaults.ammobuy.mode == "confirm",

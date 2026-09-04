@@ -256,6 +256,30 @@ function AmmoBuy.ScanMerchant()
   return out
 end
 
+-- Does this vendor deal in projectiles AT ALL?
+--
+-- Deliberately looser than ScanMerchant: this asks only "is ammo on the shelf",
+-- ignoring level, price, stock and token cost. It decides whether the Refill
+-- button is even relevant, and a general-goods vendor or a weaponsmith must
+-- never show it. A vendor who DOES sell ammo you cannot use yet still gets the
+-- button, so its tooltip can tell you why (e.g. "requires level 40") instead of
+-- the button silently vanishing and leaving you guessing.
+function AmmoBuy.SellsAmmo()
+  local n = tonumber(Call(GetMerchantNumItems)) or 0
+  for i = 1, n do
+    local link = Call(GetMerchantItemLink, i)
+    local id = type(link) == "string" and tonumber(link:match("item:(%d+)")) or nil
+    if id then
+      local facts = ItemFacts(id)
+      if facts and facts.classID == CLASS_PROJECTILE
+         and KindOfSubclass(facts.subclassID) then
+        return true
+      end
+    end
+  end
+  return false
+end
+
 -- Rank: higher required level first (that IS the ammo tier in Classic), then
 -- item level, then the cheaper one -- deterministic, so the same vendor always
 -- produces the same plan.
@@ -563,6 +587,14 @@ local function UpdateButton()
     button:Hide()
     return
   end
+  -- Only ever appear at a vendor that actually deals in arrows/bullets. On a
+  -- food merchant or a weaponsmith the button is meaningless clutter sitting on
+  -- top of Blizzard's frame, so it is hidden outright rather than shown
+  -- disabled.
+  if not AmmoBuy.SellsAmmo() then
+    button:Hide()
+    return
+  end
   button:Show()
   local plan, reason = AmmoBuy.Plan()
   if plan then
@@ -575,11 +607,32 @@ local function UpdateButton()
 end
 AmmoBuy.UpdateButton = UpdateButton
 
+-- Anchor the button directly BENEATH the player-money display in the merchant
+-- window's bottom-left, which is where the eye already is when deciding whether
+-- to spend. MerchantMoneyFrame is the standard widget on every client that has
+-- this window; MerchantMoneyInset is its container. Both are looked up at build
+-- time (not cached at file scope) because the merchant UI is loaded on demand,
+-- and we fall back to the frame's own bottom-left corner if neither exists so a
+-- reskinning addon can never leave the button unanchored.
+local function AnchorButton()
+  if not button then return end
+  button:ClearAllPoints()
+  local money = _G["MerchantMoneyFrame"]
+  local inset = _G["MerchantMoneyInset"]
+  if money and money.GetObjectType then
+    button:SetPoint("TOPLEFT", money, "BOTTOMLEFT", 0, -6)
+  elseif inset and inset.GetObjectType then
+    button:SetPoint("TOPLEFT", inset, "BOTTOMLEFT", 4, -4)
+  else
+    button:SetPoint("BOTTOMLEFT", MerchantFrame, "BOTTOMLEFT", 22, 32)
+  end
+end
+
 local function BuildButton()
   if button or not MerchantFrame then return end
   button = CreateFrame("Button", "HunterKitRefillAmmo", MerchantFrame, "UIPanelButtonTemplate")
   button:SetSize(130, 22)
-  button:SetPoint("BOTTOMLEFT", MerchantFrame, "BOTTOMLEFT", 22, 60)
+  AnchorButton()
   button:SetText("Refill ammo")
   button:SetScript("OnClick", function() AmmoBuy.Refill(true) end)
   button:SetScript("OnEnter", function(self)
@@ -600,6 +653,9 @@ end
 -- ---------------------------------------------------------------------------
 local function OnMerchantShow()
   BuildButton()
+  -- Re-anchor every time: Blizzard's merchant UI can load after our first
+  -- build, and reskinning addons move the money frame between openings.
+  AnchorButton()
   UpdateButton()
   if not db or db.enabled == false or not HK.isHunter then return end
   local mode = db.mode or "confirm"

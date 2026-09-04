@@ -374,8 +374,13 @@ function StaticPopup_Show(which, text, _, data)
 end
 function StaticPopup_Hide() end
 
--- The merchant window the Refill button parents itself to.
+-- The merchant window the Refill button parents itself to, plus the standard
+-- player-money widget in its bottom-left that the button anchors under.
 MerchantFrame = newFrame("Frame", "MerchantFrame", UIParent)
+MerchantMoneyInset = newFrame("Frame", "MerchantMoneyInset", MerchantFrame)
+MerchantMoneyFrame = newFrame("Frame", "MerchantMoneyFrame", MerchantMoneyInset)
+function MerchantMoneyFrame:GetObjectType() return "Frame" end
+function MerchantMoneyInset:GetObjectType() return "Frame" end
 
 function GetCursorPosition() return HKTest.cursorX or 0, HKTest.cursorY or 0 end
 function PlaySoundFile(f) HKTest.soundsPlayed[#HKTest.soundsPlayed + 1] = f end

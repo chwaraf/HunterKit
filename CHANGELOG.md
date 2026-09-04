@@ -3,6 +3,32 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.30] - 2026-09-04
+
+### Changed
+- **The Refill ammo button now appears only at vendors that actually sell
+  arrows or bullets.** It previously showed on every merchant, which put a
+  meaningless button on top of Blizzard's frame at the innkeeper and the
+  weaponsmith. A new `AmmoBuy.SellsAmmo()` asks the looser question -- "is any
+  projectile on the shelf" -- ignoring level, price, stock and token cost, so a
+  vendor stocking ammo you cannot use *yet* still shows the button and its
+  tooltip explains why (rather than the button silently vanishing and leaving
+  you guessing whether the addon is broken).
+- **The button is anchored under the merchant window's money display**
+  (`MerchantMoneyFrame`, falling back to `MerchantMoneyInset` and then the
+  frame's own corner), which is where the eye already is when deciding whether
+  to spend. It re-anchors on every `MERCHANT_SHOW`, since the merchant UI loads
+  on demand and reskinning addons move the money frame between openings.
+
+### Tests
+- `tests/test_ammobuy.lua` grows to **65 checks**: the button's anchor target,
+  shown at an ammo vendor, hidden at a general-goods vendor, still shown for
+  too-high-level and token-cost ammo, hidden by the option, and hidden on vendor
+  close. `MerchantMoneyFrame` / `MerchantMoneyInset` added to the stub.
+- 119 + 55 + 102 + 65 + 86 = **427 green**.
+
+---
+
 ## [0.9.29] - 2026-09-03
 
 ### Added

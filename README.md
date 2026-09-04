@@ -7,7 +7,7 @@ For **WoW Classic Era & Hardcore** (patch 1.15.x).
 A self-contained, dependency-free (no Ace3/LibDBIcon) addon built for the
 hardcore-first hunter. Every action is a deliberate click; nothing is automated.
 
-Current version: **0.9.29** — see [`CHANGELOG.md`](CHANGELOG.md).
+Current version: **0.9.30** — see [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Features
 
@@ -19,7 +19,7 @@ Current version: **0.9.29** — see [`CHANGELOG.md`](CHANGELOG.md).
 | **Gun sound** | Replaces the stock gunshot with a Star-Wars-style blaster pew. Arcane Shot, Multi-Shot and Aimed Shot pew too (toggle in Options). Respects guns-only, no-repeat, and mutes the stock sound. |
 | **Passive alert** | A big pulsing Ability Seal center-screen above your character while the pet is Passive, plus an optional glow on the passive button. Impossible to miss. |
 | **Low ammo warning** | Periodic on-screen alert when your equipped arrows/bullets run low — the **equipped projectile's own icon under a red X**, right of the passive alert. The less ammo, the more often and the longer it shows. Optional voice warnings (**off by default**, voice only — no game sounds): bundled clips say "Low arrows!"/"Low ammo!" while low (at most once a minute) and "No arrows!"/"No ammo!" when the slot is empty (at most once every 45 s — 45 s is the floor for any voice). The warning icon **pulses** while shown, and the first warning of an episode fires the moment the threshold is reached. A **Warn frequency** slider (1×–4×) scales how often everything repeats. Threshold configurable (default 200). |
-| **Ammo auto-buy** | Refills your **quiver / ammo pouch** at any vendor. It counts the ammo-specific bag slots (slots x 200), works out exactly how many arrows or bullets are missing, and buys them in the **200-per-stack bundles vendors actually sell** — always rounding **down** to whole stacks so nothing overflows. **Fill completely** or a **percentage slider** (5–100% of quiver capacity). Tier is your choice: **equipped** (more of what you shoot), **best** (highest tier your level allows), or **capped** (best, but never above a level cap — stay on cheap arrows while levelling). **Gold reserve** and **max spend per visit** sliders are always respected, and it only buys whole stacks the budget covers. Three modes: **confirm** popup (default), **auto** at the vendor, or **manual** only. A **Refill ammo** button on the merchant window shows the exact amount in its tooltip, or the reason it can't buy. |
+| **Ammo auto-buy** | Refills your **quiver / ammo pouch** at any vendor. It counts the ammo-specific bag slots (slots x 200), works out exactly how many arrows or bullets are missing, and buys them in the **200-per-stack bundles vendors actually sell** — always rounding **down** to whole stacks so nothing overflows. **Fill completely** or a **percentage slider** (5–100% of quiver capacity). Tier is your choice: **equipped** (more of what you shoot), **best** (highest tier your level allows), or **capped** (best, but never above a level cap — stay on cheap arrows while levelling). **Gold reserve** and **max spend per visit** sliders are always respected, and it only buys whole stacks the budget covers. Three modes: **confirm** popup (default), **auto** at the vendor, or **manual** only. A **Refill ammo** button appears **only at vendors that actually sell arrows/bullets**, tucked **under the money display** in the merchant window's bottom-left; its tooltip shows the exact amount, or the reason it can't buy. |
 | **Options** | Draggable settings window — a master **Enable HunterKit** switch that pauses *every* feature at once, one rule per feature block, wrapped tooltips, and a two-click **Reset ALL settings** button. The Sniper Mark block is a grid per state: **SHAPE** cycle-button + state name on the left, short **BRIGHTNESS** slider (0–200%, 100% at the bar's middle, overdrive stacks a second additive pass) on the right. Minimap button, `/htk lock\|unlock`, `/htk reset`. |
 
 ## Sniper Mark
@@ -288,14 +288,14 @@ test suite enforces part of it:
 `python3 tests/run_tests.py` runs the Lua tests: it loads the real addon files
 against a stub client (`tests/wow_stub.lua`) — no logic is re-implemented — and
 needs a Lua interpreter on `PATH` (`lua`/`lua5.1`/`luajit`) or `pip install lupa`.
-Add `--verbose` to echo the addon's chat output. **316 checks**, in five files:
+Add `--verbose` to echo the addon's chat output. **427 checks**, in five files:
 
 | File | Covers |
 |---|---|
 | `test_mendmark.lua` (139) | marker visibility, range/urgency styling, all four plate-discovery paths, the anchor modes, the force-plate CVar ladder, drag/lock, restricted-region safety |
 | `test_options_ui.lua` (54) | **builds the real settings window** and checks the layout: window/content size, one divider per section, slider values visible before interaction, no clipped or overlapping text, wrapped tooltips, no stray globals, no module `Init` that throws — plus the **real** `Positions.ToggleLock` round trip (edit mode hands you the movable marker, locking cleans up, a plate-anchored marker is never clamped) |
 | `test_settings.lua` (28) | sniper-mark shapes: six distinct shapes per state, the shape on screen follows the dropdown, unknown saved values fall back — plus **Reset ALL settings** (defaults restored, the db slices the modules hold survive, the open window re-displays) and the reset button's two-click confirm |
-| `test_ammobuy.lua` (55) | the ammo auto-buy planner and queue: quiver capacity (slots x 200, partial stacks, foreign stacks, pouch-vs-quiver family), the three tier modes, level gating, the fill percentage, gold reserve / spend cap / too-poor, limited stock, token-cost ammo, non-200 vendor bundles, no quiver, no vendor ammo — plus the purchase queue (one stack per call, stall abort, cancel on vendor close) and all three vendor modes |
+| `test_ammobuy.lua` (65) | the ammo auto-buy planner and queue: quiver capacity (slots x 200, partial stacks, foreign stacks, pouch-vs-quiver family), the three tier modes, level gating, the fill percentage, gold reserve / spend cap / too-poor, limited stock, token-cost ammo, non-200 vendor bundles, no quiver, no vendor ammo — plus the purchase queue (one stack per call, stall abort, cancel on vendor close), all three vendor modes, and the merchant button (anchored under the money frame, shown only at ammo vendors) |
 | `test_docs.lua` (40) | every file parses, the `.toc` matches disk, `.toc` version == `HK.version` == newest `CHANGELOG` entry, every `/htk` subcommand documented here |
 
 ## License
