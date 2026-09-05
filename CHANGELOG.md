@@ -3,6 +3,25 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.40] - 2026-09-05
+
+### Fixed
+- **AmmoWarn failed to load** with `Attempt to register unknown event
+  "UNIT_INVENTORY_UPDATE"`. The event is called `UNIT_INVENTORY_CHANGED`; the
+  name used has never existed in any client. `RegisterEvent` throws on an
+  unknown event, and the exception aborted the rest of the module's setup, so a
+  single mistyped string took the whole ammo warning offline.
+- `HK.On` no longer lets one bad event name take a module down: an unregisterable
+  event is now skipped and recorded in `HK.badEvents` rather than thrown. A typo
+  costs one handler instead of one feature.
+
+### Changed
+- The test client stub now **rejects unknown event names**, exactly as the real
+  client does. It previously accepted any string, which is why the suite passed
+  against an event that does not exist. Its allowlist is the events HunterKit
+  registers, each checked against the Classic Era 1.15.x game-type table, and a
+  new assertion fails the build if any module registers something outside it.
+
 ## [0.9.39] - 2026-09-05
 
 ### Fixed

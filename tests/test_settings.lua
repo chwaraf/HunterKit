@@ -35,6 +35,12 @@ check("every module initialises without error",
   table.concat(HKTest.prints, "\n"):find("load error") == nil,
   table.concat(HKTest.prints, "\n"))
 
+-- A mistyped event name is a real bug that shipped: HK.On degrades gracefully
+-- in-game (so one typo cannot take a whole module out), which means the only
+-- place it can still be caught loudly is right here.
+check("no module registered an event this client does not know",
+  #HK.badEvents == 0, table.concat(HK.badEvents, ", "))
+
 local content = _G["HunterKitOptionsContent"]
 
 -- ---------------------------------------------------------------------------

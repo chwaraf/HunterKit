@@ -301,7 +301,9 @@ function AmmoWarn.Init()
   BuildFrame()
 
   HK.On("BAG_UPDATE_DELAYED", function() invReady = true; lastWarn = 0; Tick() end)
-  HK.On("UNIT_INVENTORY_UPDATE", function() invReady = true end)
+  -- UNIT_INVENTORY_CHANGED, not ..._UPDATE: the latter has never existed, and
+  -- RegisterEvent throws on an unknown name, which aborted this whole module.
+  HK.On("UNIT_INVENTORY_CHANGED", function() invReady = true end)
   HK.On("PLAYER_ENTERING_WORLD", AmmoWarn.Rearm)
 
   HK.Ticker(1, Tick)

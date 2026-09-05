@@ -6,7 +6,7 @@
 
 local ADDON_NAME, HK = ...
 
-HK.version = "0.9.39"
+HK.version = "0.9.40"
 
 -- ---------------------------------------------------------------------------
 -- Defaults (schema). This is the source of truth for the options window and
@@ -343,8 +343,22 @@ bus:SetScript("OnEvent", function(self, event, ...)
 end)
 HK.bus = bus
 
+-- Registering an event the client does not know THROWS, which would otherwise
+-- abort the rest of the calling module's Init (a single typo took AmmoWarn out
+-- entirely). A typo is a bug worth reporting, but it must not cost the user the
+-- other nine features -- so we degrade: skip the handler, log it, carry on.
+-- Every event name HK.On could not register. Empty on a healthy client; the
+-- test suite asserts it stays that way, so degrading in the field never means
+-- the typo goes unnoticed here.
+HK.badEvents = {}
+
 function HK.On(event, fn)
-  bus:RegisterEvent(event)
+  local ok = pcall(bus.RegisterEvent, bus, event)
+  if not ok then
+    HK.badEvents[#HK.badEvents + 1] = tostring(event)
+    HK.Dbg("ignoring unknown event " .. tostring(event))
+    return
+  end
   local prev = bus.handlers[event]
   if prev then
     bus.handlers[event] = function(...) prev(...); fn(...) end

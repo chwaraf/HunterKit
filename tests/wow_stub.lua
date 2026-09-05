@@ -83,7 +83,47 @@ function Frame:SetClampedToScreen(v)
 end
 function Frame:SetMovable(v) self.movable = v end
 function Frame:RegisterForDrag() end
-function Frame:RegisterEvent(e) self.events[e] = true end
+-- The real client THROWS on an event name it does not know, and a typo in one
+-- HK.On call previously aborted an entire module's Init at load. The stub used
+-- to accept any string, so the tests happily "passed" against an event that has
+-- never existed. Mirror the client: unknown name, hard error.
+--
+-- This list is the events HunterKit actually registers, each verified present
+-- in Classic Era 1.15.x. Adding a genuinely new event means adding it here --
+-- deliberately, having checked the game-type table on the wiki first.
+HKTest.KNOWN_EVENTS = {
+  ADDON_LOADED = true,
+  BAG_UPDATE_DELAYED = true,
+  MERCHANT_CLOSED = true,
+  MERCHANT_SHOW = true,
+  NAME_PLATE_UNIT_ADDED = true,
+  NAME_PLATE_UNIT_REMOVED = true,
+  PET_BAR_UPDATE = true,
+  PET_BAR_UPDATE_USABLE = true,
+  PLAYER_ENTERING_WORLD = true,
+  PLAYER_EQUIPMENT_CHANGED = true,
+  PLAYER_LOGOUT = true,
+  PLAYER_REGEN_DISABLED = true,
+  PLAYER_REGEN_ENABLED = true,
+  PLAYER_TARGET_CHANGED = true,
+  SPELLS_CHANGED = true,
+  UNIT_HAPPINESS = true,
+  UNIT_HEALTH = true,
+  UNIT_INVENTORY_CHANGED = true,
+  UNIT_MAXHEALTH = true,
+  UNIT_PET = true,
+  UNIT_SPELLCAST_SUCCEEDED = true,
+  UNIT_THREAT_LIST_UPDATE = true,
+  UNIT_THREAT_SITUATION_UPDATE = true,
+}
+
+function Frame:RegisterEvent(e)
+  if not HKTest.KNOWN_EVENTS[e] then
+    error('Frame:RegisterEvent(): Attempt to register unknown event "'
+      .. tostring(e) .. '"', 2)
+  end
+  self.events[e] = true
+end
 function Frame:UnregisterEvent(e) self.events[e] = nil end
 function Frame:SetScript(h, fn) self.scripts[h] = fn end
 function Frame:GetScript(h) return self.scripts[h] end
