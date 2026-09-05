@@ -3,6 +3,23 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.52] - 2026-09-05
+
+### Fixed
+- **The sniper mark was missing when you unlocked frames.** The mark is drawn
+  procedurally and paints nothing until it has a range state, so with no target
+  edit mode showed a frame that was completely empty -- invisible, and therefore
+  impossible to drag. Draggables can now supply a `preview` callback (the mirror
+  of the existing `restore`, which runs on lock) to paint a representative
+  sample while unlocked. The same defect was found and fixed on the threat
+  percentage readout, which was blank in edit mode for exactly the same reason.
+- **The threat warning icon overlapped the passive-pet alert.** Both defaulted
+  to horizontal centre with crossing vertical spans (threat 92..148, pulse
+  114..186), so whenever both fired one covered the other. The threat warning
+  now sits clear to the left of the pulse alert. A test checks the two as real
+  rectangles, so resizing either icon cannot quietly reintroduce the collision.
+  Only frames you have not placed yourself are moved.
+
 ## [0.9.51] - 2026-09-05
 
 ### Fixed

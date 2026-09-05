@@ -1135,6 +1135,15 @@ function Positions.SetLock(locked)
         -- you can tell it's in edit mode. (Skip show/hide on a secure frame while
         -- in combat to avoid taint — edit mode is out-of-combat anyway.)
         if not InCombatLockdown() then f:Show() end
+        -- Showing the frame is not enough for a feature that PAINTS itself
+        -- procedurally: the sniper mark draws nothing until it has a range
+        -- state, so with no target the frame was shown but completely empty and
+        -- the mark looked absent from edit mode. `preview` lets a module draw a
+        -- representative sample. Mirrors `restore`, which runs on lock.
+        --
+        -- Runs BEFORE the fade: a module's own draw code may reset the frame's
+        -- alpha, which would undo the edit-mode dimming if we faded first.
+        if dd.opts.preview then pcall(dd.opts.preview) end
         f:SetAlpha(math.min(f:GetAlpha() or 1, 0.6))
 
         -- Fully manual, cursor-pinned drag. We do NOT use StartMoving/StopMovingOrSizing:

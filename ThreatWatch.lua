@@ -133,6 +133,7 @@ local frame, icon, label, sub
 local readout, readoutText
 local pctHot, pctPulseT = false, 0
 local lastEval, lastSound = 0, -3600
+local UpdateReadout            -- forward: used by the edit-mode preview
 local current, shownUntil = nil, 0
 local previewing = false     -- the edit-mode preview is forcing the icon up
 local ticker = nil
@@ -540,6 +541,10 @@ local function BuildReadout()
       onUpdate = function()
         if pctHot then readout:SetScript("OnUpdate", PctOnUpdate) end
       end,
+      -- Edit mode: paint the sample number. Showing the frame is not enough --
+      -- the readout is blank until UpdateReadout runs, so without this it was
+      -- an invisible empty box you could not find, let alone drag.
+      preview = function() UpdateReadout() end,
       saveFromScreen = function()
         -- Save in UIParent space, and record that it is now user-placed so the
         -- PlayerFrame anchor stops overriding it.
@@ -596,7 +601,7 @@ local function PctColor(pct, pulled)
   return 0.2, 1, 0.2
 end
 
-local function UpdateReadout()
+UpdateReadout = function()
   if not readout then return end
   if not db or db.showPct == false or not HK.isHunter then
     readout:Hide()

@@ -79,6 +79,9 @@ function BuildFrame()
   end, {
     clickable = true,
     restore = function() Range.Update() end,
+    -- Edit mode: paint a sample mark so there is something to grab even with no
+    -- target (the mark is drawn procedurally and is otherwise blank).
+    preview = function() Range.Update() end,
     -- Store the mark's on-screen centre as an offset from UIParent's CENTRE
     -- (HK.SaveDragged works entirely in UIParent space, so it round-trips exactly
     -- via ApplyPosition's CENTRE/CENTRE anchor — no unit-frame conversion, no jump).
@@ -389,10 +392,20 @@ end
 
 function Range.Update()
   if not frame then return end
-  -- While editing, leave the frame exactly where the user put it: don't re-draw or
-  -- hide it, and don't re-evaluate range (it would hide an out-of-combat/no-target
-  -- mark and fight the drag).
-  if HK.Editing() then return end
+  -- While editing, don't re-evaluate range (that would hide an
+  -- out-of-combat/no-target mark and fight the drag) -- but DO draw something.
+  --
+  -- The mark is drawn procedurally by ApplyState; nothing is painted until a
+  -- real range state exists. Edit mode shows the frame, but with no target
+  -- there was no state, so the frame was empty and the sniper mark appeared to
+  -- be missing from unlock entirely. Paint a representative preview instead, so
+  -- there is an actual icon to grab.
+  if HK.Editing() then
+    frame:Show()
+    ApplyState(shownState or lastState or "OK")
+    if label then label:Hide() end
+    return
+  end
   if HK.db.enabled == false or not HK.db.range.enabled then
     frame:SetShown(false)
     lastState, shownState = nil, nil

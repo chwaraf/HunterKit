@@ -726,6 +726,46 @@ HK.Positions.Reset()
 check("out of combat the feed button moves at once",
   #feedButton.points > 0)
 
+-- ---------------------------------------------------------------------------
+-- 5h) EVERY UNLOCKED FRAME MUST ACTUALLY BE VISIBLE
+--
+-- Regression: the sniper mark is drawn procedurally and paints nothing until it
+-- has a range state. Edit mode showed the frame, but with no target there was
+-- no state, so the frame was shown and completely EMPTY -- the mark appeared to
+-- be missing from unlock. A frame you cannot see is a frame you cannot drag.
+-- ---------------------------------------------------------------------------
+local function HasVisibleContent(f)
+  for _, r in ipairs(f.textures or {}) do
+    if r:IsShown() then return true end
+  end
+  for _, r in ipairs(f.fontstrings or {}) do
+    local txt = r:GetText()
+    if r:IsShown() and txt and txt ~= "" then return true end
+  end
+  return false
+end
+
+pcall(HK.Positions.ToggleLock)          -- unlock
+
+local invisible = {}
+for name, d in pairs(HK.draggables) do
+  local f = d.frame
+  if f and HK.DraggableActive(d) and f:IsShown() then
+    if not HasVisibleContent(f) then invisible[#invisible + 1] = name end
+  end
+end
+check("no unlocked frame is an invisible empty box", #invisible == 0,
+  table.concat(invisible, ","))
+
+-- The sniper mark specifically: it was the one that vanished.
+local mark = _G["HunterKitSniperMark"]
+check("the sniper mark is visible in edit mode with no target",
+  mark ~= nil and mark:IsShown() and HasVisibleContent(mark))
+check("...and is faded to show it is in edit mode",
+  (mark:GetAlpha() or 1) < 1, tostring(mark and mark:GetAlpha()))
+
+pcall(HK.Positions.ToggleLock)          -- relock
+
 say(string.format("\n%d passed, %d failed", passes, #failures))
 if #failures > 0 then
   for _, f in ipairs(failures) do say("  - " .. f) end

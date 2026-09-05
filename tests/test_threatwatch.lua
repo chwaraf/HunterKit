@@ -830,6 +830,36 @@ check("the readout defaults to horizontally centred",
 check("...and clears the player frame", HK.defaults.threat.pctOffsetY > 0,
   tostring(HK.defaults.threat.pctOffsetY))
 
+
+-- ---------------------------------------------------------------------------
+-- THE THREAT WARNING MUST SIT LEFT OF THE PASSIVE-PET ALERT, NEVER OVER IT
+--
+-- Both alerts are centred horizontally and their vertical spans cross, so with
+-- both at x = 0 they covered each other whenever both fired. Checked as a real
+-- 2D rectangle overlap against the live defaults, so resizing either icon
+-- cannot silently reintroduce the collision.
+-- ---------------------------------------------------------------------------
+local td, pd = HK.defaults.threat, HK.defaults.pulse
+
+local function Box(x, y, size)
+  local h = size / 2
+  return { l = x - h, r = x + h, b = y - h, t = y + h }
+end
+local tb = Box(td.offsetX, td.offsetY, td.size)
+local pb = Box(pd.offsetX, pd.offsetY, pd.size)
+
+check("the threat warning is to the LEFT of the passive alert",
+  tb.r <= pb.l, string.format("threat right %.0f vs pulse left %.0f", tb.r, pb.l))
+
+local overlap = not (tb.r <= pb.l or tb.l >= pb.r or tb.t <= pb.b or tb.b >= pb.t)
+check("the two alert icons never overlap",
+  not overlap,
+  string.format("threat %.0f..%.0f x %.0f..%.0f vs pulse %.0f..%.0f x %.0f..%.0f",
+    tb.l, tb.r, tb.b, tb.t, pb.l, pb.r, pb.b, pb.t))
+
+check("...with a real gap between them, not just touching",
+  (pb.l - tb.r) >= 8, string.format("%.0f px", pb.l - tb.r))
+
 say(string.format("\n%d passed, %d failed", passes, #failures))
 if #failures > 0 then
   for _, f in ipairs(failures) do say("  - " .. f) end

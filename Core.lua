@@ -6,7 +6,7 @@
 
 local ADDON_NAME, HK = ...
 
-HK.version = "0.9.51"
+HK.version = "0.9.52"
 
 -- ---------------------------------------------------------------------------
 -- Defaults (schema). This is the source of truth for the options window and
@@ -14,7 +14,7 @@ HK.version = "0.9.51"
 -- ---------------------------------------------------------------------------
 HK.defaults = {
   enabled   = true,
-  dbVersion = 32,
+  dbVersion = 33,
   firstRun  = true,
 
   ui = {
@@ -69,7 +69,13 @@ HK.defaults = {
     soundInterval = 4,       -- seconds between alarm sounds
     channel       = "Master",
     size          = 56,
-    offsetX       = 0,
+    -- Sits to the LEFT of the passive-pet alert and must never overlap it.
+    -- Both alerts are centred horizontally by default and their vertical spans
+    -- cross (threat 92..148, pulse 114..186), so sharing x = 0 put one on top
+    -- of the other whenever both fired. Offsetting by half of each icon's width
+    -- plus a gap guarantees clearance at the default sizes, and the test in
+    -- tests/test_threatwatch.lua asserts it stays that way.
+    offsetX       = -76,     -- (56/2 + 72/2 + 12) left of the pulse alert
     offsetY       = 120,
     moved         = false,
     -- The quiet half: a live threat percentage above-right of the player frame.
@@ -904,6 +910,17 @@ local function LoadDB()
       db.threat.pctOffsetY = HK.defaults.threat.pctOffsetY
     end
     db.dbVersion = 32
+  end
+
+  -- v32 -> v33: the threat warning icon moves left of the passive-pet alert.
+  -- Both defaulted to x = 0 with overlapping vertical spans, so they covered
+  -- each other whenever both were up. Only move a frame the user has not placed.
+  if db.dbVersion < 33 then
+    if type(db.threat) == "table" and db.threat.moved ~= true then
+      db.threat.offsetX = HK.defaults.threat.offsetX
+      db.threat.offsetY = HK.defaults.threat.offsetY
+    end
+    db.dbVersion = 33
   end
 
   if db.dbVersion < 19 then
