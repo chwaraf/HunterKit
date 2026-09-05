@@ -6,7 +6,7 @@
 
 local ADDON_NAME, HK = ...
 
-HK.version = "0.9.37"
+HK.version = "0.9.38"
 
 -- ---------------------------------------------------------------------------
 -- Defaults (schema). This is the source of truth for the options window and
@@ -14,7 +14,7 @@ HK.version = "0.9.37"
 -- ---------------------------------------------------------------------------
 HK.defaults = {
   enabled   = true,
-  dbVersion = 24,
+  dbVersion = 25,
   firstRun  = true,
 
   ui = {
@@ -76,6 +76,7 @@ HK.defaults = {
     -- On by default -- it is a passive readout, not an interruption, and it is
     -- what makes the feature useful with the warning switched off.
     showPct       = true,
+    showGap       = true,    -- prefix the % with the damage that would pull it
     pctOffsetX    = -34,     -- nudge back over the frame's top-right corner
     pctOffsetY    = -16,
     pctMoved      = false,   -- true once dragged (then pinned absolutely)

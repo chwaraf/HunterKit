@@ -173,49 +173,79 @@ end
 --
 -- Returns pct, isPulled, petTanking  |  nil
 local function MeasureMob(unit)
-  local myTanking, _, myScaled = Call(UnitDetailedThreatSituation, "player", unit)
+  local myTanking, _, myScaled, _, myThreat =
+    Call(UnitDetailedThreatSituation, "player", unit)
   if myScaled == nil then return nil end
   myScaled = tonumber(myScaled) or 0
-  if myTanking then return 100, true, false end
+  myThreat = tonumber(myThreat) or 0
+  if myTanking then return 100, true, false, myThreat end
 
   -- Is the PET the one holding this mob? Only then can the pet "lose" it.
   local petTanking = Call(UnitDetailedThreatSituation, "pet", unit)
-  return myScaled, false, (petTanking and true or false)
-end
-
--- The warning decision, layered on top of the measurement.
-local function JudgeMob(unit)
-  local pct, pulled, petTanking = MeasureMob(unit)
-  if pct == nil then return nil end
-  if pulled then return "pulled", 100 end
-
-  -- Only a mob the PET is holding can be "lost by the pet". If a real tank (or
-  -- another player) has it, the pet is not the one about to lose it and this
-  -- feature has no opinion -- that is a threat meter's job, not a pet warning.
-  if not petTanking then return nil end
-
-  local threshold = tonumber(db and db.threshold) or 80
-  if pct >= threshold then return "warn", pct end
-  return nil
+  return myScaled, false, (petTanking and true or false), myThreat
 end
 
 -- ---------------------------------------------------------------------------
--- The live percentage for the readout: the player's HIGHEST threat percentage
--- across the checked mobs, whatever it is.
+-- HOW MUCH MORE DAMAGE WOULD PULL IT
 --
--- Independent of the warning's threshold and of the warning being enabled at
--- all, because the readout is its own feature -- a player can want the number
--- without wanting to be shouted at, which is now the default pairing.
+-- Derived from the two numbers the server already gives us, with no assumption
+-- about melee vs ranged and no per-spell modelling:
 --
--- Returns pct, isPulled  |  nil
+--   scaledPct = myThreat / pullPoint * 100      (Blizzard's definition)
+--     =>  pullPoint = myThreat * 100 / scaledPct
+--     =>  gap       = pullPoint - myThreat = myThreat * (100 / scaledPct - 1)
+--
+-- `myThreat` cancels out of the ratio, so the 110%/130% distance rule that
+-- Blizzard folded into scaledPct is inherited for free -- step into melee and
+-- the gap shrinks by itself. Verified algebraically against a worked pet-tank
+-- case at both 1.10 and 1.30 modifiers.
+--
+-- Because a hunter's threat is ~1 threat per 1 damage (the Classic standard
+-- every threat guide is defined around, and hunters carry no stance/spec
+-- multiplier on ordinary shots), that gap reads directly as DAMAGE. It is an
+-- honest approximation, not a promise: Growl landing, a pet crit, or the mob's
+-- own threat drops all move the target while you are reading it.
+--
+-- Returns gap in threat/damage, or nil when it cannot be known.
+-- ---------------------------------------------------------------------------
+local GAP_MIN_PCT = 1        -- below this, 100/pct explodes into nonsense
+local GAP_MAX     = 9999999  -- sanity ceiling; anything above reads as unknown
+
+function ThreatWatch.DamageToPull(myThreat, scaledPct)
+  myThreat = tonumber(myThreat) or 0
+  scaledPct = tonumber(scaledPct) or 0
+  if myThreat <= 0 then return nil end          -- no threat yet: nothing to scale
+  if scaledPct <= GAP_MIN_PCT then return nil end
+  if scaledPct >= 100 then return 0 end          -- already at/over the pull point
+  local gap = myThreat * (100 / scaledPct - 1)
+  if gap < 0 or gap > GAP_MAX then return nil end
+  return gap
+end
+
+-- Compact number for a readout that sits next to a unit frame: 940, 1.2k, 15k.
+function ThreatWatch.ShortNum(n)
+  n = tonumber(n) or 0
+  if n >= 10000 then return string.format("%dk", math.floor(n / 1000 + 0.5)) end
+  if n >= 1000 then return string.format("%.1fk", n / 1000) end
+  return tostring(math.floor(n + 0.5))
+end
+
+-- ---------------------------------------------------------------------------
+-- The number the readout shows: the highest aggro percentage across the mobs
+-- we watch, plus whether it is already ours and the raw threat behind it.
+--
+-- Unlike the WARNING, this does not require the pet to be tanking -- if a real
+-- tank is holding the mob you still want to see how close you are getting.
+-- Returns pct, pulled, threat (all nil when there is nothing to report).
 -- ---------------------------------------------------------------------------
 function ThreatWatch.CurrentPct()
   if not ThreatWatch.HasAPI() then return nil end
-  if not Call(UnitExists, "pet") then return nil end
-  if not Call(UnitAffectingCombat, "player") and not Call(UnitAffectingCombat, "pet") then
-    return nil
-  end
-  local best, bestPulled = nil, false
+  if not Call(UnitAffectingCombat, "player") then return nil end
+  -- This is a PET module: with no living pet there is no pet-vs-player threat
+  -- story to tell, so the readout stays out of the way entirely.
+  if not Call(UnitExists, "pet") or Call(UnitIsDeadOrGhost, "pet") then return nil end
+
+  local bestPct, bestPulled, bestThreat
   local seen = {}
   for _, unit in ipairs(MOB_UNITS) do
     if Call(UnitExists, unit) and not Call(UnitIsDead, unit)
@@ -223,12 +253,56 @@ function ThreatWatch.CurrentPct()
       local guid = Call(UnitGUID, unit)
       if guid == nil or not seen[guid] then
         if guid then seen[guid] = true end
-        local pct, pulled = MeasureMob(unit)
-        if pct and (best == nil or pct > best) then best, bestPulled = pct, pulled end
+        local pct, pulled, _, myThreat = MeasureMob(unit)
+        if pct and (bestPct == nil or pct > bestPct) then
+          bestPct, bestPulled, bestThreat = pct, pulled, myThreat
+        end
       end
     end
   end
-  return best, bestPulled
+  return bestPct, bestPulled, bestThreat
+end
+
+-- ---------------------------------------------------------------------------
+-- TREND: is my threat climbing or falling?
+--
+-- Tracked on the PERCENTAGE rather than the raw threat value, because the
+-- percentage is what the threshold is expressed in and it already accounts for
+-- the pet's threat moving too: pet out-threating you shows as your percentage
+-- falling, which is exactly the "danger receding" case that must stay silent.
+--
+-- RISE_EPSILON exists because these numbers jitter by a fraction between
+-- server updates; without it, noise around a plateau reads as a rise and the
+-- warning stutters. A change smaller than this counts as flat, not rising.
+--
+-- TREND_STALE_AFTER discards a sample from a previous fight (or from before a
+-- target swap): comparing against a minutes-old percentage would invent a huge
+-- fake rise on the first tick of the next pull.
+-- ---------------------------------------------------------------------------
+local RISE_EPSILON      = 0.5    -- percentage points; below this is "flat"
+local TREND_STALE_AFTER = 3      -- seconds; older samples are not comparable
+
+local prevPct, prevPctAt, prevKey = nil, 0, nil
+
+-- Returns rising (bool), delta (percentage points, nil when not comparable).
+local function UpdateTrend(pct, key, now)
+  local rising, delta = false, nil
+  -- `key` identifies WHAT is being measured (the mob). A different mob is a
+  -- different series, so its history must not be compared against.
+  if prevPct ~= nil and prevKey == key and (now - prevPctAt) <= TREND_STALE_AFTER then
+    delta = pct - prevPct
+    rising = delta > RISE_EPSILON
+  end
+  prevPct, prevPctAt, prevKey = pct, now, key
+  return rising, delta
+end
+
+-- Exposed so the diagnostic (and tests) can see the trend the warning acted on.
+function ThreatWatch.Trend()
+  return prevPct, prevKey
+end
+function ThreatWatch.ResetTrend()
+  prevPct, prevPctAt, prevKey = nil, 0, nil
 end
 
 -- ---------------------------------------------------------------------------
@@ -252,8 +326,12 @@ function ThreatWatch.Evaluate()
     return nil, "not in combat"
   end
 
-  local bestState, bestPct, bestUnit
-  local seen = {}
+  -- ONE pass over the mobs, collecting the measurements. Deliberately not a
+  -- CurrentPct() call followed by a judging loop: that measured every mob
+  -- twice per evaluation, doubling the only cost this module has.
+  local now = tonumber(Call(GetTime)) or 0
+  local mobs, seen = {}, {}
+  local topPct, topKey = nil, nil
   for _, unit in ipairs(MOB_UNITS) do
     if Call(UnitExists, unit) and not Call(UnitIsDead, unit)
        and Call(UnitCanAttack, "player", unit) then
@@ -263,14 +341,45 @@ function ThreatWatch.Evaluate()
       local guid = Call(UnitGUID, unit)
       if guid == nil or not seen[guid] then
         if guid then seen[guid] = true end
-        local state, pct = JudgeMob(unit)
-        if state then
-          local rank, bestRank = STATE_RANK[state], STATE_RANK[bestState or ""] or 0
-          -- Worst state wins; within the same state, the closest call wins.
-          if rank > bestRank or (rank == bestRank and (pct or 0) > (bestPct or 0)) then
-            bestState, bestPct, bestUnit = state, pct, unit
+        local pct, pulled, petTanking = MeasureMob(unit)
+        if pct then
+          mobs[#mobs + 1] = { unit = unit, pct = pct, pulled = pulled,
+                              petTanking = petTanking }
+          if topPct == nil or pct > topPct then
+            topPct, topKey = pct, guid or unit
           end
         end
+      end
+    end
+  end
+
+  -- Establish the trend ONCE per evaluation, from the dominant mob, and keyed
+  -- to it so a target swap starts a fresh series rather than comparing two
+  -- different fights. Shared across the mobs below so the verdict cannot
+  -- depend on which unit happened to be judged first.
+  local rising = false
+  if topPct then
+    rising = UpdateTrend(topPct, topKey, now)
+  else
+    ThreatWatch.ResetTrend()
+  end
+
+  local threshold = tonumber(db.threshold) or 80
+  local bestState, bestPct, bestUnit
+  for _, m in ipairs(mobs) do
+    local state
+    if m.pulled then
+      -- Losing the mob outright is reported whatever the direction: it is a
+      -- fact, not a forecast.
+      state = "pulled"
+    elseif m.petTanking and m.pct >= threshold and rising then
+      state = "warn"
+    end
+    if state then
+      local rank, bestRank = STATE_RANK[state], STATE_RANK[bestState or ""] or 0
+      -- Worst state wins; within the same state, the closest call wins.
+      if rank > bestRank or (rank == bestRank and (m.pct or 0) > (bestPct or 0)) then
+        bestState, bestPct, bestUnit = state, m.pct, m.unit
       end
     end
   end
@@ -366,7 +475,8 @@ local function BuildReadout()
   if readout or not CreateFrame then return end
   readout = CreateFrame("Frame", "HunterKitThreatPct", UIParent)
   readout:SetFrameStrata("MEDIUM")
-  readout:SetSize(60, 18)
+  -- Wide enough for "12.3k 100%": the damage gap sits in front of the number.
+  readout:SetSize(110, 18)
   readout:EnableMouse(false)          -- never intercept clicks on the player frame
 
   readoutText = readout:CreateFontString(nil, "OVERLAY")
@@ -451,7 +561,7 @@ local function UpdateReadout()
     return
   end
 
-  local pct, pulled = ThreatWatch.CurrentPct()
+  local pct, pulled, threat = ThreatWatch.CurrentPct()
   if pct == nil then
     -- Out of combat, no pet, or no threat on anything: show nothing at all
     -- rather than a stale or zero number.
@@ -459,7 +569,19 @@ local function UpdateReadout()
     readout:Hide()
     return
   end
-  readoutText:SetFormattedText("%d%%", math.floor(pct))
+
+  -- "1.2k 74%" -- how much more damage would pull it, in front of the
+  -- percentage. Dimmed and smaller-feeling than the percentage because it is
+  -- the supporting detail, not the headline. Omitted entirely (rather than
+  -- shown as 0 or a guess) whenever it cannot be derived honestly.
+  local head = ""
+  if db.showGap ~= false then
+    local gap = ThreatWatch.DamageToPull(threat, pct)
+    if gap and gap > 0 then
+      head = "|cff9d9d9d" .. ThreatWatch.ShortNum(gap) .. "|r "
+    end
+  end
+  readoutText:SetFormattedText("%s%d%%", head, math.floor(pct))
   readoutText:SetTextColor(PctColor(pct, pulled))
   -- Emphasise from the SAME threshold the warning uses (and always once you
   -- actually hold aggro), so the size, the colour and the warning all agree.
@@ -507,17 +629,24 @@ local function Alarm(state)
   end
 end
 
+-- Deliberately PLAIN (user: the warning was overcomplicated).
+--
+-- Two words and nothing else. The old alert stacked a percentage, an advice
+-- clause and a mob name under an icon -- four things to parse at the one moment
+-- you have no attention to spare, and all of it redundant: the exact percentage
+-- is already on the readout by your player frame, and you know what you are
+-- shooting. What the alert has to convey is a single bit -- "back off now" --
+-- so that is all it says.
 local function Show(state, pct, mobName)
   if not frame then return end
   if state == "pulled" then
     icon:SetTexture(ICON_PULLED)
-    label:SetText("|cffff2020AGGRO — Feign Death!|r")
-    sub:SetText(mobName and ("on " .. mobName) or "")
+    label:SetText("|cffff2020AGGRO|r")
   else
     icon:SetTexture(ICON_WARN)
-    label:SetFormattedText("|cffffcc00Pet losing aggro — %d%%|r", math.floor(pct or 0))
-    sub:SetText(mobName and ("on " .. mobName) or "")
+    label:SetText("|cffffcc00THREAT|r")
   end
+  sub:SetText("")
   frame:Show()
   shownUntil = (tonumber(Call(GetTime)) or 0) + HIDE_AFTER
 end
@@ -544,7 +673,7 @@ local function Evaluate(force)
   if HK.Editing and HK.Editing() then
     if frame then
       icon:SetTexture(ICON_WARN)
-      label:SetText("|cffffcc00Pet losing aggro — 85%|r")
+      label:SetText("|cffffcc00THREAT|r")
       sub:SetText("(preview)")
       frame:Show()
     end
@@ -602,6 +731,11 @@ ThreatWatch.SyncTicker = SyncTicker
 function ThreatWatch.IsPolling() return ticker ~= nil end
 function ThreatWatch.IsShown() return frame ~= nil and frame:IsShown() == true end
 
+-- The alert's current wording (testable, and handy from /htk threat).
+function ThreatWatch.AlertText()
+  return (frame and frame:IsShown() and label and label.text) or nil
+end
+
 -- ---------------------------------------------------------------------------
 -- Diagnostics (/htk threat)
 -- ---------------------------------------------------------------------------
@@ -613,9 +747,17 @@ function ThreatWatch.PrintDiag()
   print(string.format("  warning: %s | percentage readout: %s",
     (db and db.enabled ~= false) and "on" or "off",
     (db and db.showPct ~= false) and "on" or "off"))
-  local livePct, livePulled = ThreatWatch.CurrentPct()
+  local livePct, livePulled, liveThreat = ThreatWatch.CurrentPct()
   print("  live aggro %: " .. (livePct and (math.floor(livePct) .. "%"
     .. (livePulled and " (you have aggro)" or "")) or "none"))
+  if livePct then
+    local gap = ThreatWatch.DamageToPull(liveThreat, livePct)
+    print(string.format("  my threat: %d | damage to pull: %s",
+      math.floor(liveThreat or 0), gap and ThreatWatch.ShortNum(gap) or "unknown"))
+    local last = ThreatWatch.Trend()
+    print("  trend: last sample " .. (last and string.format("%.1f%%", last) or "none")
+      .. " (a warning needs threat RISING, not merely high)")
+  end
   for _, unit in ipairs(MOB_UNITS) do
     if Call(UnitExists, unit) then
       local myTank, myStatus, myScaled = Call(UnitDetailedThreatSituation, "player", unit)
@@ -658,8 +800,16 @@ function ThreatWatch.Init()
 
   -- ...and the ticker's lifecycle, which is what keeps the idle cost at zero.
   HK.On("PLAYER_REGEN_DISABLED", function() SyncTicker(); Evaluate(true) end)
-  HK.On("PLAYER_REGEN_ENABLED", function() SyncTicker() end)
-  HK.On("UNIT_PET", function() SyncTicker() end)
+  -- Leaving combat or losing the pet ends the series: the next fight must not
+  -- be compared against the last one's final percentage.
+  HK.On("PLAYER_REGEN_ENABLED", function()
+    ThreatWatch.ResetTrend()
+    SyncTicker()
+  end)
+  HK.On("UNIT_PET", function()
+    ThreatWatch.ResetTrend()
+    SyncTicker()
+  end)
   HK.On("PLAYER_ENTERING_WORLD", function()
     -- The player frame may not have existed when we first anchored.
     ThreatWatch.ApplyReadoutPosition()

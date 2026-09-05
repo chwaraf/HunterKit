@@ -3,6 +3,34 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.38] - 2026-09-05
+
+### Changed
+- **The pet aggro warning is now direction-aware.** It fires only when your
+  threat is *climbing* into the threshold. Previously a percentage falling back
+  from 90% to 80% tripped the warning just as loudly as one rising into it, so
+  easing off — the correct response — was answered with more nagging. Losing
+  the mob outright still reports in either direction: that is a fact, not a
+  forecast. The trend is measured on the scaled percentage (so a pet catching
+  up with Growl reads as *falling*), keyed to the mob so a target swap starts a
+  fresh series, ignores samples older than 3s, and treats a change under half a
+  percentage point as flat rather than a rise.
+- **The warning itself is now one word.** `THREAT` while it is climbing,
+  `AGGRO` once the mob is yours — no percentage, no advice clause, no mob name.
+  The old alert stacked four things to read at the one moment you have no
+  attention to spare, all of it available at a glance elsewhere.
+- The readout widget widened to fit the new figure, and `Evaluate()` now
+  measures each mob **once** per pass instead of twice.
+
+### Added
+- **Damage-to-pull, in front of the percentage** on the aggro readout: `1.2k 74%`
+  is "about 1,200 more damage and the mob is yours". Derived from the server's
+  own threat numbers (`gap = myThreat * (100 / scaledPct - 1)`), so it inherits
+  the melee-110% / ranged-130% distance rule for free, and reads directly as
+  damage because a hunter deals ~1 threat per 1 point of damage. Shown dimmed
+  beside the percentage, and omitted rather than guessed whenever it cannot be
+  derived honestly. New toggle: **Show damage-to-pull before the %**.
+
 ## [0.9.37] - 2026-09-05
 
 ### Added

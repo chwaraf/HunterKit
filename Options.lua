@@ -687,10 +687,15 @@ function BuildWindow()
     function(v) db.threat.showPct = v; RefreshThreat() end,
     "A live threat percentage above and to the right of your player frame while you are in combat with a pet: green while safe, amber as it climbs, red once you are at the pull point. At the 'Warn at' threshold below it grows to 1.5x and pulses. 100% is the moment the mob turns on you. Quiet and passive -- no sound, no popup. Unlock the frames (/htk unlock) to drag it.")
   y = y - CHK
+  MakeCheckbox(content, y, "Show damage-to-pull before the %",
+    function() return db.threat.showGap end,
+    function(v) db.threat.showGap = v; RefreshThreat() end,
+    "Prefixes the percentage with roughly how much more damage you could deal before taking the mob, e.g. \"1.2k 74%\". Derived from the game's own threat numbers; a hunter's shots are about 1 threat per 1 damage, so it reads directly as damage. An estimate -- Growl landing or a pet crit moves the target.")
+  y = y - CHK
   MakeCheckbox(content, y, "Also warn me on screen (sound + alert)",
     function() return db.threat.enabled end,
     function(v) db.threat.enabled = v; RefreshThreat() end,
-    "Off by default. Adds an interrupting centre-screen alert and a sound when your threat closes on your pet's on a mob the PET is tanking, and a louder one if the mob actually switches to you. The percentage readout above works with or without this.")
+    "Off by default. A plain THREAT flash and a sound when your threat is CLIMBING and reaches the threshold on a mob the pet is tanking -- silent while it falls back, so easing off stops the warning. Shows AGGRO if the mob does switch to you.")
   y = y - CHK
   MakeSlider(content, y, "Warn at", 40, 100, 5,
     function() return db.threat.threshold or 80 end,

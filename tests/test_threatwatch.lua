@@ -75,6 +75,32 @@ local function Scene(o)
   d.showPct       = o.showPct ~= false
   d.pctMoved      = o.pctMoved or false
   TW.RescanSettings()
+
+  -- Seed the trend so the scene reads as threat that has just CLIMBED to the
+  -- stated numbers: run one evaluation against a slightly lower snapshot
+  -- first. Without this every scene would look flat and the (now
+  -- direction-aware) warning would never fire. Tests that care about the
+  -- direction itself pass rising = false and drive the samples by hand.
+  local real = HKTest.state.threat
+  TW.ResetTrend()
+  local drop = (o.rising ~= false) and 10 or 0    -- 0 = flat baseline
+  local lower = {}
+  for mob, entry in pairs(real) do
+    lower[mob] = { pet = entry.pet }
+    if entry.player then
+      local copy = {}
+      for k, v in pairs(entry.player) do copy[k] = v end
+      copy.scaled = math.max(0, (tonumber(copy.scaled) or 0) - drop)
+      lower[mob].player = copy
+    end
+  end
+  HKTest.state.threat = lower
+  TW.Evaluate()
+  HKTest.state.threat = real
+  HKTest.state.now = HKTest.state.now + 0.5     -- fresh sample, same series
+  HKTest.soundsPlayed = {}
+  HKTest.threatCalls = 0
+
   return d
 end
 
@@ -598,6 +624,131 @@ check("/htk threat runs with no pet", pcall(TW.PrintDiag) == true)
 UnitDetailedThreatSituation = nil
 check("/htk threat runs with no threat API", pcall(TW.PrintDiag) == true)
 UnitDetailedThreatSituation = realUDTS
+
+
+-- ---------------------------------------------------------------------------
+-- 11) DIRECTION: high threat alone is not a warning -- it has to be climbing.
+--
+-- The point of the redesign. A hunter easing off, or a pet catching up with
+-- Growl, walks the percentage back DOWN through the threshold; the old code
+-- shouted just as loudly on the way down as on the way up, which is the noise
+-- this group exists to prevent.
+-- ---------------------------------------------------------------------------
+
+-- Re-points the scene's threat at a new player percentage and re-evaluates, so
+-- the module sees a genuine second sample in the same series.
+local function Move(mob, toPct)
+  HKTest.state.now = HKTest.state.now + 0.5      -- fresh, not stale
+  HKTest.state.threat[mob].player.scaled = toPct
+  return TW.Evaluate()
+end
+
+Scene({ playerPct = 90, rising = false })
+state = Move("pettarget", 80)
+check("falling 90 -> 80 does NOT warn", state == nil, tostring(state))
+
+Scene({ playerPct = 90, rising = false })
+state = Move("pettarget", 95)
+check("rising 90 -> 95 does warn", state == "warn", tostring(state))
+
+Scene({ playerPct = 70, rising = false })
+state = Move("pettarget", 85)
+check("rising through the threshold warns", state == "warn", tostring(state))
+
+-- Flat is not rising: a plateau at 95% must not re-trigger on every tick.
+Scene({ playerPct = 95, rising = false })
+state = Move("pettarget", 95.2)
+check("a plateau (95 -> 95.2) is not a rise", state == nil, tostring(state))
+
+Scene({ playerPct = 95, rising = false })
+state = Move("pettarget", 96)
+check("a 1-point climb beats the noise floor", state == "warn", tostring(state))
+
+-- Direction only gates the WARNING. Actually losing the mob is a fact.
+Scene({ playerPct = 100, playerTanking = true, rising = false })
+state = Move("pettarget", 100)
+check("already pulled reports regardless of direction", state == "pulled",
+  tostring(state))
+
+-- A target swap must not compare two different mobs' percentages.
+Scene({ playerPct = 30, rising = false, guids = { pettarget = "A" } })
+HKTest.state.guids.pettarget = "B"
+state = Move("pettarget", 90)
+check("a target swap starts a fresh series (no fake rise)", state == nil,
+  tostring(state))
+
+-- A stale sample from a previous fight must not read as a rise either.
+Scene({ playerPct = 30, rising = false })
+HKTest.state.now = HKTest.state.now + 60
+HKTest.state.threat.pettarget.player.scaled = 90
+state = TW.Evaluate()
+check("a stale sample is not comparable", state == nil, tostring(state))
+
+-- ---------------------------------------------------------------------------
+-- 12) DAMAGE TO PULL: the figure in front of the percentage
+-- ---------------------------------------------------------------------------
+check("at half the pull point, the gap equals your own threat",
+  math.abs(TW.DamageToPull(1000, 50) - 1000) < 0.01,
+  tostring(TW.DamageToPull(1000, 50)))
+check("at 80% the gap is a quarter of your threat",
+  math.abs(TW.DamageToPull(4000, 80) - 1000) < 0.01,
+  tostring(TW.DamageToPull(4000, 80)))
+check("at the pull point the gap is zero", TW.DamageToPull(5000, 100) == 0,
+  tostring(TW.DamageToPull(5000, 100)))
+check("no threat yet: no honest figure", TW.DamageToPull(0, 50) == nil)
+check("a percentage too small to divide by: no figure",
+  TW.DamageToPull(1000, 0) == nil)
+check("nonsense inputs do not produce a nonsense number",
+  TW.DamageToPull(nil, nil) == nil)
+
+check("plain numbers stay plain", TW.ShortNum(940) == "940", TW.ShortNum(940))
+check("thousands get one decimal", TW.ShortNum(1234) == "1.2k", TW.ShortNum(1234))
+check("five figures drop the decimal", TW.ShortNum(15400) == "15k",
+  TW.ShortNum(15400))
+
+-- ...and it reaches the readout, in front of the percentage.
+Scene({ threat = { pettarget = {
+          player = { scaled = 50, tanking = false, value = 2000 },
+          pet    = { scaled = 100, tanking = true } } } })
+TW.UpdateReadout()
+local txt = TW.ReadoutText()
+check("the readout carries the damage that would pull", txt:find("2%.0k") ~= nil, txt)
+check("...and still the percentage", txt:find("50%%") ~= nil, txt)
+check("...with the gap in FRONT of the percentage",
+  txt:find("2%.0k") < txt:find("50%%"), txt)
+
+HK.db.threat.showGap = false
+TW.RescanSettings()
+TW.UpdateReadout()
+check("the gap can be switched off, leaving the bare percentage",
+  TW.ReadoutText() == "50%", tostring(TW.ReadoutText()))
+HK.db.threat.showGap = true
+TW.RescanSettings()
+
+-- ---------------------------------------------------------------------------
+-- 13) A SIMPLER ALERT: one word, no essay
+-- ---------------------------------------------------------------------------
+Scene({ playerPct = 70, rising = false,
+        names = { pettarget = "Ragged Timberling" } })
+HKTest.state.now = HKTest.state.now + 0.5
+HKTest.state.threat.pettarget.player.scaled = 88
+TW.Tick(true)
+local text = TW.AlertText() or ""
+check("the warning says THREAT and nothing more",
+  text:find("THREAT") ~= nil, text)
+-- Strip the colour escape before looking for digits: |cffffcc00 is full of them.
+local bare = text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+check("...no percentage in the alert (it is already on the readout)",
+  bare:find("%d") == nil, bare)
+check("...and no mob name to read mid-fight",
+  text:find("Timberling") == nil, text)
+
+Scene({ playerPct = 100, playerTanking = true, rising = false })
+HKTest.state.now = HKTest.state.now + 0.5
+HKTest.state.threat.pettarget.player.scaled = 100
+TW.Tick(true)
+text = TW.AlertText() or ""
+check("losing the mob says AGGRO", text:find("AGGRO") ~= nil, text)
 
 say(string.format("\n%d passed, %d failed", passes, #failures))
 if #failures > 0 then
