@@ -3,6 +3,26 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.54] - 2026-09-05
+
+### Changed
+- **The ranged and melee bars now read the same way.** They are stacked on top
+  of each other and mean the same thing -- "this weapon is charging toward its
+  next hit" -- but they had drifted into two different visual vocabularies:
+  different track shades (black at 55% vs slate at 90%), a different charging
+  colour (green vs amber), a "ready" state that only the melee bar had, and a
+  1px sliver left behind by the ranged bar when idle where the melee bar showed
+  a clean empty bed. Both are now driven from one shared palette:
+  - **green** -- winding up, free to act
+  - **pale green** -- ready to swing or fire now
+  - **red** -- ranged only: acting here clips the shot
+  The only remaining differences are real mechanics, not styling: the ranged bar
+  has a lockout zone and a weave marker because Auto Shot has a 0.5s cast, and
+  melee in Era does not. A test compares the two bars' colours directly, so they
+  cannot drift apart again.
+- The options legend is updated to match, and now explains that the lower bar
+  uses the same colours for the same meanings.
+
 ## [0.9.53] - 2026-09-05
 
 ### Fixed

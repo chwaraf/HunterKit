@@ -103,6 +103,29 @@ local SPELL_MULTI = 2643
 -- After this many swing-lengths with no observed swing we stop treating the
 -- melee cycle as live. Two gives a full swing of slack for a missed combat-log
 -- line before the bar goes quiet, without animating forever after you walk away.
+-- ---------------------------------------------------------------------------
+-- One palette for BOTH cycles.
+--
+-- The ranged and melee bars had grown separate hardcoded colours: different
+-- track shades (black 0.55 vs slate 0.90) and a "ready" state that only the
+-- melee bar had. Two bars stacked on top of each other that mean the same
+-- thing -- "this weapon is charging toward its next hit" -- must be read the
+-- same way, or the player has to learn two vocabularies at a glance.
+--
+-- The rule is now identical for both: CHARGING while the swing is coming up,
+-- READY the moment it is available to spend, LOCKED while acting would cost
+-- you the shot (ranged only -- melee has no cast lockout in Era).
+-- ---------------------------------------------------------------------------
+local COL_TRACK    = { 0.10, 0.10, 0.12, 0.85 }   -- unfilled bed, both bars
+local COL_CHARGING = { 0.20, 0.90, 0.30, 0.90 }   -- winding up
+local COL_READY    = { 0.55, 1.00, 0.55, 1.00 }   -- available to spend
+local COL_LOCKED   = { 1.00, 0.30, 0.10, 0.95 }   -- acting now clips the shot
+local COL_ZONE     = { 0.75, 0.12, 0.12, 0.55 }   -- the lockout region
+
+local function Paint(tex, c)
+  if tex and c then tex:SetVertexColor(c[1], c[2], c[3], c[4]) end
+end
+
 local MELEE_IDLE_AFTER = 2
 local DEFAULT_TRAVEL = 2.5
 local MELEE_MIN_SPEED = 0.5
@@ -402,19 +425,19 @@ local function BuildBar()
   track = frame:CreateTexture(nil, "BACKGROUND")
   track:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
   track:SetTexture("Interface\\Buttons\\WHITE8x8")
-  track:SetVertexColor(0, 0, 0, 0.55)
+  Paint(track, COL_TRACK)
 
   -- The lockout zone, pinned to the RIGHT edge: the bar fills left-to-right
   -- toward the shot, so "the end" is where the danger is.
   castZone = frame:CreateTexture(nil, "BORDER")
   castZone:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
   castZone:SetTexture("Interface\\Buttons\\WHITE8x8")
-  castZone:SetVertexColor(0.75, 0.12, 0.12, 0.55)
+  Paint(castZone, COL_ZONE)
 
   fill = frame:CreateTexture(nil, "ARTWORK")
   fill:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
   fill:SetTexture("Interface\\Buttons\\WHITE8x8")
-  fill:SetVertexColor(0.2, 0.9, 0.3, 0.9)
+  Paint(fill, COL_CHARGING)
 
   -- A hairline at the safe/locked boundary. The eye tracks a line crossing a
   -- mark far better than it judges a colour change.
@@ -438,10 +461,10 @@ local function BuildBar()
   -- waiting bar rather than nothing at all.
   meleeTrack = frame:CreateTexture(nil, "BACKGROUND")
   meleeTrack:SetTexture("Interface\\Buttons\\WHITE8x8")
-  meleeTrack:SetVertexColor(0.22, 0.22, 0.26, 0.90)
+  Paint(meleeTrack, COL_TRACK)
   meleeFill = frame:CreateTexture(nil, "ARTWORK")
   meleeFill:SetTexture("Interface\\Buttons\\WHITE8x8")
-  meleeFill:SetVertexColor(0.85, 0.7, 0.2, 0.9)
+  Paint(meleeFill, COL_CHARGING)
 
   label = frame:CreateFontString(nil, "OVERLAY")
   label:SetFont(STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF", 11, "OUTLINE")
@@ -550,10 +573,13 @@ local function Redraw(now)
     local done = 1 - (remaining / math.max(total, MIN_SPEED))
     if done < 0 then done = 0 elseif done > 1 then done = 1 end
     fill:SetWidth(math.max(1, w * done))
+    -- Same three-state rule as the melee bar below.
     if locked then
-      fill:SetVertexColor(1, 0.3, 0.1, 0.95)     -- hold still
+      Paint(fill, COL_LOCKED)                    -- acting now clips the shot
+    elseif remaining <= CAST_TIME then
+      Paint(fill, COL_READY)                     -- about to fire
     else
-      fill:SetVertexColor(0.2, 0.9, 0.3, 0.9)    -- free to act
+      Paint(fill, COL_CHARGING)                  -- winding up, free to act
     end
 
     if db.showText ~= false then
@@ -574,9 +600,13 @@ local function Redraw(now)
       label:SetText("")
     end
   else
-    fill:SetWidth(1)
+    -- No live ranged cycle: an empty bed, exactly like the melee bar shows when
+    -- it has seen no swing. Hiding the fill (rather than leaving a 1px sliver)
+    -- makes the two bars read identically when idle.
+    fill:Hide()
     label:SetText("")
   end
+  if remaining then fill:Show() end
 
   -- The melee cycle. The TRACK is always visible while weaving is enabled, even
   -- before we have seen a swing -- the speedrunner pattern is to shoot a distant
@@ -595,9 +625,9 @@ local function Redraw(now)
         meleeFill:SetWidth(math.max(1, w * done))
         -- Green once the swing is actually available to spend.
         if mIn <= 0 then
-          meleeFill:SetVertexColor(0.3, 0.9, 0.3, 0.9)
+          Paint(meleeFill, COL_READY)            -- swing available to spend
         else
-          meleeFill:SetVertexColor(0.85, 0.7, 0.2, 0.9)
+          Paint(meleeFill, COL_CHARGING)         -- winding up
         end
         meleeFill:Show()
       else
@@ -702,7 +732,7 @@ function ShotTimer.Refresh()
     if HK.Editing and HK.Editing() then
       -- A static, readable sample so the bar can be dragged into place.
       fill:SetWidth((tonumber(db.width) or 220) * 0.6)
-      fill:SetVertexColor(0.2, 0.9, 0.3, 0.9)
+      Paint(fill, COL_CHARGING)
       label:SetText("1.2s")
       delayText:SetText("|cffff4040+0.34s|r")
       BindOnUpdate(false)          -- never animate a frame being dragged
@@ -967,6 +997,18 @@ end
 function ShotTimer._ClearMelee() meleeSwungAt = nil end
 ShotTimer._OnCombatLog = OnCombatLog
 -- Test seam: how far the melee fill has progressed, in pixels.
+function ShotTimer.RangedTrackColor()
+  if not track then return nil end
+  return track:GetVertexColor()
+end
+function ShotTimer.FillColor()
+  if not fill or not fill:IsShown() then return nil end
+  return fill:GetVertexColor()
+end
+function ShotTimer.MeleeFillColor()
+  if not meleeFill or not meleeFill:IsShown() then return nil end
+  return meleeFill:GetVertexColor()
+end
 function ShotTimer.MeleeFillWidth()
   if not meleeFill or not meleeFill:IsShown() then return 0 end
   return meleeFill:GetWidth() or 0

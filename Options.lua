@@ -458,7 +458,7 @@ local function AddShotBarLegend(content, y)
   bar:SetPoint("TOPLEFT", content, "TOPLEFT", 4, y)
   bar:SetSize(barW, LEGEND_BAR_H)
   bar:SetTexture("Interface\\Buttons\\WHITE8x8")
-  bar:SetVertexColor(0.10, 0.10, 0.10, 0.85)
+  bar:SetVertexColor(0.10, 0.10, 0.12, 0.85)     -- the shared track colour
 
   -- Free (green) portion: everything before the 0.5s cast lock.
   local free = content:CreateTexture(nil, "OVERLAY")
@@ -486,13 +486,14 @@ local function AddShotBarLegend(content, y)
   melee:SetPoint("TOPLEFT", bar, "BOTTOMLEFT", 0, -2)
   melee:SetSize(barW * 0.45, 5)
   melee:SetTexture("Interface\\Buttons\\WHITE8x8")
-  melee:SetVertexColor(0.85, 0.70, 0.20, 0.95)
+  melee:SetVertexColor(0.20, 0.90, 0.30, 0.90)   -- same green as the shot bar
 
   local lines = {
     { "|cff33e64dGreen|r", "free time -- move, weave, cast" },
     { "|cffd93333Red|r",   "0.5s lockout: acting here clips the shot" },
     { "|cff66bfffBlue line|r", "last moment you can leave for melee" },
-    { "|cffd9b333Amber strip|r", "your melee swing, from the combat log" },
+    { "|cff33e64dLower bar|r", "your melee swing -- same colours, same meaning" },
+    { "|cff8cff8cPale green|r", "that weapon is ready to swing or fire now" },
     { "|cff66ccffWEAVE|r", "shown when the round trip actually fits" },
     { "|cffff4040+0.34s|r", "how late the last shot really landed" },
     { "|cff55dd55Aimed / Multi|r", "green = ready to spend, dark = on cooldown" },

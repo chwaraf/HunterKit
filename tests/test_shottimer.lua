@@ -872,6 +872,82 @@ if regen then regen() end
 check("leaving combat still clears the cycle", ST.IsIdle() == true)
 HKTest.state.playerCombat = false
 
+
+-- ---------------------------------------------------------------------------
+-- 27) THE TWO BARS MUST READ THE SAME WAY
+--
+-- They are stacked on top of each other and mean the same thing -- "this weapon
+-- is charging toward its next hit" -- so they must share a visual vocabulary.
+-- They had drifted apart: different track shades (black vs slate), a different
+-- charging colour (green vs amber), and a "ready" state only the melee bar had.
+-- Both now come from one palette; the only differences left are real mechanics.
+-- ---------------------------------------------------------------------------
+local function SameColor(a, b)
+  if not a or not b then return false end
+  for i = 1, 4 do
+    if math.abs((a[i] or 0) - (b[i] or 0)) > 0.001 then return false end
+  end
+  return true
+end
+local function Grab(fn)
+  local r, g, b, al = fn()
+  if not r then return nil end
+  return { r, g, b, al }
+end
+
+HKTest.state.playerCombat = true
+HKTest.state.meleeSpeed = 2.4
+HK.db.shottimer.weave = true
+ST.RescanSettings()
+
+check("both bars sit on the same coloured track",
+  SameColor(Grab(ST.RangedTrackColor), Grab(ST.MeleeTrackColor)),
+  "the unfilled bed must look the same for both")
+
+-- Mid-cycle: both winding up, both must be the same "charging" colour.
+Shooting(3.3, 11000)
+ST._OnMeleeSwing(11000)
+At(11000.5); ST.OnUpdate()
+local rCharge = Grab(ST.FillColor)
+local mCharge = Grab(ST.MeleeFillColor)
+check("a charging ranged bar and a charging melee bar match",
+  SameColor(rCharge, mCharge),
+  string.format("ranged %s vs melee %s",
+    table.concat(rCharge or {}, ","), table.concat(mCharge or {}, ",")))
+
+-- Both must GROW toward the hit, not drain away from it.
+local r1, m1 = ST.FillWidth(), ST.MeleeFillWidth()
+At(11001.4); ST.OnUpdate()
+check("both bars fill toward the hit, in the same direction",
+  ST.FillWidth() > r1 and ST.MeleeFillWidth() > m1,
+  string.format("ranged %.0f->%.0f melee %.0f->%.0f",
+    r1, ST.FillWidth(), m1, ST.MeleeFillWidth()))
+
+-- A melee swing that has come up reads READY; so does a ranged shot about to
+-- fire. Same colour for the same meaning.
+ST._OnMeleeSwing(11000 - 2.4)          -- swing is due now
+At(11000.6); ST.OnUpdate()
+local mReady = Grab(ST.MeleeFillColor)
+Shooting(3.3, 11010)
+At(11010 + 3.3 - 0.2); ST.OnUpdate()   -- inside the 0.5s cast window
+local rLocked = Grab(ST.FillColor)
+check("a ready melee swing is not drawn as though it were charging",
+  not SameColor(mReady, mCharge), "ready and charging must differ")
+check("the ranged lockout is its own distinct colour",
+  not SameColor(rLocked, rCharge) and not SameColor(rLocked, mReady),
+  "the clip warning must not be confusable with anything else")
+
+-- Idle: neither bar leaves a stray fill behind.
+ST._SetRepeating(false)
+ST._ClearMelee()
+At(11100)
+ST.Refresh()
+check("an idle ranged bar shows no fill", ST.FillWidth() <= 1,
+  string.format("%.1f", ST.FillWidth()))
+check("an idle melee bar shows no fill", ST.MeleeFillWidth() <= 1,
+  string.format("%.1f", ST.MeleeFillWidth()))
+HKTest.state.playerCombat = false
+
 say(string.format("\n%d passed, %d failed", passes, #failures))
 if #failures > 0 then
   for _, f in ipairs(failures) do say("  - " .. f) end
