@@ -3,6 +3,24 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.43] - 2026-09-05
+
+### Fixed
+- **Frames stayed glued to the cursor after releasing the mouse** (shot timer
+  and threat percentage). `OnDragStart` pins a frame to the cursor with an
+  `OnUpdate` loop; `OnDragStop` called the feature's own `onUpdate` callback
+  *instead of* clearing that loop, which assumed every such callback
+  unconditionally installs a script. Two do not -- the shot timer re-binds only
+  while animating, the threat readout only while pulsing -- so when neither was
+  active nothing replaced the drag loop and the frame kept following the mouse.
+  The cursor loop is now always cleared first and the re-bind is purely
+  additive, so a conditional callback is safe.
+- **"Reset positions" ignored the shot timer and both threat frames.** It forced
+  defaults for a hardcoded list of four sections, so every frame added since was
+  silently left out. It now resets position/size keys by name across all of
+  `HK.defaults`, meaning a new draggable is covered the day it is added.
+  Non-position settings (thresholds, travel time, food prefs) are untouched.
+
 ## [0.9.42] - 2026-09-05
 
 ### Added

@@ -1066,13 +1066,20 @@ function Positions.SetLock(locked)
         dd.dragSetup = true
         f:SetScript("OnDragStop", function(self)
           draggingFrame = nil
-          -- Re-bind the feature's own persistent OnUpdate loop (e.g. the passive
-          -- pulse animation) so a drag doesn't leave the frame's script blanked.
-          if dd.opts.onUpdate then
-            dd.opts.onUpdate()
-          else
-            self:SetScript("OnUpdate", nil)
-          end
+          -- ALWAYS detach the cursor-pinning loop installed by OnDragStart,
+          -- BEFORE giving the feature a chance to re-bind its own.
+          --
+          -- This used to be an either/or: a frame with an `onUpdate` option got
+          -- opts.onUpdate() called INSTEAD of the clear. That silently assumed
+          -- every such callback unconditionally sets a script. Two of them do
+          -- not -- ShotTimer re-binds only `if onUpdateBound`, the threat
+          -- readout only `if pctHot` -- so when the bar was not animating,
+          -- nothing replaced the drag loop and the frame stayed pinned to the
+          -- cursor forever, still following it after the mouse button was
+          -- released. Clearing first makes the re-bind purely additive, so a
+          -- conditional callback is safe.
+          self:SetScript("OnUpdate", nil)
+          if dd.opts.onUpdate then dd.opts.onUpdate() end
           -- Store the offset for the anchor-based apply, but DO NOT re-apply here:
           -- the frame is already exactly where the user dropped it (pinned to the
           -- cursor). Re-applying against the anchor right now can momentarily move
@@ -1135,21 +1142,28 @@ function Positions.Reset()
   -- that are nil, so a previously-saved offset would never be reset — that was
   -- the reason the feed button could get stuck somewhere odd. Force the default
   -- position fields here; leave food prefs / sound / other settings untouched.
+  -- Every position-ish key is restored by NAME rather than from a hardcoded
+  -- per-section list. The old code listed four sections explicitly, so each new
+  -- movable frame (the shot timer and both threat frames) was silently left out
+  -- of "reset positions" until someone remembered to add it. Driving this from
+  -- the defaults table means a new draggable is covered the day it is added.
+  --
+  -- Only position/size fields are touched: food prefs, sounds and thresholds
+  -- must survive a position reset.
   local defs = HK.defaults
-  local function force(section, keys)
+  local POS_KEYS = {
+    offsetX = true, offsetY = true, parent = true, size = true,
+    pinX = true, pinY = true, moved = true,
+    pctOffsetX = true, pctOffsetY = true, pctMoved = true,
+    width = true, height = true,
+  }
+  for section, sdef in pairs(defs) do
     local s = HK.db[section]
-    if s and defs[section] then
-      for _, k in ipairs(keys) do s[k] = defs[section][k] end
+    if type(s) == "table" and type(sdef) == "table" then
+      for k, v in pairs(sdef) do
+        if POS_KEYS[k] then s[k] = v end
+      end
     end
-  end
-  force("feed",  { "offsetX", "offsetY", "parent", "size" })
-  force("range", { "offsetX", "offsetY", "parent", "size" })
-  force("pulse", { "offsetX", "offsetY", "size" })
-  force("mend",  { "offsetX", "offsetY", "size", "pinX", "pinY" })
-  -- Clear the "user dragged this" flag so each frame returns to its default
-  -- anchor-frame position (rather than staying pinned to the absolute spot).
-  for _, sec in ipairs({ "feed", "range", "pulse", "mend" }) do
-    if HK.db[sec] then HK.db[sec].moved = false end
   end
   -- refresh positions
   for _, d in pairs(HK.draggables) do
@@ -1159,5 +1173,7 @@ function Positions.Reset()
   if HK.Range then HK.Range.RescanSettings() end
   if HK.PassivePulse then HK.PassivePulse.RescanSettings() end
   if HK.MendMark then HK.MendMark.RescanSettings() end
+  if HK.ThreatWatch then HK.ThreatWatch.RescanSettings() end
+  if HK.ShotTimer then HK.ShotTimer.RescanSettings() end
   print("|cff39ff14HunterKit|r positions reset to defaults.")
 end

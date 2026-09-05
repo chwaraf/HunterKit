@@ -7,7 +7,7 @@ For **WoW Classic Era & Hardcore** (patch 1.15.x).
 A self-contained, dependency-free (no Ace3/LibDBIcon) addon built for the
 hardcore-first hunter. Every action is a deliberate click; nothing is automated.
 
-Current version: **0.9.42** — see [`CHANGELOG.md`](CHANGELOG.md).
+Current version: **0.9.43** — see [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Features
 

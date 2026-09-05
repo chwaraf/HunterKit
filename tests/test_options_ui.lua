@@ -54,7 +54,8 @@ check("options window exists", win ~= nil)
 check("options content exists", content ~= nil)
 check("scroll area exists", scrollArea ~= nil)
 if not (win and content and scrollArea) then
-  say(string.format("\n%d passed, %d failed", passes, #failures))
+  
+say(string.format("\n%d passed, %d failed", passes, #failures))
   for _, f in ipairs(failures) do say("  - " .. f) end
   error(#failures .. " test(s) failed")
 end
@@ -405,6 +406,132 @@ for _, f in ipairs(HKTest.frames) do
   end
 end
 check("feed icon swap option is present in the UI", feedIconOpt)
+
+-- ---------------------------------------------------------------------------
+-- 5b) RELEASING THE MOUSE MUST RELEASE THE FRAME
+--
+-- Regression: OnDragStart pins the frame to the cursor with an OnUpdate loop.
+-- OnDragStop used to call the feature's own opts.onUpdate() *instead of*
+-- clearing that loop, assuming the callback always installs a script. Two do
+-- not (ShotTimer re-binds only while animating, the threat readout only while
+-- pulsing), so those frames stayed glued to the cursor after release.
+--
+-- Driven through the real drag scripts for EVERY registered draggable, so a
+-- future frame with a conditional onUpdate cannot regress this either.
+-- ---------------------------------------------------------------------------
+HK.db.shottimer.enabled = true
+if HK.ShotTimer then HK.ShotTimer.RescanSettings() end
+HK.db.threat.showPct = true
+if HK.ThreatWatch then HK.ThreatWatch.RescanSettings() end
+
+-- Unlock everything (the mend marker aside, which has its own anchor rules).
+if HK.Positions.IsLocked and HK.Positions.IsLocked() == false then
+  HK.Positions.ToggleLock()
+end
+pcall(HK.Positions.ToggleLock)      -- -> unlocked
+
+-- Read the frame's current anchor offset. SetPoint APPENDS and ClearAllPoints
+-- empties, so after a clear+set the newest point is points[1] -- comparing
+-- "points[1]" objects before/after is meaningless. Compare the NUMBERS.
+local function anchorOf(f)
+  local p = f.points and f.points[#f.points]
+  if not p then return "none" end
+  return string.format("%s@%.1f,%.1f", tostring(p[1]),
+    tonumber(p[4]) or 0, tonumber(p[5]) or 0)
+end
+
+local dragged, glued = 0, {}
+for name, d in pairs(HK.draggables) do
+  local f = d.frame
+  if f and f.scripts and f.scripts["OnDragStart"] and HK.DraggableActive(d) then
+    dragged = dragged + 1
+    HKTest.cursorX, HKTest.cursorY = 400, 400
+    f.scripts["OnDragStart"](f)
+    check("drag start pins " .. name .. " to the cursor",
+      f.scripts["OnUpdate"] ~= nil)
+    HKTest.cursorX, HKTest.cursorY = 600, 500
+    f.scripts["OnUpdate"](f)
+    f.scripts["OnDragStop"](f)
+
+    -- Released. Move the cursor a long way and run whatever loop is still
+    -- attached: a feature animation is fine, one that MOVES the frame is the
+    -- bug. Compare actual anchor coordinates.
+    local before = anchorOf(f)
+    HKTest.cursorX, HKTest.cursorY = 1200, 900
+    if f.scripts["OnUpdate"] then pcall(f.scripts["OnUpdate"], f, 0.1) end
+    local after = anchorOf(f)
+    if before ~= after then glued[#glued + 1] = name .. " " .. before .. "->" .. after end
+    check("releasing the button unglues " .. name .. " from the cursor",
+      before == after, before .. " -> " .. after)
+  end
+end
+check("the drag release test actually exercised some frames", dragged >= 2,
+  "dragged " .. tostring(dragged))
+check("no frame follows the cursor after release",
+  #glued == 0, table.concat(glued, "; "))
+
+pcall(HK.Positions.ToggleLock)      -- back to locked
+
+-- ---------------------------------------------------------------------------
+-- 5c) RESET POSITIONS MUST RESET *EVERY* MOVABLE FRAME
+--
+-- Regression: Positions.Reset() forced defaults for a hardcoded list of four
+-- sections, so the shot timer and both threat frames kept their dragged
+-- position forever. Now driven from the defaults table.
+-- ---------------------------------------------------------------------------
+local POS = { "offsetX", "offsetY", "moved", "pinX", "pinY",
+              "pctOffsetX", "pctOffsetY", "pctMoved" }
+
+-- Shove every position field of every section to a junk value.
+local dirty = {}
+for section, sdef in pairs(HK.defaults) do
+  if type(sdef) == "table" and type(HK.db[section]) == "table" then
+    for _, k in ipairs(POS) do
+      if sdef[k] ~= nil then
+        HK.db[section][k] = (type(sdef[k]) == "boolean") and true or 999
+        dirty[#dirty + 1] = section .. "." .. k
+      end
+    end
+  end
+end
+check("there are dirty positions to reset", #dirty > 0)
+
+-- Something that must NOT be reset by a *position* reset.
+HK.db.threat.threshold = 55
+HK.db.shottimer.travel = 3.7
+
+HK.Positions.Reset()
+
+local stillDirty = {}
+for section, sdef in pairs(HK.defaults) do
+  if type(sdef) == "table" and type(HK.db[section]) == "table" then
+    for _, k in ipairs(POS) do
+      if sdef[k] ~= nil and HK.db[section][k] ~= sdef[k] then
+        stillDirty[#stillDirty + 1] = section .. "." .. k ..
+          "=" .. tostring(HK.db[section][k])
+      end
+    end
+  end
+end
+check("reset restores the position of every movable frame",
+  #stillDirty == 0, table.concat(stillDirty, " "))
+
+-- Named explicitly: these are the three that were missed before.
+check("reset covers the shot timer", HK.db.shottimer.offsetX == HK.defaults.shottimer.offsetX
+  and HK.db.shottimer.offsetY == HK.defaults.shottimer.offsetY
+  and HK.db.shottimer.moved == false,
+  tostring(HK.db.shottimer.offsetX) .. "," .. tostring(HK.db.shottimer.offsetY))
+check("reset covers the threat warning", HK.db.threat.offsetX == HK.defaults.threat.offsetX
+  and HK.db.threat.moved == false)
+check("reset covers the threat percentage",
+  HK.db.threat.pctOffsetX == HK.defaults.threat.pctOffsetX
+  and HK.db.threat.pctMoved == false,
+  tostring(HK.db.threat.pctOffsetX))
+
+check("a position reset leaves other settings alone",
+  HK.db.threat.threshold == 55 and HK.db.shottimer.travel == 3.7,
+  tostring(HK.db.threat.threshold) .. " " .. tostring(HK.db.shottimer.travel))
+
 
 say(string.format("\n%d passed, %d failed", passes, #failures))
 if #failures > 0 then
