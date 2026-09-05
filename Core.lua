@@ -6,7 +6,7 @@
 
 local ADDON_NAME, HK = ...
 
-HK.version = "0.9.43"
+HK.version = "0.9.44"
 
 -- ---------------------------------------------------------------------------
 -- Defaults (schema). This is the source of truth for the options window and
@@ -14,7 +14,7 @@ HK.version = "0.9.43"
 -- ---------------------------------------------------------------------------
 HK.defaults = {
   enabled   = true,
-  dbVersion = 27,
+  dbVersion = 28,
   firstRun  = true,
 
   ui = {
@@ -88,9 +88,19 @@ HK.defaults = {
     enabled   = false,   -- opt-in: a persistent combat bar is a big UI change
     width     = 220,
     height    = 18,
+    -- Default position: BELOW the player/target frames and clear of HunterKit's
+    -- own icons. The alert stack sits above centre (threat +120, pulse +150),
+    -- so anything positive collides with it; the unit frames and their
+    -- buff/debuff rows occupy the upper-left and upper-middle of the screen.
+    -- -210 puts the bar under all of that, above the action bars, where it does
+    -- not cover auras you need to read at a glance.
     offsetX   = 0,
-    offsetY   = -140,    -- below centre, out of the way of the alert stack
+    offsetY   = -210,
     moved     = false,
+    -- Keep the bar on screen even when not shooting. Off by default (an empty
+    -- bar is clutter), but some players want a fixed, always-there readout
+    -- rather than one that appears and vanishes mid-fight.
+    always    = false,
     showText  = true,    -- the "1.2s of free time left" countdown
     showDelay = true,    -- the measured "+0.34s" clip readout
     weave     = true,    -- melee weave marker + melee swing strip
@@ -824,6 +834,18 @@ local function LoadDB()
   if db.dbVersion < 24 then
     if type(db.threat) == "table" then db.threat.enabled = false end
     db.dbVersion = 24
+  end
+
+  -- v27 -> v28: the shot bar's default position moved down (-140 -> -210). At
+  -- -140 it sat over the target frame's buff/debuff rows, hiding auras you need
+  -- to read mid-fight. Move it for anyone who has NOT dragged it themselves;
+  -- a hand-placed bar (moved) is never relocated.
+  if db.dbVersion < 28 then
+    if type(db.shottimer) == "table" and db.shottimer.moved ~= true then
+      db.shottimer.offsetX = HK.defaults.shottimer.offsetX
+      db.shottimer.offsetY = HK.defaults.shottimer.offsetY
+    end
+    db.dbVersion = 28
   end
 
   if db.dbVersion < 19 then

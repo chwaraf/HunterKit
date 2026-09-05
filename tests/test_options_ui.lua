@@ -156,10 +156,17 @@ local noValue, templateTextVisible, lowVisible, highVisible, overlapping = 0, 0,
 local valueWidths = {}
 for _, sl in ipairs(sliders) do
   if isCompact(sl) then
+    -- A slider may format its number (e.g. the weave trip stores tenths but
+    -- displays "2.5s"), so match the DIGITS rather than a bare %d -- the point
+    -- of this check is that the current value is legible before you touch it,
+    -- not that it is rendered in any particular way.
     local want = string.format("%d", sl:GetValue())
+    local raw  = tostring(sl:GetValue())
     local found = false
     for _, fs in ipairs(content.fontstrings) do
-      if fs:IsShown() and fs:GetText() == want then found = true end
+      local txt = fs:IsShown() and fs:GetText() or nil
+      if txt and txt ~= "" and (txt == want or txt == raw
+        or txt:gsub("[^%d]", "") == want) then found = true end
     end
     if not found then noValue = noValue + 1 end
   elseif not ValueTextFor(sl) then noValue = noValue + 1 end
@@ -532,6 +539,55 @@ check("a position reset leaves other settings alone",
   HK.db.threat.threshold == 55 and HK.db.shottimer.travel == 3.7,
   tostring(HK.db.threat.threshold) .. " " .. tostring(HK.db.shottimer.travel))
 
+
+-- ---------------------------------------------------------------------------
+-- 5d) LABELS MUST NOT BE CLIPPED MID-WORD
+--
+-- Regression: compact slider labels were pinned to a hardcoded 200px with
+-- SetWordWrap(false), so "Weave round trip (tenths of a sec)" was cut to
+-- "...of a". The width is now derived from the space actually left of the bar.
+-- Approximated at ~5.6px per character (GameFontNormal, 12pt) -- the stub has
+-- no font metrics, so this catches gross overflow rather than exact pixels.
+-- ---------------------------------------------------------------------------
+local CHAR_W = 5.6
+local clipped = {}
+for _, fs in ipairs(content.fontstrings) do
+  local txt = fs:GetText()
+  -- width 0/nil means "auto-size to the text" -- only a font string with an
+  -- explicit width can clip.
+  if txt and fs.width and fs.width > 0 and fs.wordWrap == false then
+    local plain = txt:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+    if #plain * CHAR_W > fs.width + 1 then
+      clipped[#clipped + 1] = string.format("%q needs ~%.0f has %d",
+        plain, #plain * CHAR_W, fs.width)
+    end
+  end
+end
+check("no non-wrapping label is too narrow for its text",
+  #clipped == 0, table.concat(clipped, "; "))
+
+-- The weave setting reads in seconds, not raw tenths: the stored value is a
+-- duration and the player should not have to convert it.
+local weaveLabel = false
+for _, fs in ipairs(content.fontstrings) do
+  local t = fs:GetText()
+  if t == "Weave round trip (seconds)" then weaveLabel = true end
+end
+check("the weave round trip is labelled in seconds", weaveLabel)
+
+-- The shot-bar legend is present and names every colour the bar uses.
+local legendBits = { "free time", "lockout", "melee swing", "WEAVE" }
+local missing = {}
+for _, want in ipairs(legendBits) do
+  local found = false
+  for _, fs in ipairs(content.fontstrings) do
+    local t = fs:GetText()
+    if t and t:find(want, 1, true) then found = true end
+  end
+  if not found then missing[#missing + 1] = want end
+end
+check("the options explain what each part of the bar means",
+  #missing == 0, table.concat(missing, ","))
 
 say(string.format("\n%d passed, %d failed", passes, #failures))
 if #failures > 0 then

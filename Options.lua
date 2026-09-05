@@ -329,7 +329,11 @@ local sliderCount = 0
 local SLIDER_LABEL_H = 15
 local SLIDER_BAR_H   = 18
 local SLIDER_VALUE_W = 88
-local function MakeSlider(parent, y, labelText, min, max, step, get, set, tooltip, compact)
+-- `fmt` optionally formats the displayed number. The slider itself must stay on
+-- integers (the widget renders with %d and a fractional step throws), so a
+-- value like 2.5s is stored as 25 on the bar and made readable again here.
+local function MakeSlider(parent, y, labelText, min, max, step, get, set, tooltip, compact, fmt)
+  local function Show(v) return fmt and fmt(v) or string.format("%d", v) end
   sliderCount = sliderCount + 1
   local name = "HunterKitOptSlider" .. sliderCount
   local w = (parent:GetWidth() or 436)
@@ -340,8 +344,12 @@ local function MakeSlider(parent, y, labelText, min, max, step, get, set, toolti
   lbl:SetJustifyH("LEFT")
   lbl:SetWordWrap(false)
   if compact then
-    -- Small slider on the RIGHT of the text: label keeps the left column.
-    lbl:SetWidth(200)
+    -- Small slider on the RIGHT of the text: the label owns everything to the
+    -- left of it. The bar is 110 wide at -34 from the right edge, so the label
+    -- may run up to (width - 34 - 110 - gap). This was hardcoded to 200, which
+    -- silently clipped longer labels mid-word with SetWordWrap(false) -- e.g.
+    -- "Weave round trip (seconds)" ended at "of a...". Derive it instead.
+    lbl:SetWidth(math.max(120, w - 34 - 110 - 12))
   else
     -- The number sits dead centre of the row, so the label may only use the left
     -- half minus that column, or a long label would run underneath the number.
@@ -365,7 +373,7 @@ local function MakeSlider(parent, y, labelText, min, max, step, get, set, toolti
   val:SetWordWrap(false)
   if not compact then val:SetWidth(SLIDER_VALUE_W) end
   val:SetTextColor(0.35, 1, 0.35)
-  val:SetText(tostring(get()))
+  val:SetText(Show(get()))
 
   local sl = CreateFrame("Slider", name, parent, "OptionsSliderTemplate")
   if compact then
@@ -393,7 +401,7 @@ local function MakeSlider(parent, y, labelText, min, max, step, get, set, toolti
   sl:SetValue(get())
   syncing = false
   sl:SetScript("OnValueChanged", function(self)
-    val:SetText(string.format("%d", self:GetValue()))
+    val:SetText(Show(self:GetValue()))
     if syncing then return end
     set(self:GetValue())
   end)
@@ -401,13 +409,13 @@ local function MakeSlider(parent, y, labelText, min, max, step, get, set, toolti
     val:ClearAllPoints()
     val:SetPoint("LEFT", sl, "RIGHT", 4, 0)   -- number on the bar's line
   end
-  val:SetText(string.format("%d", sl:GetValue()))   -- shown from the first frame
+  val:SetText(Show(sl:GetValue()))   -- shown from the first frame
   AttachTooltip(sl, labelText, tooltip)
   controlRefresh[#controlRefresh + 1] = function()
     syncing = true
     sl:SetValue(get())
     syncing = false
-    val:SetText(string.format("%d", sl:GetValue()))
+    val:SetText(Show(sl:GetValue()))
   end
   return sl
 end
@@ -429,6 +437,78 @@ local function AddSection(content, y, name)
   local h = MakeHeader(content, name)
   h:SetPoint("TOPLEFT", content, "TOPLEFT", 0, y - 4)
   return h
+end
+
+-- ---------------------------------------------------------------------------
+-- A miniature, to-scale picture of the shot bar, with a key naming every part.
+--
+-- The colours are the only vocabulary this feature has, and a tooltip you have
+-- to hover to find is a poor place to teach it. Drawing the actual bar next to
+-- the settings that change it means the words "lockout zone" and "weave marker"
+-- have something to point at. Colours are kept in step with ShotTimer.lua by
+-- hand -- there is no shared palette yet, and inventing one for six values
+-- would be more indirection than it is worth.
+-- ---------------------------------------------------------------------------
+local LEGEND_BAR_H = 16
+local function AddShotBarLegend(content, y)
+  local w = (content:GetWidth() or 436)
+  local barW = w - 8
+
+  local bar = content:CreateTexture(nil, "ARTWORK")
+  bar:SetPoint("TOPLEFT", content, "TOPLEFT", 4, y)
+  bar:SetSize(barW, LEGEND_BAR_H)
+  bar:SetTexture("Interface\\Buttons\\WHITE8x8")
+  bar:SetVertexColor(0.10, 0.10, 0.10, 0.85)
+
+  -- Free (green) portion: everything before the 0.5s cast lock.
+  local free = content:CreateTexture(nil, "OVERLAY")
+  free:SetPoint("TOPLEFT", bar, "TOPLEFT", 0, 0)
+  free:SetSize(barW * 0.72, LEGEND_BAR_H)
+  free:SetTexture("Interface\\Buttons\\WHITE8x8")
+  free:SetVertexColor(0.20, 0.90, 0.30, 0.90)
+
+  -- The lockout zone, drawn on the same scale the real bar uses.
+  local lock = content:CreateTexture(nil, "OVERLAY")
+  lock:SetPoint("TOPRIGHT", bar, "TOPRIGHT", 0, 0)
+  lock:SetSize(barW * 0.16, LEGEND_BAR_H)
+  lock:SetTexture("Interface\\Buttons\\WHITE8x8")
+  lock:SetVertexColor(0.85, 0.20, 0.20, 0.55)
+
+  -- The weave marker.
+  local mark = content:CreateTexture(nil, "OVERLAY")
+  mark:SetPoint("TOPLEFT", bar, "TOPLEFT", barW * 0.55, 0)
+  mark:SetSize(2, LEGEND_BAR_H)
+  mark:SetTexture("Interface\\Buttons\\WHITE8x8")
+  mark:SetVertexColor(0.40, 0.75, 1.00, 1)
+
+  -- The melee swing strip that sits under the bar.
+  local melee = content:CreateTexture(nil, "OVERLAY")
+  melee:SetPoint("TOPLEFT", bar, "BOTTOMLEFT", 0, -2)
+  melee:SetSize(barW * 0.45, 5)
+  melee:SetTexture("Interface\\Buttons\\WHITE8x8")
+  melee:SetVertexColor(0.85, 0.70, 0.20, 0.95)
+
+  local lines = {
+    { "|cff33e64dGreen|r", "free time -- move, weave, cast" },
+    { "|cffd93333Red|r",   "0.5s lockout: acting here clips the shot" },
+    { "|cff66bfffBlue line|r", "last moment you can leave for melee" },
+    { "|cffd9b333Amber strip|r", "your melee swing, from the combat log" },
+    { "|cff66ccffWEAVE|r", "shown when the round trip actually fits" },
+    { "|cffff4040+0.34s|r", "how late the last shot really landed" },
+  }
+  local ly = y - LEGEND_BAR_H - 12
+  for _, row in ipairs(lines) do
+    local fs = content:CreateFontString(nil, "OVERLAY")
+    fs:SetPoint("TOPLEFT", content, "TOPLEFT", 8, ly)
+    fs:SetWidth(w - 16)
+    fs:SetJustifyH("LEFT")
+    fs:SetFontObject(GameFontHighlightSmall)
+    fs:SetWordWrap(true)
+    fs:SetText(row[1] .. "  " .. row[2])
+    fs:SetTextColor(0.82, 0.82, 0.82)
+    ly = ly - 14
+  end
+  return y - LEGEND_BAR_H - 12 - (#lines * 14) - 4
 end
 
 function BuildWindow()
@@ -726,6 +806,11 @@ function BuildWindow()
     function(v) db.shottimer.enabled = v; RefreshShotTimer() end,
     "A bar showing your Auto Shot cycle while you are firing. Green means you are free to move and weave in a shot; the red zone at the end is the 0.5s where doing anything clips the shot and loses the damage. Appears only while auto-shooting.")
   y = y - CHK
+  MakeCheckbox(content, y, "Keep the bar on screen",
+    function() return db.shottimer.always end,
+    function(v) db.shottimer.always = v; RefreshShotTimer() end,
+    "Normally the bar appears when you start shooting and leaves when you stop. Turn this on to keep it in place all the time, so it never moves or surprises you. It shows an idle track when you are not firing.")
+  y = y - CHK
   MakeCheckbox(content, y, "Show how much you clipped",
     function() return db.shottimer.showDelay end,
     function(v) db.shottimer.showDelay = v; RefreshShotTimer() end,
@@ -741,13 +826,17 @@ function BuildWindow()
     function(v) db.shottimer.weave = v; RefreshShotTimer() end,
     "Adds a blue line marking the last moment you could run to melee, swing, and get back before the shot -- plus a thin strip showing your melee swing. In Classic Era the melee and ranged timers are independent, which is what makes weaving possible.")
   y = y - CHK
-  -- Stored in tenths of a second: the slider widget formats with %d, so a
-  -- fractional step would crash it. 25 on the bar means 2.5s.
-  MakeSlider(content, y, "Weave round trip (tenths of a sec)", 10, 50, 5,
+  -- Stored in tenths on the bar (the widget formats with %d, so a fractional
+  -- step would crash it) but DISPLAYED in seconds via the formatter -- the
+  -- setting is a duration, so making the player convert tenths in their head
+  -- was needless friction.
+  MakeSlider(content, y, "Weave round trip (seconds)", 10, 50, 5,
     function() return (db.shottimer.travel or 2.5) * 10 end,
     function(v) db.shottimer.travel = v / 10; RefreshShotTimer() end,
-    "Seconds for the full trip out to melee and back. 2.5s is a good hunter with a movement buff. The marker is only honest if this matches how fast you actually move, so time yourself and adjust.", true)
-  y = y - CHK
+    "Time for the full trip out to melee and back. 2.5s is a good hunter with a movement buff. The marker is only honest if it matches how fast you really move.",
+    true, function(v) return string.format("%.1fs", v / 10) end)
+  y = y - CHK - 4
+  y = AddShotBarLegend(content, y)
   MakeSlider(content, y, "Bar width", 120, 400, 10,
     function() return db.shottimer.width or 220 end,
     function(v) db.shottimer.width = v; RefreshShotTimer() end,

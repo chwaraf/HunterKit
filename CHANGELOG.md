@@ -3,6 +3,32 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.44] - 2026-09-05
+
+### Added
+- **"Keep the bar on screen"** option for the Auto Shot timer. The bar normally
+  appears when you start shooting and leaves when you stop; turn this on for a
+  fixed readout that never moves or surprises you. While idle it shows an empty
+  track with the lockout zone still to scale, and detaches its update loop --
+  a static bar does no per-frame work.
+- **A picture of the bar in the options**, with a key naming every part: the
+  green free time, the red lockout, the blue weave marker, the amber melee
+  strip, the WEAVE cue and the clip readout. The colours are this feature's
+  whole vocabulary, and a tooltip you must hover to find is a poor place to
+  teach them.
+
+### Changed
+- The shot bar's **default position moved down** (-140 -> -210). It sat over the
+  target frame's buff/debuff rows, hiding auras you need to read mid-fight. It
+  now sits below the unit frames and clear of HunterKit's own icons; a test
+  checks the default against every other frame's default so a future change
+  cannot quietly reintroduce an overlap. Existing profiles are migrated unless
+  the bar was dragged by hand.
+- The weave setting is now **"Weave round trip (seconds)"** and displays `2.5s`
+  rather than `25`. It was labelled in tenths and clipped mid-word to
+  "...of a" -- compact slider labels were pinned to a hardcoded 200px with word
+  wrap off. The width is now derived from the space actually beside the bar.
+
 ## [0.9.43] - 2026-09-05
 
 ### Fixed

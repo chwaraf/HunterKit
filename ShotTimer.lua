@@ -478,8 +478,19 @@ local function ShouldShow()
   if not db or not db.enabled then return false end
   if not HK.isHunter then return false end
   if HK.Editing and HK.Editing() then return true end
+  -- "Keep the bar on screen" -- a fixed readout rather than one that appears
+  -- and vanishes. It still only ANIMATES while a cycle is running (see
+  -- Refresh); when idle it shows an empty, full-length track so you can see
+  -- where it is and how much lockout a shot will cost.
+  if db.always then return true end
   if not repeating then return false end
   return nextAt ~= nil
+end
+
+-- Whether a live cycle is actually running behind the bar. Distinct from
+-- ShouldShow: with `always` on, the bar is visible while completely idle.
+function ShotTimer.IsIdle()
+  return not (repeating and nextAt ~= nil)
 end
 
 function ShotTimer.Refresh()
@@ -496,6 +507,18 @@ function ShotTimer.Refresh()
       label:SetText("1.2s")
       delayText:SetText("|cffff4040+0.34s|r")
       BindOnUpdate(false)          -- never animate a frame being dragged
+    elseif ShotTimer.IsIdle() then
+      -- Shown but idle (the "keep it on screen" option). Draw an empty track
+      -- with the lockout zone still to scale, so the bar reads as "ready" and
+      -- keeps its meaning, and stop the OnUpdate loop -- there is nothing to
+      -- animate, and a permanent per-frame loop for a static bar is waste.
+      fill:SetWidth(0.001)
+      label:SetText(db.showText and "|cff808080ready|r" or "")
+      delayText:SetText("")
+      if meleeFill then meleeFill:Hide() end
+      if meleeTrack then meleeTrack:Hide() end
+      if weaveMark then weaveMark:Hide() end
+      BindOnUpdate(false)
     else
       ShotTimer.OnUpdate()
     end

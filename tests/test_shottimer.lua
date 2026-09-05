@@ -408,6 +408,63 @@ check("the weave marker is on by default", HK.defaults.shottimer.weave == true)
 check("the default round trip matches the community figure",
   HK.defaults.shottimer.travel == 2.5)
 
+
+-- ---------------------------------------------------------------------------
+-- 15) DEFAULT PLACEMENT
+--
+-- The bar must not land on top of HunterKit's own icons, and must sit BELOW
+-- screen centre so it never covers the player/target frames and the buff and
+-- debuff rows you read mid-fight. Checked against the real defaults so moving
+-- any frame's default cannot quietly create a collision.
+-- ---------------------------------------------------------------------------
+local sd = HK.defaults.shottimer
+local sLo = sd.offsetY - (sd.height / 2)
+local sHi = sd.offsetY + (sd.height / 2)
+
+check("the bar defaults below screen centre, clear of the unit frames",
+  sHi < 0, tostring(sd.offsetY))
+
+-- The alert stack lives above centre; the bar must be nowhere near it.
+for _, other in ipairs({ "threat", "pulse", "mend" }) do
+  local od = HK.defaults[other]
+  if od and od.offsetY and (od.size or od.height) then
+    local h = od.size or od.height
+    local oLo, oHi = od.offsetY - h / 2, od.offsetY + h / 2
+    local overlaps = not (sHi < oLo or sLo > oHi)
+    check("the bar does not overlap the " .. other .. " icon by default",
+      not overlaps,
+      string.format("bar %.0f..%.0f vs %s %.0f..%.0f", sLo, sHi, other, oLo, oHi))
+  end
+end
+
+-- ---------------------------------------------------------------------------
+-- 16) "Keep the bar on screen"
+-- ---------------------------------------------------------------------------
+check("the bar hides itself by default", HK.defaults.shottimer.always == false)
+
+HK.db.shottimer.always = false
+ST.RescanSettings()
+ST._ClearMelee()
+ST._SetRepeating(false)       -- not shooting
+ST.Refresh()
+check("off: an idle bar is hidden", ST.IsShown() == false)
+
+HK.db.shottimer.always = true
+ST.RescanSettings()
+ST.Refresh()
+check("on: the bar stays on screen while idle", ST.IsShown() == true)
+check("...and reports itself idle", ST.IsIdle() == true)
+check("...and does not burn a frame loop doing nothing",
+  ST.IsAnimating() == false)
+
+-- It must still work normally once you actually start shooting.
+Shooting(3.0, 4000)
+check("...but animates again once shooting", ST.IsAnimating() == true,
+  tostring(ST.IsAnimating()))
+check("...and is no longer idle", ST.IsIdle() == false)
+HK.db.shottimer.always = false
+ST.RescanSettings()
+
 say(string.format("\n%d passed, %d failed", passes, #failures))
 if #failures > 0 then
   for _, f in ipairs(failures) do say("  - " .. f) end
