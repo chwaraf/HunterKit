@@ -558,12 +558,23 @@ end
 function GetSpellInfo(id)
   if id == 136 then return HKTest.state.spellName end
   if id == 75 then return "Auto Shot" end
+  if id == 19434 then return "Aimed Shot" end
+  if id == 2643  then return "Multi-Shot" end
+  if id == 2973  then return "Raptor Strike" end
   return nil
 end
 function GetSpellTexture(id)
   if id == 136 then return HKTest.state.spellTexture end
   return nil
 end
+-- Cooldown lookup for the weave-ability row. HKTest.state.cooldowns maps a
+-- spell id to { start, duration }; anything absent is ready.
+function GetSpellCooldown(id)
+  local cd = (HKTest.state.cooldowns or {})[id]
+  if not cd then return 0, 0, 1 end
+  return cd[1] or 0, cd[2] or 0, 1
+end
+
 function GetPetHappiness() return HKTest.state.happiness or 3, 100, 0 end
 function GetSpellTexture(id)
   if id == 6991 then return "Interface\\Icons\\ability_hunter_beasttraining" end

@@ -495,6 +495,7 @@ local function AddShotBarLegend(content, y)
     { "|cffd9b333Amber strip|r", "your melee swing, from the combat log" },
     { "|cff66ccffWEAVE|r", "shown when the round trip actually fits" },
     { "|cffff4040+0.34s|r", "how late the last shot really landed" },
+    { "|cff55dd55Aimed / Multi|r", "green = ready to spend, dark = on cooldown" },
   }
   local ly = y - LEGEND_BAR_H - 12
   for _, row in ipairs(lines) do
@@ -835,6 +836,16 @@ function BuildWindow()
     function(v) db.shottimer.travel = v / 10; RefreshShotTimer() end,
     "Time for the full trip out to melee and back. 2.5s is a good hunter with a movement buff. The marker is only honest if it matches how fast you really move.",
     true, function(v) return string.format("%.1fs", v / 10) end)
+  y = y - CHK
+  MakeCheckbox(content, y, "Show Aimed / Multi-Shot cooldowns",
+    function() return db.shottimer.showSpecials end,
+    function(v) db.shottimer.showSpecials = v; RefreshShotTimer() end,
+    "Adds a row under the bar showing whether Aimed Shot and Multi-Shot are ready. Green means spend it; dark means it is on cooldown, which is exactly when a melee weave is the right use of the gap.")
+  y = y - CHK
+  MakeCheckbox(content, y, "Only suggest weaving when specials are down",
+    function() return db.shottimer.specials end,
+    function(v) db.shottimer.specials = v; RefreshShotTimer() end,
+    "Hides the WEAVE cue while Aimed or Multi-Shot is ready, since either is worth more than a Raptor Strike. Turn off if you weave around your specials rather than only between them.")
   y = y - CHK - 4
   y = AddShotBarLegend(content, y)
   MakeSlider(content, y, "Bar width", 120, 400, 10,

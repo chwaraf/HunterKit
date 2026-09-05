@@ -3,6 +3,34 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.45] - 2026-09-05
+
+### Fixed
+- **The bar jumped to the upper right when you locked frames**, wherever you put
+  it. The drag loop pins a frame with `SetPoint("CENTER", UIParent,
+  "BOTTOMLEFT", ...)`, but the shot bar had no `saveFromScreen`, so the generic
+  fallback stored those raw BOTTOMLEFT coordinates and `ApplyPosition`
+  re-applied them as CENTRE offsets -- a shift of half the screen. It now
+  converts the drop point into centre space like every other frame. A test
+  drags, drops and locks every draggable and requires the position to be
+  unchanged.
+- **The melee swing row was invisible until your first swing landed.** For the
+  standard speedrun pattern -- pet holding a distant target you are shooting
+  while you melee a second one -- that is exactly when you need it. The track is
+  now always drawn while weaving is enabled; only the fill waits for an observed
+  swing, so nothing is invented.
+
+### Added
+- **Aimed Shot / Multi-Shot cooldown pips** under the bar. Green means spend it,
+  dark means on cooldown -- which is precisely when a melee weave is the correct
+  use of the gap. The three cycles a weaving hunter juggles (ranged, melee,
+  specials) are now all legible in one glance.
+- The **WEAVE cue is gated on both specials being down**, per Bouk's guide:
+  Aimed or Multi is worth more than a Raptor Strike, so the bar no longer
+  suggests running to melee while one is available. Optional -- max weavers
+  weave around their specials rather than only between them. A bare 1.5s global
+  cooldown is not treated as a cooldown, or the row would flicker constantly.
+
 ## [0.9.44] - 2026-09-05
 
 ### Added

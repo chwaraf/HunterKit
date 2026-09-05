@@ -272,6 +272,19 @@ HK.db.shottimer.weave = true
 HK.db.shottimer.travel = 2.5
 ST.RescanSettings()
 
+-- These scenarios test the weave TIMING, so put both specials on cooldown --
+-- otherwise the "spend Aimed/Multi first" gate (correctly) vetoes every weave.
+local function SpecialsOnCD(now)
+  HKTest.state.cooldowns = {
+    [19434] = { now, 6 },   -- Aimed
+    [2643]  = { now, 10 },  -- Multi
+  }
+end
+local function SpecialsReady()
+  HKTest.state.cooldowns = {}
+end
+SpecialsOnCD(0)
+
 -- A melee swing must NOT disturb the ranged cycle.
 Shooting(3.0, 2000)
 local before = ST.Progress(2000.5)
@@ -306,12 +319,14 @@ check("...and floors at zero, not negative",
 -- 12) The weave decision: does the round trip fit?
 -- ---------------------------------------------------------------------------
 HKTest.state.meleeSpeed = 2.4
+SpecialsOnCD(2300)
 Shooting(3.3, 2300)          -- slow bow: 2.8s free, 2.5s trip -> fits
 ST._OnMeleeSwing(2290)       -- swing came off cooldown long ago
 local ok, free, need = ST.CanWeave(2300)
 check("a slow weapon leaves room to weave", ok == true,
   string.format("free %.2f need %.2f", free or -1, need))
 
+SpecialsOnCD(2400)
 Shooting(2.6, 2400)          -- 2.1s free vs a 2.5s trip -> does not fit
 ST._OnMeleeSwing(2390)
 ok, free, need = ST.CanWeave(2400)
@@ -319,18 +334,21 @@ check("a faster weapon does not", ok == false,
   string.format("free %.2f need %.2f", free or -1, need))
 
 -- Late in the cycle the window has gone, even on a slow weapon.
+SpecialsOnCD(2500)
 Shooting(3.3, 2500)
 ST._OnMeleeSwing(2490)
 check("weaving is off once the window has passed", ST.CanWeave(2501.5) == false,
   string.format("%.2f free", ST.SafeWindow(2501.5)))
 
 -- A melee swing still on cooldown makes the trip pointless.
+SpecialsOnCD(2600)
 Shooting(3.3, 2600)
 ST._OnMeleeSwing(2599.9)     -- just swung: 2.4s until the next one
 ok = ST.CanWeave(2600)
 check("no weave when the swing would not be ready on arrival", ok == false)
 
 -- Travel time is the player's own number and must actually matter.
+SpecialsOnCD(2700)
 Shooting(3.3, 2700)
 ST._OnMeleeSwing(2690)
 HK.db.shottimer.travel = 1.0
@@ -346,6 +364,7 @@ ST.RescanSettings()
 -- ---------------------------------------------------------------------------
 -- 13) What the player sees
 -- ---------------------------------------------------------------------------
+SpecialsOnCD(2800)
 Shooting(3.3, 2800)
 ST._OnMeleeSwing(2790)
 At(2800)
@@ -358,12 +377,14 @@ check("...and stops saying it once it does not",
   (ST.LabelText() or ""):find("WEAVE") == nil, tostring(ST.LabelText()))
 
 -- The marker cannot be drawn honestly on a weapon too fast to weave with.
+SpecialsOnCD(2900)
 Shooting(3.3, 2900)
 check("a slow weapon gets a weave marker", ST.WeaveMarkShown() == true)
 Shooting(2.0, 2950)          -- 1.5s free, 2.5s trip: impossible
 check("a weapon too fast to weave shows no marker", ST.WeaveMarkShown() == false)
 
 -- Switching the feature off removes all of it.
+SpecialsOnCD(3000)
 Shooting(3.3, 3000)
 ST._OnMeleeSwing(2990)
 HK.db.shottimer.weave = false
@@ -464,6 +485,108 @@ check("...but animates again once shooting", ST.IsAnimating() == true,
 check("...and is no longer idle", ST.IsIdle() == false)
 HK.db.shottimer.always = false
 ST.RescanSettings()
+
+
+-- ---------------------------------------------------------------------------
+-- 17) THE SPEEDRUNNER PATTERN
+--
+-- Pet holds a distant target, you shoot it, and you melee a SECOND target stood
+-- next to you. All three cycles -- ranged, melee, specials -- must be legible
+-- at once, and the melee row must be there BEFORE the first swing lands (that
+-- is the moment you need it most).
+-- ---------------------------------------------------------------------------
+HK.db.shottimer.weave = true
+HK.db.shottimer.showSpecials = true
+ST.RescanSettings()
+
+SpecialsOnCD(3200)
+ST._ClearMelee()                    -- never swung: just walked up to the target
+Shooting(3.3, 3200)
+At(3200)
+ST.OnUpdate()
+check("the melee row is visible before you have ever swung",
+  ST.MeleeTrackShown() == true)
+check("the specials row is visible too", ST.SpecialPipsShown() == true)
+check("the shot bar itself is up", ST.IsShown() == true)
+
+-- All three at once, mid-fight.
+ST._OnMeleeSwing(3199)
+At(3200)
+ST.OnUpdate()
+check("ranged, melee and specials are all readable together",
+  ST.IsShown() and ST.MeleeTrackShown() and ST.SpecialPipsShown())
+
+-- ---------------------------------------------------------------------------
+-- 18) SPECIALS GATE THE WEAVE CUE
+-- ---------------------------------------------------------------------------
+SpecialsOnCD(3300)
+Shooting(3.3, 3300)
+ST._OnMeleeSwing(3290)
+check("with both specials down, weaving is on", ST.CanWeave(3300) == true)
+local down, aimedIn, multiIn = ST.SpecialsDown(3300)
+check("...and both report time remaining", down == true and aimedIn > 0 and multiIn > 0,
+  string.format("aimed %.1f multi %.1f", aimedIn, multiIn))
+
+-- Aimed comes back up: spend it, do not run to melee.
+HKTest.state.cooldowns = { [2643] = { 3300, 10 } }   -- only Multi still down
+check("an available Aimed Shot outranks a weave", ST.CanWeave(3300) == false)
+check("...and SpecialsDown says so", (ST.SpecialsDown(3300)) == false)
+
+-- Same for Multi.
+HKTest.state.cooldowns = { [19434] = { 3300, 6 } }
+check("an available Multi-Shot outranks a weave too", ST.CanWeave(3300) == false)
+
+-- The gate is optional: max-weavers weave around their specials.
+SpecialsReady()
+HK.db.shottimer.specials = false
+ST.RescanSettings()
+check("with the gate off, raw timing decides", ST.CanWeave(3300) == true)
+HK.db.shottimer.specials = true
+ST.RescanSettings()
+
+-- A bare global cooldown must not read as "on cooldown", or the row would
+-- flicker on every single button press.
+HKTest.state.cooldowns = { [19434] = { 3300, 1.5 }, [2643] = { 3300, 1.5 } }
+check("the global cooldown is not a real cooldown",
+  (ST.SpecialsDown(3300)) == false)
+SpecialsOnCD(3300)
+
+-- Switching the row off hides it but leaves the melee strip alone.
+HK.db.shottimer.showSpecials = false
+ST.RescanSettings()
+Shooting(3.3, 3400)
+ST._OnMeleeSwing(3390)
+At(3400)
+ST.OnUpdate()
+check("specials row off: pips hidden", ST.SpecialPipsShown() == false)
+check("...but the melee strip stays", ST.MeleeTrackShown() == true)
+HK.db.shottimer.showSpecials = true
+ST.RescanSettings()
+
+-- Weaving off hides the melee row entirely.
+HK.db.shottimer.weave = false
+ST.RescanSettings()
+At(3400)
+ST.OnUpdate()
+check("weaving off: no melee row", ST.MeleeTrackShown() == false)
+HK.db.shottimer.weave = true
+ST.RescanSettings()
+HKTest.state.cooldowns = {}
+
+check("the specials row is on by default", HK.defaults.shottimer.showSpecials == true)
+check("the specials gate is on by default", HK.defaults.shottimer.specials == true)
+
+-- ---------------------------------------------------------------------------
+-- 19) DRAGGING: the bar must stay where it is dropped
+--
+-- Regression: the drag loop pins the frame with SetPoint("CENTER", UIParent,
+-- "BOTTOMLEFT", ...), but ShotTimer had no saveFromScreen, so the generic
+-- fallback saved those raw BOTTOMLEFT coords and ApplyPosition re-applied them
+-- as CENTRE offsets -- the bar jumped to the upper right on lock.
+-- ---------------------------------------------------------------------------
+local d = HK.draggables["shottimer"]
+check("the shot bar converts its drop point to centre space", 
+  d and d.opts and d.opts.saveFromScreen ~= nil)
 
 say(string.format("\n%d passed, %d failed", passes, #failures))
 if #failures > 0 then

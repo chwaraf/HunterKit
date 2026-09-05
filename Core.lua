@@ -6,7 +6,7 @@
 
 local ADDON_NAME, HK = ...
 
-HK.version = "0.9.44"
+HK.version = "0.9.45"
 
 -- ---------------------------------------------------------------------------
 -- Defaults (schema). This is the source of truth for the options window and
@@ -14,7 +14,7 @@ HK.version = "0.9.44"
 -- ---------------------------------------------------------------------------
 HK.defaults = {
   enabled   = true,
-  dbVersion = 28,
+  dbVersion = 29,
   firstRun  = true,
 
   ui = {
@@ -104,6 +104,8 @@ HK.defaults = {
     showText  = true,    -- the "1.2s of free time left" countdown
     showDelay = true,    -- the measured "+0.34s" clip readout
     weave     = true,    -- melee weave marker + melee swing strip
+    showSpecials = true, -- Aimed/Multi cooldown pips under the bar
+    specials  = true,    -- do not suggest a weave while a special is ready
     travel    = 2.5,     -- round-trip seconds out to melee and back
     noHaste   = true,    -- never suggest a weave while ranged haste is up
   },
@@ -846,6 +848,12 @@ local function LoadDB()
       db.shottimer.offsetY = HK.defaults.shottimer.offsetY
     end
     db.dbVersion = 28
+  end
+
+  -- v28 -> v29: the shot bar gained an Aimed/Multi cooldown row. New keys only;
+  -- MergeDefaults supplies them. Bumped so the version reflects the schema.
+  if db.dbVersion < 29 then
+    db.dbVersion = 29
   end
 
   if db.dbVersion < 19 then

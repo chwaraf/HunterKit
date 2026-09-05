@@ -94,12 +94,19 @@ local MULTI_SHOT_IDS = {
 -- quote with a movement buff. It is a user setting because it depends on your
 -- speed buff and how far out you stand; the bar is only honest if this matches
 -- reality, so the option tooltip says so plainly.
+-- The two shots that gate weaving. Bouk's Era guide: weave a Raptor Strike
+-- "when both Aimed and Multi-Shot are on CD" -- if either is ready, you should
+-- be spending it rather than running to melee. Ranks share a cooldown, so the
+-- rank-1 id is enough for GetSpellCooldown.
+local SPELL_AIMED = 19434
+local SPELL_MULTI = 2643
 local DEFAULT_TRAVEL = 2.5
 local MELEE_MIN_SPEED = 0.5
 local MELEE_MAX_SPEED = 10
 
 local frame, track, fill, safeMark, castZone, tick, label, delayText
 local onUpdateBound = false
+local specialRow = nil
 
 -- Timing state. All absolute GetTime() stamps, never durations, so a missed
 -- frame can never accumulate drift.
@@ -224,6 +231,34 @@ end
 -- lands nothing -- and it refuses while hasted, because every guide is emphatic
 -- that a hasted cycle is too short to weave and doing so loses damage.
 -- ---------------------------------------------------------------------------
+-- Special-shot cooldowns
+--
+-- Weaving is only correct when you have nothing better to press. These read the
+-- live cooldowns rather than modelling them: ranks, talents and Quick Shots all
+-- change the numbers, and the client already knows the truth.
+-- ---------------------------------------------------------------------------
+local function SpellReadyIn(id, now)
+  local start, duration = Call(GetSpellCooldown, id)
+  start = tonumber(start) or 0
+  duration = tonumber(duration) or 0
+  -- A 1.5s global is not "on cooldown" for this purpose; only a real cooldown
+  -- should stop you weaving, or the row would flicker on every button press.
+  if start <= 0 or duration <= 1.6 then return 0 end
+  local left = (start + duration) - now
+  if left < 0 then left = 0 end
+  return left
+end
+
+-- ready, aimedIn, multiIn -- `ready` is true when BOTH specials are down, which
+-- is the moment weaving is the right call.
+function ShotTimer.SpecialsDown(now)
+  now = now or (tonumber(Call(GetTime)) or 0)
+  local a = SpellReadyIn(SPELL_AIMED, now)
+  local m = SpellReadyIn(SPELL_MULTI, now)
+  return (a > 0 and m > 0), a, m
+end
+
+-- ---------------------------------------------------------------------------
 function ShotTimer.CanWeave(now)
   now = tonumber(now) or (tonumber(Call(GetTime)) or 0)
   local free = ShotTimer.SafeWindow(now)
@@ -235,6 +270,16 @@ function ShotTimer.CanWeave(now)
   local meleeIn = ShotTimer.MeleeReady(now)
   if meleeIn and meleeIn > (travel / 2) then
     return false, free, travel
+  end
+
+  -- Never suggest a weave while a special shot is available: Aimed or Multi is
+  -- worth more than a Raptor Strike, and running to melee would waste it. Only
+  -- gated when the option is on, so a player who wants the raw timing can see
+  -- it. (Optional because "max weaving" deliberately weaves around the specials
+  -- rather than only between them.)
+  if db and db.specials ~= false then
+    local down = ShotTimer.SpecialsDown(now)
+    if not down then return false, free, travel end
   end
   return (free >= travel), free, travel
 end
@@ -278,6 +323,28 @@ local function ApplySize()
     meleeFill:SetSize(1, mh)
   end
 
+  -- The two special-shot pips, on their own row under the melee strip so the
+  -- shot bar, the melee swing and the specials read top-to-bottom.
+  if specialRow then
+    local pipH = math.max(3, math.floor(h / 3))
+    local pipW = math.max(16, math.floor(w * 0.12))
+    local top = -(mh + 4)
+    for i = 1, 2 do
+      local pip = specialRow[i]
+      local fs = specialRow[i .. "text"]
+      if pip then
+        pip:ClearAllPoints()
+        pip:SetSize(pipW, pipH)
+        pip:SetPoint("TOPLEFT", frame, "BOTTOMLEFT",
+          (i - 1) * (pipW + 46), top - 2)
+      end
+      if fs then
+        fs:ClearAllPoints()
+        fs:SetPoint("LEFT", pip, "RIGHT", 3, 0)
+      end
+    end
+  end
+
   -- The weave marker's position: the round trip measured back from the shot.
   -- Anything left of this line is a safe departure.
   if weaveMark then
@@ -294,6 +361,24 @@ local function ApplySize()
       -- put the line, so do not draw one.
       weaveMark:Hide()
     end
+  end
+end
+
+-- Two small pips under the melee strip: Aimed and Multi. Green = ready (spend
+-- it), dark = on cooldown (weaving is the right call). They exist so the three
+-- cycles a weaving hunter juggles -- ranged, melee, specials -- are all legible
+-- in one glance, which is the whole point of the bar.
+local function BuildSpecialPips()
+  if not frame then return end
+  specialRow = {}
+  for i = 1, 2 do
+    local pip = frame:CreateTexture(nil, "OVERLAY")
+    pip:SetTexture("Interface\\Buttons\\WHITE8x8")
+    specialRow[i] = pip
+    local fs = frame:CreateFontString(nil, "OVERLAY")
+    fs:SetFontObject(GameFontNormalSmall)
+    fs:SetJustifyH("LEFT")
+    specialRow[i .. "text"] = fs
   end
 end
 
@@ -363,7 +448,14 @@ local function BuildBar()
     function(x, y)
       db.offsetX, db.offsetY, db.moved = x, y, true
     end,
-    { onUpdate = function()
+    { -- MUST convert the drop point into UIParent-CENTRE space before saving.
+      -- The drag loop pins the frame with SetPoint("CENTER", UIParent,
+      -- "BOTTOMLEFT", ...); without this the generic fallback saved those raw
+      -- BOTTOMLEFT coordinates and ApplyPosition re-applied them as CENTRE
+      -- offsets, so on lock the bar jumped by half the screen -- up and to the
+      -- right, from wherever you dropped it. HK.SaveDragged does the conversion.
+      saveFromScreen = function() HK.SaveDragged(frame, db) end,
+      onUpdate = function()
         -- RegisterDraggable blanks OnUpdate across a drag/lock cycle; re-bind
         -- if we were animating (the trap PassivePulse.lua documents).
         if onUpdateBound and frame then frame:SetScript("OnUpdate", ShotTimer.OnUpdate) end
@@ -373,13 +465,12 @@ end
 function ShotTimer.ApplyPosition()
   if not frame then return end
   frame:ClearAllPoints()
-  local x = tonumber(db and db.offsetX) or 0
-  local y = tonumber(db and db.offsetY) or -140
-  if db and db.moved then
-    frame:SetPoint("CENTER", UIParent, "CENTER", x, y)
-  else
-    frame:SetPoint("CENTER", UIParent, "CENTER", x, y)
-  end
+  -- One anchor for both cases: the saved offset is always measured from
+  -- UIParent's CENTRE (see HK.SaveDragged), whether it came from the default or
+  -- from a drag. Both branches of the old if/else were identical anyway.
+  local x = tonumber(db and db.offsetX) or HK.defaults.shottimer.offsetX
+  local y = tonumber(db and db.offsetY) or HK.defaults.shottimer.offsetY
+  frame:SetPoint("CENTER", UIParent, "CENTER", x, y)
 end
 
 -- ---------------------------------------------------------------------------
@@ -423,9 +514,16 @@ local function Redraw(now)
     label:SetText("")
   end
 
-  -- The melee cycle, drawn only once we have actually seen a swing.
-  if meleeFill then
+  -- The melee cycle. The TRACK is always visible while weaving is enabled, even
+  -- before we have seen a swing -- the speedrunner pattern is to shoot a distant
+  -- target the pet is holding while meleeing a second one, so at the moment you
+  -- most need to know where the melee bar is, you have not swung yet. Hiding the
+  -- whole widget until the first swing made it look like the feature was
+  -- missing. Only the FILL depends on having observed a swing; with none seen we
+  -- show an empty track rather than invent a position we cannot know.
+  if meleeTrack then
     if db.weave ~= false then
+      meleeTrack:Show()
       local mIn = ShotTimer.MeleeReady(now)
       if mIn then
         local done = 1 - (mIn / math.max(meleeSpeed, MELEE_MIN_SPEED))
@@ -437,13 +535,40 @@ local function Redraw(now)
         else
           meleeFill:SetVertexColor(0.85, 0.7, 0.2, 0.9)
         end
-        meleeFill:Show(); meleeTrack:Show()
+        meleeFill:Show()
       else
-        meleeFill:Hide(); meleeTrack:Hide()
+        -- No swing observed yet: an empty track, honestly blank.
+        meleeFill:Hide()
       end
     else
       meleeFill:Hide(); meleeTrack:Hide()
       if weaveMark then weaveMark:Hide() end
+    end
+  end
+
+  -- The special-shot pips. Dark means on cooldown, which is exactly when a
+  -- weave is the correct use of the gap.
+  if specialRow then
+    if db.weave ~= false and db.showSpecials ~= false then
+      local _, aimedIn, multiIn = ShotTimer.SpecialsDown(now)
+      local pairsIn = { { "Aimed", aimedIn }, { "Multi", multiIn } }
+      for i = 1, 2 do
+        local pip, fs = specialRow[i], specialRow[i .. "text"]
+        local left = pairsIn[i][2] or 0
+        if left > 0 then
+          pip:SetVertexColor(0.35, 0.35, 0.38, 0.9)      -- on cooldown
+          fs:SetFormattedText("|cff9a9a9a%s %.0fs|r", pairsIn[i][1], left)
+        else
+          pip:SetVertexColor(0.30, 0.90, 0.30, 0.95)     -- ready: spend it
+          fs:SetFormattedText("|cff55dd55%s|r", pairsIn[i][1])
+        end
+        pip:Show(); fs:Show()
+      end
+    else
+      for i = 1, 2 do
+        if specialRow[i] then specialRow[i]:Hide() end
+        if specialRow[i .. "text"] then specialRow[i .. "text"]:Hide() end
+      end
     end
   end
 
@@ -515,9 +640,12 @@ function ShotTimer.Refresh()
       fill:SetWidth(0.001)
       label:SetText(db.showText and "|cff808080ready|r" or "")
       delayText:SetText("")
+      -- Keep the melee track visible (empty) so the parked bar shows its full
+      -- layout rather than silently losing a row.
       if meleeFill then meleeFill:Hide() end
-      if meleeTrack then meleeTrack:Hide() end
-      if weaveMark then weaveMark:Hide() end
+      if meleeTrack then
+        if db.weave ~= false then meleeTrack:Show() else meleeTrack:Hide() end
+      end
       BindOnUpdate(false)
     else
       ShotTimer.OnUpdate()
@@ -666,6 +794,7 @@ function ShotTimer.Init()
   if not HK.isHunter then return end          -- structural gate
 
   BuildBar()
+  BuildSpecialPips()
 
   HK.On("UNIT_SPELLCAST_SUCCEEDED", OnSpellSucceeded)
   HK.On("UNIT_SPELLCAST_START", OnSpellStarted)
@@ -727,6 +856,13 @@ function ShotTimer._OnMeleeSwing(t)
 end
 function ShotTimer._ClearMelee() meleeSwungAt = nil end
 ShotTimer._OnCombatLog = OnCombatLog
+function ShotTimer.MeleeTrackShown()
+  return meleeTrack ~= nil and meleeTrack:IsShown() == true
+end
+function ShotTimer.SpecialPipsShown()
+  return specialRow ~= nil and specialRow[1] ~= nil
+    and specialRow[1]:IsShown() == true
+end
 function ShotTimer.WeaveMarkShown() return weaveMark ~= nil and weaveMark:IsShown() == true end
 
 HK.RegisterModule("ShotTimer", { Init = ShotTimer.Init })

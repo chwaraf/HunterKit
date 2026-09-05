@@ -589,6 +589,58 @@ end
 check("the options explain what each part of the bar means",
   #missing == 0, table.concat(missing, ","))
 
+-- ---------------------------------------------------------------------------
+-- 5e) A DROPPED FRAME MUST STAY WHERE IT WAS DROPPED
+--
+-- Regression: the drag loop pins a frame with SetPoint("CENTER", UIParent,
+-- "BOTTOMLEFT", x, y). A draggable with no saveFromScreen fell back to saving
+-- those RAW BOTTOMLEFT coordinates, which its ApplyPosition then re-applied as
+-- CENTRE offsets -- so on lock the frame jumped by half the screen, up and to
+-- the right, no matter where you put it. Driven end to end: drag, drop, lock,
+-- and require the on-screen position to be unchanged.
+-- ---------------------------------------------------------------------------
+local uw = (UIParent:GetWidth() or 0) / 2
+local uh = (UIParent:GetHeight() or 0) / 2
+
+-- Unlock, drag every frame somewhere specific, lock, compare.
+pcall(HK.Positions.ToggleLock)
+
+local jumped = {}
+for name, d in pairs(HK.draggables) do
+  local f = d.frame
+  if f and f.scripts and f.scripts["OnDragStart"] and HK.DraggableActive(d) then
+    HKTest.cursorX, HKTest.cursorY = 700, 420
+    f.scripts["OnDragStart"](f)
+    f.scripts["OnUpdate"](f)
+    f.scripts["OnDragStop"](f)
+    -- Where it ended up, expressed against UIParent's centre.
+    local p = f.points[#f.points]
+    local dropX, dropY = tonumber(p[4]) or 0, tonumber(p[5]) or 0
+    if p[3] == "BOTTOMLEFT" then dropX, dropY = dropX - uw, dropY - uh end
+
+    if d.apply then d.apply() end          -- what locking does
+    local q = f.points[#f.points]
+    local endX, endY = tonumber(q[4]) or 0, tonumber(q[5]) or 0
+    if q[3] == "BOTTOMLEFT" then endX, endY = endX - uw, endY - uh end
+
+    -- Frames that legitimately re-home to a unit frame on lock are exempt --
+    -- they anchor to something that moves. Everything pinned to UIParent must
+    -- land back exactly where it was dropped. (An earlier version of this
+    -- condition mixed `and`/`or` without brackets and skipped the comparison
+    -- entirely, so it passed with the bug still in.)
+    local rehomes = (q[2] ~= nil and q[2] ~= UIParent)
+    if not rehomes then
+      if math.abs(dropX - endX) > 1 or math.abs(dropY - endY) > 1 then
+        jumped[#jumped + 1] = string.format("%s dropped %.0f,%.0f -> locked %.0f,%.0f",
+          name, dropX, dropY, endX, endY)
+      end
+    end
+  end
+end
+check("no frame jumps when you lock it", #jumped == 0, table.concat(jumped, "; "))
+
+pcall(HK.Positions.ToggleLock)
+
 say(string.format("\n%d passed, %d failed", passes, #failures))
 if #failures > 0 then
   for _, f in ipairs(failures) do say("  - " .. f) end
