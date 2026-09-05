@@ -677,6 +677,9 @@ end
 -- left the melee bar frozen at zero: a dead grey strip that never filled. It is
 -- only truly idle when neither cycle has anything to animate.
 function ShotTimer.IsIdle()
+  -- A prediction outlives auto-repeat (see STOP_AUTOREPEAT_SPELL), so "is the
+  -- ranged cycle live" is about the CLOCK, not the auto-repeat flag.
+  if nextAt ~= nil and (tonumber(Call(GetTime)) or 0) < nextAt then return false end
   if repeating and nextAt ~= nil then return false end
   if db and db.weave ~= false and meleeSwungAt ~= nil then
     -- A swing we have observed is still counting down (or has just come up and
@@ -907,7 +910,17 @@ function ShotTimer.Init()
   end)
   HK.On("STOP_AUTOREPEAT_SPELL", function()
     repeating = false
-    nextAt = nil
+    -- Do NOT clear nextAt.
+    --
+    -- Stepping into melee stops auto-repeat, and wiping the predicted shot time
+    -- here collapsed the ranged bar to empty the instant your melee weapon
+    -- connected -- which is precisely when a weaving hunter needs to see how
+    -- much of the shot cycle is left. In Classic Era the two cycles are
+    -- independent: a melee swing does not reset the ranged timer (that linkage
+    -- is WotLK behaviour, confirmed by Blizzard for 3.3.5 only). The prediction
+    -- stays valid, so the bar keeps counting down and simply expires on its own
+    -- if no further shot lands. Super Swing Timer made the same change --
+    -- it "no longer hard-resets the ranged timer on transient stop events".
     ShotTimer.Refresh()
   end)
 

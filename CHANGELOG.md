@@ -3,6 +3,31 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.53] - 2026-09-05
+
+### Fixed
+- **The ranged timer vanished the instant your melee weapon connected.**
+  `STOP_AUTOREPEAT_SPELL` cleared the predicted shot time, and stepping into
+  melee stops auto-repeat -- so the shot bar collapsed to empty exactly when a
+  weaving hunter needs to see how much of the cycle is left. In Classic Era the
+  two cycles are independent (melee resetting the ranged swing is WotLK
+  behaviour, which Blizzard confirmed applies to 3.3.5 only), so the prediction
+  is still valid and now keeps counting down, expiring on its own if no further
+  shot lands. Leaving combat still ends the cycle outright.
+- **Updating the addon no longer moves your frames.** Nearly every recent
+  release shipped a migration that reset a frame's offsets whenever its `moved`
+  flag was false -- but that flag is only set by *dragging*, so anyone who was
+  simply happy with their layout had frames shifted on every single update. That
+  was the "settings reset after updating" report, and it was self-inflicted. New
+  defaults now apply to NEW profiles only; existing profiles are left alone, and
+  `/htk reset` is there for anyone who wants the current layout. Saved data will
+  only be migrated when it would otherwise be broken, never because a default
+  changed.
+
+### Changed
+- The Aimed / Multi-Shot cooldown row is now **off by default**. It is useful
+  but it is extra clutter, and an opt-in default is the right one.
+
 ## [0.9.52] - 2026-09-05
 
 ### Fixed

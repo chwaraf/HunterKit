@@ -575,7 +575,8 @@ HK.db.shottimer.weave = true
 ST.RescanSettings()
 HKTest.state.cooldowns = {}
 
-check("the specials row is on by default", HK.defaults.shottimer.showSpecials == true)
+check("the specials row is OFF by default -- it is extra clutter",
+  HK.defaults.shottimer.showSpecials == false)
 check("the specials gate is on by default", HK.defaults.shottimer.specials == true)
 
 -- ---------------------------------------------------------------------------
@@ -820,6 +821,56 @@ check("...and the melee bar fills from that first swing", b > a and a > 0,
 HKTest.state.clevent = nil
 HKTest.state.playerCombat = false
 ST._ClearMelee()
+
+
+-- ---------------------------------------------------------------------------
+-- 26) A MELEE HIT MUST NOT WIPE THE RANGED TIMER
+--
+-- Regression: STOP_AUTOREPEAT_SPELL cleared nextAt. Stepping into melee stops
+-- auto-repeat, so the ranged bar collapsed to empty the moment the melee weapon
+-- connected -- exactly when a weaver needs to see the rest of the shot cycle.
+-- In Era the cycles are independent (melee resetting ranged is WotLK-only
+-- behaviour), so the prediction stays valid and must keep running.
+-- ---------------------------------------------------------------------------
+HKTest.state.playerCombat = true
+HK.db.shottimer.weave = true
+ST.RescanSettings()
+
+Shooting(3.3, 9000)
+At(9000.5); ST.OnUpdate()
+local beforeFill = ST.FillWidth()
+local beforeLabel = ST.LabelText()
+check("shooting: the ranged bar is filling", beforeFill > 1,
+  string.format("%.1f", beforeFill))
+
+-- Run in and connect with the melee weapon. Drive the REAL event, not the
+-- _SetRepeating seam: the bug lived in the STOP_AUTOREPEAT_SPELL handler, so a
+-- test that bypasses it proves nothing.
+local stopAuto = HK.bus.handlers["STOP_AUTOREPEAT_SPELL"]
+check("the stop-autorepeat handler is registered", stopAuto ~= nil)
+At(9001.2)
+if stopAuto then stopAuto() end
+ST.OnUpdate()
+local afterFill = ST.FillWidth()
+check("the ranged bar survives the melee hit", afterFill > beforeFill,
+  string.format("%.1f -> %.1f (label %s -> %s)", beforeFill, afterFill,
+    tostring(beforeLabel), tostring(ST.LabelText())))
+check("...and still shows a countdown", (ST.LabelText() or "") ~= "",
+  tostring(ST.LabelText()))
+check("...and the cycle is not considered idle", ST.IsIdle() == false)
+
+-- Once the predicted shot time has passed with nothing new, it does expire
+-- rather than counting down forever.
+At(9010)
+ST.Refresh()
+check("a long-expired prediction goes idle", ST.IsIdle() == true)
+
+-- Leaving combat still ends the series outright.
+Shooting(3.3, 9020)
+local regen = HK.bus.handlers["PLAYER_REGEN_ENABLED"]
+if regen then regen() end
+check("leaving combat still clears the cycle", ST.IsIdle() == true)
+HKTest.state.playerCombat = false
 
 say(string.format("\n%d passed, %d failed", passes, #failures))
 if #failures > 0 then

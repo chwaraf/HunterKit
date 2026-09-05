@@ -747,6 +747,46 @@ HKTest.state.ammoID = 2515
 HKTest.state.items = { [2515] = 1438 }
 HKTest.state.ammoEquipped = 1438
 
+
+-- ---------------------------------------------------------------------------
+-- AN UPDATE MUST NOT MOVE FRAMES THE USER DID NOT ASK TO MOVE
+--
+-- Regression: nearly every release shipped a migration that reset a frame's
+-- offsets whenever `moved` was false. That flag is only set by DRAGGING, so
+-- anyone happy with their layout had frames shifted on every single update.
+-- New defaults now apply to new profiles only.
+-- ---------------------------------------------------------------------------
+HunterKitDB = {
+  dbVersion = 30,                       -- an older but recent profile
+  threat = { offsetX = 555, offsetY = 444, pctOffsetX = 333, pctOffsetY = 222,
+             threshold = 65, moved = false, pctMoved = false },
+  shottimer = { enabled = true, offsetX = 111, offsetY = 222, moved = false },
+  feed = { size = 44 },
+}
+local HKu = HKTest.LoadAddon(unpack(HKTest.addonFiles))
+HKu:Load()
+check("updating keeps the threat warning where it was",
+  HKu.db.threat.offsetX == 555 and HKu.db.threat.offsetY == 444,
+  string.format("%s,%s", tostring(HKu.db.threat.offsetX), tostring(HKu.db.threat.offsetY)))
+check("updating keeps the percentage readout where it was",
+  HKu.db.threat.pctOffsetX == 333 and HKu.db.threat.pctOffsetY == 222,
+  string.format("%s,%s", tostring(HKu.db.threat.pctOffsetX), tostring(HKu.db.threat.pctOffsetY)))
+check("updating keeps the shot bar where it was",
+  HKu.db.shottimer.offsetX == 111 and HKu.db.shottimer.offsetY == 222,
+  string.format("%s,%s", tostring(HKu.db.shottimer.offsetX), tostring(HKu.db.shottimer.offsetY)))
+check("updating keeps tuned values", HKu.db.threat.threshold == 65
+  and HKu.db.feed.size == 44)
+check("...and the profile is stamped current", HKu.db.dbVersion == HKu.defaults.dbVersion)
+
+-- A NEW profile still gets the current defaults.
+HunterKitDB = {}
+local HKn = HKTest.LoadAddon(unpack(HKTest.addonFiles))
+HKn:Load()
+check("a new profile gets the current threat position",
+  HKn.db.threat.offsetX == HKn.defaults.threat.offsetX)
+check("a new profile gets the specials row off",
+  HKn.db.shottimer.showSpecials == false)
+
 say(string.format("\n%d passed, %d failed", passes, #failures))
 if #failures > 0 then
   for _, f in ipairs(failures) do say("  - " .. f) end

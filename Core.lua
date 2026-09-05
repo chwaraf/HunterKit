@@ -6,7 +6,7 @@
 
 local ADDON_NAME, HK = ...
 
-HK.version = "0.9.52"
+HK.version = "0.9.53"
 
 -- ---------------------------------------------------------------------------
 -- Defaults (schema). This is the source of truth for the options window and
@@ -110,7 +110,7 @@ HK.defaults = {
     showText  = true,    -- the "1.2s of free time left" countdown
     showDelay = true,    -- the measured "+0.34s" clip readout
     weave     = true,    -- melee weave marker + melee swing strip
-    showSpecials = true, -- Aimed/Multi cooldown pips under the bar
+    showSpecials = false, -- Aimed/Multi cooldown pips: opt-in, extra clutter
     specials  = true,    -- do not suggest a weave while a special is ready
     travel    = 2.5,     -- round-trip seconds out to melee and back
     noHaste   = true,    -- never suggest a weave while ranged haste is up
@@ -865,61 +865,22 @@ local function LoadDB()
     db.dbVersion = 24
   end
 
-  -- v27 -> v28: the shot bar's default position moved down (-140 -> -210). At
-  -- -140 it sat over the target frame's buff/debuff rows, hiding auras you need
-  -- to read mid-fight. Move it for anyone who has NOT dragged it themselves;
-  -- a hand-placed bar (moved) is never relocated.
-  if db.dbVersion < 28 then
-    if type(db.shottimer) == "table" and db.shottimer.moved ~= true then
-      db.shottimer.offsetX = HK.defaults.shottimer.offsetX
-      db.shottimer.offsetY = HK.defaults.shottimer.offsetY
-    end
-    db.dbVersion = 28
-  end
-
-  -- v28 -> v29: the shot bar gained an Aimed/Multi cooldown row. New keys only;
-  -- MergeDefaults supplies them. Bumped so the version reflects the schema.
-  if db.dbVersion < 29 then
-    db.dbVersion = 29
-  end
-
-  -- v29 -> v30: the threat percentage now sits centred above the player frame
-  -- instead of hanging off its top-right corner. Move it for anyone who has not
-  -- placed it themselves.
-  if db.dbVersion < 30 then
-    if type(db.threat) == "table" and db.threat.pctMoved ~= true then
-      db.threat.pctOffsetX = HK.defaults.threat.pctOffsetX
-      db.threat.pctOffsetY = HK.defaults.threat.pctOffsetY
-    end
-    db.dbVersion = 30
-  end
-
-  -- v30 -> v31: the threat percentage sits a little lower, over the player
-  -- frame's name rather than floating above the frame.
-  if db.dbVersion < 31 then
-    if type(db.threat) == "table" and db.threat.pctMoved ~= true then
-      db.threat.pctOffsetY = HK.defaults.threat.pctOffsetY
-    end
-    db.dbVersion = 31
-  end
-
-  -- v31 -> v32: the -6 offset introduced in v31 pushed the percentage down into
-  -- the player frame instead of sitting above the name. Lift it clear.
-  if db.dbVersion < 32 then
-    if type(db.threat) == "table" and db.threat.pctMoved ~= true then
-      db.threat.pctOffsetY = HK.defaults.threat.pctOffsetY
-    end
-    db.dbVersion = 32
-  end
-
-  -- v32 -> v33: the threat warning icon moves left of the passive-pet alert.
-  -- Both defaulted to x = 0 with overlapping vertical spans, so they covered
-  -- each other whenever both were up. Only move a frame the user has not placed.
+  -- v27 -> v33: schema bumps only.
+  --
+  -- DELIBERATELY NOT REWRITING POSITIONS HERE.
+  --
+  -- Earlier builds shipped a migration on almost every release that reset a
+  -- frame's offsets whenever `moved` was false. That flag is only set by
+  -- DRAGGING, so anyone who had positioned things any other way -- or who was
+  -- simply happy with where they were -- had those frames silently moved on
+  -- every single update. That is the "settings reset when I update" report, and
+  -- it was self-inflicted.
+  --
+  -- New defaults now apply to NEW profiles only. An existing profile keeps
+  -- whatever it has; "/htk reset" is there for anyone who wants the new layout.
+  -- Only migrate saved data when it would otherwise be broken or unreadable --
+  -- never merely because a default changed.
   if db.dbVersion < 33 then
-    if type(db.threat) == "table" and db.threat.moved ~= true then
-      db.threat.offsetX = HK.defaults.threat.offsetX
-      db.threat.offsetY = HK.defaults.threat.offsetY
-    end
     db.dbVersion = 33
   end
 
