@@ -391,41 +391,46 @@ local function BuildBar()
 
   track = frame:CreateTexture(nil, "BACKGROUND")
   track:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
-  track:SetTexture("Interface\\Buttons\\WHITE8X8")
+  track:SetTexture("Interface\\Buttons\\WHITE8x8")
   track:SetVertexColor(0, 0, 0, 0.55)
 
   -- The lockout zone, pinned to the RIGHT edge: the bar fills left-to-right
   -- toward the shot, so "the end" is where the danger is.
   castZone = frame:CreateTexture(nil, "BORDER")
   castZone:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
-  castZone:SetTexture("Interface\\Buttons\\WHITE8X8")
+  castZone:SetTexture("Interface\\Buttons\\WHITE8x8")
   castZone:SetVertexColor(0.75, 0.12, 0.12, 0.55)
 
   fill = frame:CreateTexture(nil, "ARTWORK")
   fill:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
-  fill:SetTexture("Interface\\Buttons\\WHITE8X8")
+  fill:SetTexture("Interface\\Buttons\\WHITE8x8")
   fill:SetVertexColor(0.2, 0.9, 0.3, 0.9)
 
   -- A hairline at the safe/locked boundary. The eye tracks a line crossing a
   -- mark far better than it judges a colour change.
   safeMark = frame:CreateTexture(nil, "OVERLAY")
-  safeMark:SetTexture("Interface\\Buttons\\WHITE8X8")
+  safeMark:SetTexture("Interface\\Buttons\\WHITE8x8")
   safeMark:SetVertexColor(1, 1, 1, 0.85)
 
   -- The weave marker: the last moment you could still leave and get back in
   -- time. Left of it, going is safe; right of it, you would clip the shot.
   weaveMark = frame:CreateTexture(nil, "OVERLAY")
-  weaveMark:SetTexture("Interface\\Buttons\\WHITE8X8")
+  weaveMark:SetTexture("Interface\\Buttons\\WHITE8x8")
   weaveMark:SetVertexColor(0.4, 0.75, 1, 0.95)
 
   -- A thin second strip underneath for the MELEE cycle. Separate on purpose:
   -- in Era the two cycles are independent, and drawing them as one bar would
   -- imply a relationship the game does not have.
+  -- The track was black at 50% alpha, which is invisible against a dark UI --
+  -- so with no swing observed yet (an empty fill) the whole melee row looked
+  -- like it simply was not there. This is the "no melee weapon timer" report.
+  -- A lighter, clearly-visible slate makes the empty row read as a real,
+  -- waiting bar rather than nothing at all.
   meleeTrack = frame:CreateTexture(nil, "BACKGROUND")
-  meleeTrack:SetTexture("Interface\\Buttons\\WHITE8X8")
-  meleeTrack:SetVertexColor(0, 0, 0, 0.5)
+  meleeTrack:SetTexture("Interface\\Buttons\\WHITE8x8")
+  meleeTrack:SetVertexColor(0.22, 0.22, 0.26, 0.90)
   meleeFill = frame:CreateTexture(nil, "ARTWORK")
-  meleeFill:SetTexture("Interface\\Buttons\\WHITE8X8")
+  meleeFill:SetTexture("Interface\\Buttons\\WHITE8x8")
   meleeFill:SetVertexColor(0.85, 0.7, 0.2, 0.9)
 
   label = frame:CreateFontString(nil, "OVERLAY")
@@ -476,6 +481,55 @@ end
 -- ---------------------------------------------------------------------------
 -- Drawing
 -- ---------------------------------------------------------------------------
+-- Hide every child texture/font string that is NOT part of the plain bar.
+--
+-- Textures do NOT hide with their parent frame in the WoW API -- Hide() on the
+-- frame stops it drawing, but a child that was explicitly Show()n keeps its own
+-- shown state, and re-showing the parent brings the stale children straight
+-- back. That is why switching a row off (or ending a fight) could leave green
+-- pips hanging on screen for a few seconds until something else redrew. Every
+-- teardown path routes through here so nothing can be forgotten.
+local function HideExtras()
+  if meleeFill then meleeFill:Hide() end
+  if meleeTrack then meleeTrack:Hide() end
+  if weaveMark then weaveMark:Hide() end
+  if specialRow then
+    for i = 1, 2 do
+      if specialRow[i] then specialRow[i]:Hide() end
+      if specialRow[i .. "text"] then specialRow[i .. "text"]:Hide() end
+    end
+  end
+end
+
+-- The special-shot pips. Dark means on cooldown, which is exactly when a weave
+-- is the correct use of the gap. Split out of Redraw so that every path which
+-- can change their visibility -- a live redraw, the idle bar, and a settings
+-- change -- goes through the same code.
+local function DrawSpecialPips(now)
+  if not specialRow then return end
+  if db.weave == false or db.showSpecials == false then
+    for i = 1, 2 do
+      if specialRow[i] then specialRow[i]:Hide() end
+      if specialRow[i .. "text"] then specialRow[i .. "text"]:Hide() end
+    end
+    return
+  end
+  local _, aimedIn, multiIn = ShotTimer.SpecialsDown(now)
+  local pairsIn = { { "Aimed", aimedIn }, { "Multi", multiIn } }
+  for i = 1, 2 do
+    local pip, fs = specialRow[i], specialRow[i .. "text"]
+    local left = pairsIn[i][2] or 0
+    if left > 0 then
+      pip:SetVertexColor(0.35, 0.35, 0.38, 0.9)      -- on cooldown
+      fs:SetFormattedText("|cff9a9a9a%s %.0fs|r", pairsIn[i][1], left)
+    else
+      pip:SetVertexColor(0.30, 0.90, 0.30, 0.95)     -- ready: spend it
+      fs:SetFormattedText("|cff55dd55%s|r", pairsIn[i][1])
+    end
+    pip:Show(); fs:Show()
+  end
+end
+
 local function Redraw(now)
   if not frame or not frame:IsShown() then return end
   local remaining, total, locked = ShotTimer.Progress(now)
@@ -546,31 +600,7 @@ local function Redraw(now)
     end
   end
 
-  -- The special-shot pips. Dark means on cooldown, which is exactly when a
-  -- weave is the correct use of the gap.
-  if specialRow then
-    if db.weave ~= false and db.showSpecials ~= false then
-      local _, aimedIn, multiIn = ShotTimer.SpecialsDown(now)
-      local pairsIn = { { "Aimed", aimedIn }, { "Multi", multiIn } }
-      for i = 1, 2 do
-        local pip, fs = specialRow[i], specialRow[i .. "text"]
-        local left = pairsIn[i][2] or 0
-        if left > 0 then
-          pip:SetVertexColor(0.35, 0.35, 0.38, 0.9)      -- on cooldown
-          fs:SetFormattedText("|cff9a9a9a%s %.0fs|r", pairsIn[i][1], left)
-        else
-          pip:SetVertexColor(0.30, 0.90, 0.30, 0.95)     -- ready: spend it
-          fs:SetFormattedText("|cff55dd55%s|r", pairsIn[i][1])
-        end
-        pip:Show(); fs:Show()
-      end
-    else
-      for i = 1, 2 do
-        if specialRow[i] then specialRow[i]:Hide() end
-        if specialRow[i .. "text"] then specialRow[i .. "text"]:Hide() end
-      end
-    end
-  end
+  DrawSpecialPips(now)
 
   -- The measured clip from the previous shot, held briefly then faded out.
   if db.showDelay ~= false and delayShownAt > 0
@@ -661,12 +691,14 @@ function ShotTimer.Refresh()
       if meleeTrack then
         if db.weave ~= false then meleeTrack:Show() else meleeTrack:Hide() end
       end
+      DrawSpecialPips(now or (tonumber(Call(GetTime)) or 0))
       BindOnUpdate(false)
     else
       ShotTimer.OnUpdate()
     end
   else
     BindOnUpdate(false)
+    HideExtras()      -- child textures do NOT hide with their parent
     frame:Hide()
   end
 end
@@ -800,8 +832,21 @@ function ShotTimer.RescanSettings()
   if frame then
     ApplySize()
     ShotTimer.ApplyPosition()
+    -- Clear every optional row BEFORE redrawing. Unticking "show Aimed/Multi"
+    -- (or the weave marker) used to leave the pips on screen until the next
+    -- animation frame happened to run -- and if the bar was idle or the fight
+    -- had ended there was no next frame, so they simply stayed. Wiping first
+    -- and letting the redraw re-add only what is still enabled makes a settings
+    -- change take effect on the same click.
+    HideExtras()
   end
   ShotTimer.Refresh()
+  -- Refresh() only repaints when a cycle is live; force one so a settings
+  -- change is visible at once even mid-cooldown.
+  if frame and frame:IsShown() and not (HK.Editing and HK.Editing())
+     and not ShotTimer.IsIdle() then
+    ShotTimer.OnUpdate()
+  end
 end
 
 function ShotTimer.Init()
@@ -871,6 +916,10 @@ function ShotTimer._OnMeleeSwing(t)
 end
 function ShotTimer._ClearMelee() meleeSwungAt = nil end
 ShotTimer._OnCombatLog = OnCombatLog
+function ShotTimer.MeleeTrackColor()
+  if not meleeTrack then return nil end
+  return meleeTrack:GetVertexColor()
+end
 function ShotTimer.MeleeTrackShown()
   return meleeTrack ~= nil and meleeTrack:IsShown() == true
 end

@@ -3,6 +3,34 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.47] - 2026-09-05
+
+### Fixed
+- **The addon appeared to reset every setting on update.** `HK.ResetAll()` wrote
+  `HK.db.dbVersion = HK.dbVersion` -- a field that does not exist (the number is
+  `HK.defaults.dbVersion`). It stored nil, so at the next login the profile
+  looked version-less and every migration re-ran from the beginning, each one
+  force-overwriting deliberate choices (muted gun, ammo voice, threat enable,
+  frame positions). The update was innocent: any earlier "reset" had already
+  corrupted the saved file. A version-less profile that already holds settings
+  is now stamped current instead of being dragged through the whole migration
+  chain, while a genuinely empty profile still gets first-install defaults.
+- **The melee swing row was invisible.** It was drawn black at 50% alpha, which
+  against a dark UI is nothing at all -- and with no swing observed yet the fill
+  is empty, so the entire row looked absent. It is now a clearly visible slate
+  so the waiting bar reads as a bar. (Also normalised seven `WHITE8X8` texture
+  paths to the `WHITE8x8` spelling used everywhere else in the addon.)
+- **Turning off "show Aimed / Multi-Shot" did not remove them at once**, and
+  rows could linger as bare green bars for a few seconds. Two causes: child
+  textures do not hide with their parent frame, so hiding the bar left
+  explicitly-shown children to reappear on the next show; and when the bar was
+  up but idle (in melee, auto-repeat stopped) no animation frame was coming to
+  repaint it. All teardown now routes through one place, and a settings change
+  repaints immediately.
+- **The threat percentage now sits over the player frame's name**, anchored to
+  the name region itself so it tracks it under any skin or scale, and nudged
+  down onto the name rather than floating above the frame.
+
 ## [0.9.46] - 2026-09-05
 
 ### Fixed

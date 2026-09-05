@@ -624,6 +624,56 @@ HKTest.Fire("UNIT_SPELLCAST_SUCCEEDED", "player", "ms5", 25294)
 check("Multi-Shot rank 5 still pews", #HKTest.soundsPlayed == sp + 7,
   tostring(#HKTest.soundsPlayed - sp))
 
+
+-- ---------------------------------------------------------------------------
+-- SETTINGS MUST SURVIVE AN UPDATE
+--
+-- Regression: HK.ResetAll() wrote `HK.db.dbVersion = HK.dbVersion`, but that
+-- field does not exist -- the number lives in HK.defaults.dbVersion. It stored
+-- nil, so on the NEXT login the profile looked version-less, every migration
+-- re-ran from the beginning, and each one force-overwrote settings the user had
+-- deliberately chosen. That is the "addon resets all my settings when updated"
+-- report: the update was innocent, a prior Reset had already broken the file.
+-- ---------------------------------------------------------------------------
+check("ResetAll stamps the CURRENT schema version",
+  HK.db.dbVersion == HK.defaults.dbVersion,
+  tostring(HK.db.dbVersion) .. " vs " .. tostring(HK.defaults.dbVersion))
+check("...and it is a real number, never nil",
+  type(HK.db.dbVersion) == "number", type(HK.db.dbVersion))
+
+-- A populated profile that somehow lost its version must NOT be treated as
+-- ancient and dragged back through every migration.
+local saved = {
+  threat = { threshold = 65, enabled = true },
+  sound = { muteOriginal = false },
+  ammo = { sound = true, threshold = 350 },
+  shottimer = { enabled = true, width = 300 },
+}
+local HK2 = HKTest.LoadAddon(unpack(HKTest.addonFiles))
+HunterKitDB = saved
+HK2:Load()
+check("a version-less profile with real settings keeps its threshold",
+  HK2.db.threat.threshold == 65, tostring(HK2.db.threat.threshold))
+check("...keeps a deliberately un-muted gun", HK2.db.sound.muteOriginal == false,
+  tostring(HK2.db.sound.muteOriginal))
+check("...keeps ammo voice on", HK2.db.ammo.sound == true,
+  tostring(HK2.db.ammo.sound))
+check("...keeps its own ammo threshold", HK2.db.ammo.threshold == 350,
+  tostring(HK2.db.ammo.threshold))
+check("...keeps the shot bar enabled", HK2.db.shottimer.enabled == true)
+check("...and is stamped current so it never re-migrates",
+  HK2.db.dbVersion == HK2.defaults.dbVersion, tostring(HK2.db.dbVersion))
+
+-- A genuinely EMPTY profile is still a first install and must get the defaults
+-- (including the migrations that set opinionated defaults).
+HunterKitDB = {}
+local HK3 = HKTest.LoadAddon(unpack(HKTest.addonFiles))
+HK3:Load()
+check("a brand-new profile still gets the silenced gun default",
+  HK3.db.sound.muteOriginal == true, tostring(HK3.db.sound.muteOriginal))
+check("...and voice warnings off by default", HK3.db.ammo.sound == false,
+  tostring(HK3.db.ammo.sound))
+
 say(string.format("\n%d passed, %d failed", passes, #failures))
 if #failures > 0 then
   for _, f in ipairs(failures) do say("  - " .. f) end

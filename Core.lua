@@ -6,7 +6,7 @@
 
 local ADDON_NAME, HK = ...
 
-HK.version = "0.9.46"
+HK.version = "0.9.47"
 
 -- ---------------------------------------------------------------------------
 -- Defaults (schema). This is the source of truth for the options window and
@@ -14,7 +14,7 @@ HK.version = "0.9.46"
 -- ---------------------------------------------------------------------------
 HK.defaults = {
   enabled   = true,
-  dbVersion = 30,
+  dbVersion = 31,
   firstRun  = true,
 
   ui = {
@@ -78,7 +78,7 @@ HK.defaults = {
     showPct       = true,
     showGap       = true,    -- prefix the % with the damage that would pull it
     pctOffsetX    = 0,       -- centred above the player frame
-    pctOffsetY    = 2,
+    pctOffsetY    = -6,      -- tucked down over the name, not floating above
     pctMoved      = false,   -- true once dragged (then pinned absolutely)
   },
 
@@ -482,7 +482,13 @@ function HK.ResetAll()
   for k in pairs(HK.db) do
     if HK.defaults[k] == nil and k ~= "dbVersion" then HK.db[k] = nil end
   end
-  HK.db.dbVersion = HK.dbVersion
+  -- HK.dbVersion does not exist -- the number lives in HK.defaults.dbVersion.
+  -- Writing the nil erased the stored version, so on the NEXT login every
+  -- migration re-ran from scratch and force-overwrote the user's settings
+  -- (muteOriginal, ammo.sound, threat.enabled, every "moved" position...).
+  -- That is the "addon resets all settings when updated" bug: it was not the
+  -- update at all, it was any prior Reset leaving the profile version-less.
+  HK.db.dbVersion = HK.defaults.dbVersion
 
   -- Re-apply everywhere. RescanSettings re-reads the db slice and rebuilds what
   -- the setting controls; the mend marker also puts any leftover forced
@@ -570,10 +576,22 @@ end
 local function LoadDB()
   local db = HunterKitDB
   if type(db) ~= "table" then db = {} end  -- corrupt/partial wipe -> clean slate
+  -- Was this profile empty before we filled it? MergeDefaults populates every
+  -- key, so this MUST be sampled first or a first install and a version-less
+  -- existing profile become indistinguishable.
+  local wasFresh = (next(db) == nil)
   HK.MergeDefaults(db, HK.defaults)
 
   -- Migrations: bump dbVersion and apply per-version field fixes here.
-  if type(db.dbVersion) ~= "number" then db.dbVersion = 1 end
+  --
+  -- A profile with NO version is only genuinely ancient if it also has no data.
+  -- If it already holds saved settings, treat it as current: re-running every
+  -- migration over a populated profile silently rewrites the user's choices,
+  -- which is exactly what the ResetAll bug above used to cause. `wasFresh` is
+  -- measured BEFORE MergeDefaults fills the table in.
+  if type(db.dbVersion) ~= "number" then
+    db.dbVersion = wasFresh and 1 or HK.defaults.dbVersion
+  end
 
   -- v1/v2 -> v3: the gunshot is meant to be SILENCED by default. Earlier builds
   -- (and the "never mute by default" rule) left `muteOriginal` false for many
@@ -865,6 +883,15 @@ local function LoadDB()
       db.threat.pctOffsetY = HK.defaults.threat.pctOffsetY
     end
     db.dbVersion = 30
+  end
+
+  -- v30 -> v31: the threat percentage sits a little lower, over the player
+  -- frame's name rather than floating above the frame.
+  if db.dbVersion < 31 then
+    if type(db.threat) == "table" and db.threat.pctMoved ~= true then
+      db.threat.pctOffsetY = HK.defaults.threat.pctOffsetY
+    end
+    db.dbVersion = 31
   end
 
   if db.dbVersion < 19 then

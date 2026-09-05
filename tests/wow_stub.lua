@@ -154,6 +154,10 @@ function Frame:SetVertexColor(r, g, b, a)
   self.color = { r, g, b, a }
   self:Record("SetVertexColor", r, g, b, a)
 end
+function Frame:GetVertexColor()
+  local c = self.color or { 1, 1, 1, 1 }
+  return c[1], c[2], c[3], c[4]
+end
 function Frame:SetDesaturated(v) self.desaturated = v and true or false; self:Record("SetDesaturated", self.desaturated) end
 function Frame:GetDesaturated() return self.desaturated end
 function Frame:SetAllPoints() end
@@ -258,6 +262,10 @@ function UIParent:GetEffectiveScale() return 1 end
 -- The default-UI player frame. The aggro percentage readout anchors to its
 -- TOPRIGHT, so it has to exist and report a real object type.
 PlayerFrame = newFrame("Frame", "PlayerFrame", UIParent)
+-- The player frame's name text. The threat readout anchors to this so it sits
+-- exactly over the name whatever the frame's skin/scale.
+PlayerName = newFrame("FontString", "PlayerName", PlayerFrame)
+function PlayerName:GetObjectType() return "FontString" end
 PlayerFrame:SetSize(232, 100)
 function PlayerFrame:GetObjectType() return "Frame" end
 

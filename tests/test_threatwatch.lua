@@ -423,12 +423,16 @@ check("it tracks pet changes", HK.bus.handlers["UNIT_PET"] ~= nil)
 local pctFrame = _G["HunterKitThreatPct"]
 check("the percentage readout frame exists", pctFrame ~= nil)
 
--- It sits centred directly ABOVE the player frame: our BOTTOM to the frame's
--- TOP. Anchoring by a corner left it hanging off to one side.
+-- It sits centred over the player frame's NAME: our BOTTOM to the name's TOP,
+-- pulled down a little so it sits on the name rather than floating above the
+-- frame. Anchoring to the name region (not the frame corner) keeps it centred
+-- whatever the skin or scale.
 local pp = pctFrame and pctFrame.points[1]
-check("the readout sits above the middle of the player frame",
-  pp and pp[1] == "BOTTOM" and pp[2] == _G["PlayerFrame"] and pp[3] == "TOP",
+check("the readout sits centred over the player frame's name",
+  pp and pp[1] == "BOTTOM" and pp[2] == _G["PlayerName"] and pp[3] == "TOP",
   pp and (tostring(pp[1]) .. "->" .. tostring(pp[2] and pp[2].name) .. "/" .. tostring(pp[3])))
+check("...and is nudged down onto the name, not floating above it",
+  (tonumber(pp and pp[5]) or 0) < 0, tostring(pp and pp[5]))
 
 -- It must never eat clicks meant for the player frame underneath it.
 check("the readout does not intercept mouse clicks",
@@ -819,8 +823,10 @@ check("a genuine warning still shows after previewing",
   alertFrame:IsShown() == true)
 Scene({ playerPct = 10, threshold = 80 })
 
-check("the readout defaults to centred above the player frame",
+check("the readout defaults to horizontally centred",
   HK.defaults.threat.pctOffsetX == 0)
+check("...and sits down over the name", HK.defaults.threat.pctOffsetY < 0,
+  tostring(HK.defaults.threat.pctOffsetY))
 
 say(string.format("\n%d passed, %d failed", passes, #failures))
 if #failures > 0 then

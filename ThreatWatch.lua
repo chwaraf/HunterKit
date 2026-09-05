@@ -547,13 +547,15 @@ function ThreatWatch.ApplyReadoutPosition()
       tonumber(db.pctOffsetX) or 0, tonumber(db.pctOffsetY) or 0)
     return
   end
-  -- Default: centred directly ABOVE the player frame. Anchoring our BOTTOM to
-  -- the frame's TOP keeps the number horizontally centred on the portrait
-  -- whatever the frame's size or scale, instead of hanging off one corner.
-  local anchor = _G["PlayerFrame"]
+  -- Default: centred over the player frame's NAME. Prefer anchoring to the name
+  -- text itself (PlayerName) so the number tracks it exactly whatever the
+  -- frame's size, scale or skin; fall back to the frame's TOP when a reskinned
+  -- UI has no such region. A small negative Y tucks it down onto the name
+  -- rather than leaving it floating above the frame.
+  local anchor = _G["PlayerName"] or _G["PlayerFrame"]
   if anchor and anchor.GetObjectType then
     readout:SetPoint("BOTTOM", anchor, "TOP",
-      tonumber(db.pctOffsetX) or 0, tonumber(db.pctOffsetY) or 2)
+      tonumber(db.pctOffsetX) or 0, tonumber(db.pctOffsetY) or -6)
   else
     -- No player frame (heavily reskinned UI): fall back to a sane screen spot
     -- rather than leaving the widget unanchored.

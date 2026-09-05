@@ -629,6 +629,103 @@ HK.db.shottimer.weave = true
 ST.RescanSettings()
 HKTest.state.playerCombat = false
 
+
+-- ---------------------------------------------------------------------------
+-- 21) SWITCHING A ROW OFF MUST TAKE EFFECT ON THE SAME CLICK
+--
+-- Regression: unticking "show Aimed/Multi" left the pips on screen until some
+-- later animation frame repainted -- and when the bar was idle or the fight had
+-- ended, no such frame ever came, so they lingered (sometimes as bare green
+-- bars) for seconds. Every teardown path now clears the optional rows.
+-- ---------------------------------------------------------------------------
+HKTest.state.playerCombat = true
+HK.db.shottimer.weave = true
+HK.db.shottimer.showSpecials = true
+ST.RescanSettings()
+SpecialsOnCD(6000)
+Shooting(3.3, 6000)
+ST._OnMeleeSwing(5990)
+At(6000)
+ST.OnUpdate()
+check("pips are up to start with", ST.SpecialPipsShown() == true)
+
+HK.db.shottimer.showSpecials = false
+ST.RescanSettings()                       -- no OnUpdate in between
+check("unticking the specials row removes it immediately",
+  ST.SpecialPipsShown() == false)
+
+-- The case that actually bit: the bar is up but IDLE (in melee, auto-repeat
+-- stopped). There is no animation frame coming to repaint it, so unticking a
+-- row has to clear it there and then rather than waiting for one.
+HK.db.shottimer.showSpecials = true
+ST.RescanSettings()
+ST._SetRepeating(false)
+At(6050)                                  -- cycle long expired
+ST.Refresh()
+check("idle in melee: the bar is still up", ST.IsShown() == true)
+check("idle in melee: pips are drawn", ST.SpecialPipsShown() == true)
+HK.db.shottimer.showSpecials = false
+ST.RescanSettings()
+check("unticking while the bar is IDLE also removes them at once",
+  ST.SpecialPipsShown() == false)
+HK.db.shottimer.showSpecials = true
+Shooting(3.3, 6060)
+ST._OnMeleeSwing(6050)
+At(6060)
+ST.OnUpdate()
+
+HK.db.shottimer.showSpecials = true
+ST.RescanSettings()
+At(6000)
+ST.OnUpdate()
+check("re-ticking brings it back", ST.SpecialPipsShown() == true)
+
+-- Same for the weave/melee row.
+check("melee row is up", ST.MeleeTrackShown() == true)
+HK.db.shottimer.weave = false
+ST.RescanSettings()
+check("unticking the weave marker removes the melee row immediately",
+  ST.MeleeTrackShown() == false)
+check("...and takes the pips with it (they are part of weaving)",
+  ST.SpecialPipsShown() == false)
+HK.db.shottimer.weave = true
+ST.RescanSettings()
+
+-- ---------------------------------------------------------------------------
+-- 22) NOTHING MAY LINGER WHEN THE BAR GOES AWAY
+--
+-- Child textures do NOT hide with their parent frame: an explicitly-shown child
+-- keeps its own state. Hiding the bar therefore has to hide them by hand, or
+-- they reappear the moment the frame is shown again.
+-- ---------------------------------------------------------------------------
+SpecialsOnCD(6100)
+Shooting(3.3, 6100)
+ST._OnMeleeSwing(6090)
+At(6100)
+ST.OnUpdate()
+check("everything is up mid-fight", ST.IsShown() and ST.MeleeTrackShown()
+  and ST.SpecialPipsShown())
+
+HKTest.state.playerCombat = false          -- fight ends
+ST._SetRepeating(false)
+ST.Refresh()
+check("the bar goes away", ST.IsShown() == false)
+check("...and leaves no melee row behind", ST.MeleeTrackShown() == false)
+check("...and no stray pips", ST.SpecialPipsShown() == false)
+check("...and no weave marker", ST.WeaveMarkShown() == false)
+HKTest.state.playerCombat = false
+
+-- ---------------------------------------------------------------------------
+-- 23) THE MELEE TRACK MUST ACTUALLY BE VISIBLE
+--
+-- It was drawn black at 50% alpha, which against a dark UI is nothing at all --
+-- and with no swing observed the fill is empty, so the whole row looked absent.
+-- ---------------------------------------------------------------------------
+local r, g, b, a = ST.MeleeTrackColor()
+check("the melee track is not invisible black",
+  (r + g + b) > 0.3, string.format("%.2f,%.2f,%.2f", r or 0, g or 0, b or 0))
+check("...and is solid enough to see", (a or 0) >= 0.7, tostring(a))
+
 say(string.format("\n%d passed, %d failed", passes, #failures))
 if #failures > 0 then
   for _, f in ipairs(failures) do say("  - " .. f) end
