@@ -100,6 +100,10 @@ local MULTI_SHOT_IDS = {
 -- rank-1 id is enough for GetSpellCooldown.
 local SPELL_AIMED = 19434
 local SPELL_MULTI = 2643
+-- After this many swing-lengths with no observed swing we stop treating the
+-- melee cycle as live. Two gives a full swing of slack for a missed combat-log
+-- line before the bar goes quiet, without animating forever after you walk away.
+local MELEE_IDLE_AFTER = 2
 local DEFAULT_TRAVEL = 2.5
 local MELEE_MIN_SPEED = 0.5
 local MELEE_MAX_SPEED = 10
@@ -657,10 +661,26 @@ local function ShouldShow()
   return nextAt ~= nil
 end
 
--- Whether a live cycle is actually running behind the bar. Distinct from
--- ShouldShow: with `always` on, the bar is visible while completely idle.
+-- Whether ANY cycle is running behind the bar. Distinct from ShouldShow: with
+-- `always` on, the bar is visible while completely idle.
+--
+-- This must consider the MELEE cycle too, not just the ranged one. In melee
+-- range auto-repeat stops, so the ranged cycle is dead -- but the melee swing
+-- is very much alive, and that is the whole reason a weaving hunter is stood
+-- there. Judging "idle" on the ranged cycle alone parked the update loop and
+-- left the melee bar frozen at zero: a dead grey strip that never filled. It is
+-- only truly idle when neither cycle has anything to animate.
 function ShotTimer.IsIdle()
-  return not (repeating and nextAt ~= nil)
+  if repeating and nextAt ~= nil then return false end
+  if db and db.weave ~= false and meleeSwungAt ~= nil then
+    -- A swing we have observed is still counting down (or has just come up and
+    -- the bar should be sitting full/green rather than blank).
+    local now = tonumber(Call(GetTime)) or 0
+    if (now - meleeSwungAt) < (MELEE_IDLE_AFTER * math.max(meleeSpeed, MELEE_MIN_SPEED)) then
+      return false
+    end
+  end
+  return true
 end
 
 function ShotTimer.Refresh()
@@ -691,7 +711,7 @@ function ShotTimer.Refresh()
       if meleeTrack then
         if db.weave ~= false then meleeTrack:Show() else meleeTrack:Hide() end
       end
-      DrawSpecialPips(now or (tonumber(Call(GetTime)) or 0))
+      DrawSpecialPips(tonumber(Call(GetTime)) or 0)
       BindOnUpdate(false)
     else
       ShotTimer.OnUpdate()
@@ -916,6 +936,11 @@ function ShotTimer._OnMeleeSwing(t)
 end
 function ShotTimer._ClearMelee() meleeSwungAt = nil end
 ShotTimer._OnCombatLog = OnCombatLog
+-- Test seam: how far the melee fill has progressed, in pixels.
+function ShotTimer.MeleeFillWidth()
+  if not meleeFill or not meleeFill:IsShown() then return 0 end
+  return meleeFill:GetWidth() or 0
+end
 function ShotTimer.MeleeTrackColor()
   if not meleeTrack then return nil end
   return meleeTrack:GetVertexColor()

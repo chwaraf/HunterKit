@@ -799,10 +799,10 @@ function BuildWindow()
     "Size of the on-screen warning icon. Unlock the frames (/htk unlock) to drag it where you want it.", true)
   y = y - CHK
 
-  -- Auto Shot timer
-  AddSection(content, y, "Auto Shot timer")
+  -- Weapon timers: the bar covers ranged AND melee swings, not just Auto Shot.
+  AddSection(content, y, "Weapon timers")
   y = y - HDR
-  MakeCheckbox(content, y, "Show the auto shot / weave bar",
+  MakeCheckbox(content, y, "Show the weapon timers bar",
     function() return db.shottimer.enabled end,
     function(v) db.shottimer.enabled = v; RefreshShotTimer() end,
     "A bar showing your Auto Shot cycle while you are firing. Green means you are free to move and weave in a shot; the red zone at the end is the 0.5s where doing anything clips the shot and loses the damage. Appears only while auto-shooting.")

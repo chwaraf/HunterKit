@@ -726,6 +726,59 @@ check("the melee track is not invisible black",
   (r + g + b) > 0.3, string.format("%.2f,%.2f,%.2f", r or 0, g or 0, b or 0))
 check("...and is solid enough to see", (a or 0) >= 0.7, tostring(a))
 
+
+-- ---------------------------------------------------------------------------
+-- 24) THE MELEE BAR MUST FILL LIKE THE RANGED ONE
+--
+-- Regression: IsIdle() only asked whether the RANGED cycle was running. In
+-- melee range auto-repeat stops, so it reported "idle", parked the OnUpdate
+-- loop and blanked the fill -- leaving a dead grey strip that never loaded,
+-- even though the melee swing behind it was ticking the whole time.
+-- ---------------------------------------------------------------------------
+HKTest.state.playerCombat = true
+HKTest.state.meleeSpeed = 2.4
+HK.db.shottimer.weave = true
+HK.db.shottimer.always = false
+ST.RescanSettings()
+
+-- Shooting: the melee bar advances with the swing.
+SpecialsOnCD(7000)
+Shooting(3.3, 7000)
+ST._OnMeleeSwing(7000)
+At(7000.6); ST.OnUpdate()
+local w1 = ST.MeleeFillWidth()
+At(7001.8); ST.OnUpdate()
+local w2 = ST.MeleeFillWidth()
+check("at range, the melee bar fills as the swing comes up", w2 > w1,
+  string.format("%.1f -> %.1f", w1, w2))
+
+-- Now walk into melee: auto-repeat stops, the ranged cycle dies.
+ST._SetRepeating(false)
+At(7003)
+ST.Refresh()
+check("in melee the bar is still up", ST.IsShown() == true)
+check("...and is NOT considered idle -- the melee swing is live",
+  ST.IsIdle() == false)
+check("...so the animation keeps running", ST.IsAnimating() == true)
+
+ST._OnMeleeSwing(7003)
+At(7003.6); ST.Refresh()
+local m1 = ST.MeleeFillWidth()
+At(7004.8); ST.Refresh()
+local m2 = ST.MeleeFillWidth()
+check("the melee bar loads in melee, just like the ranged bar does",
+  m2 > m1 and m1 > 0, string.format("%.1f -> %.1f", m1, m2))
+
+-- It must still go quiet once you stop swinging, or it animates forever.
+At(7003 + (2.4 * 3))
+ST.Refresh()
+check("long after the last swing, the melee cycle is treated as over",
+  ST.IsIdle() == true)
+check("...and the loop is released", ST.IsAnimating() == false)
+
+HKTest.state.playerCombat = false
+ST._ClearMelee()
+
 say(string.format("\n%d passed, %d failed", passes, #failures))
 if #failures > 0 then
   for _, f in ipairs(failures) do say("  - " .. f) end

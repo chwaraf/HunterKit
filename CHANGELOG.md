@@ -3,6 +3,24 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.48] - 2026-09-05
+
+### Fixed
+- **The melee swing bar never loaded.** `IsIdle()` only asked whether the RANGED
+  cycle was running. Walking into melee stops auto-repeat, so it reported the
+  bar "idle", parked the per-frame update loop and blanked the fill -- leaving
+  exactly what was described: a strip under the shot bar that turns grey in
+  melee and never fills, even though the melee swing behind it was ticking the
+  whole time. Idle now means *neither* cycle has anything to animate, so the
+  melee bar fills like the ranged one. It still goes quiet a couple of swings
+  after your last observed hit rather than animating forever.
+
+### Changed
+- The options section is now **"Weapon timers"** (was "Auto Shot timer") and the
+  toggle reads **"Show the weapon timers bar"**. The bar covers ranged *and*
+  melee swings plus the special-shot cooldowns; naming it after Auto Shot
+  undersold it and made the melee row look like a bug rather than a feature.
+
 ## [0.9.47] - 2026-09-05
 
 ### Fixed
