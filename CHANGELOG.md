@@ -3,6 +3,28 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.42] - 2026-09-05
+
+### Added
+- **Melee weave marker** on the shot bar. In Classic Era the melee and ranged
+  swing timers are **independent**, which is what makes weaving possible; a blue
+  line marks the last moment you could leave for melee and still be back before
+  the shot, and the label reads **WEAVE** while the round trip actually fits.
+  A second strip tracks the melee swing itself, driven by swings **observed in
+  the combat log** rather than assumed -- so it reports what happened rather
+  than what should have. It refuses to suggest a weave when the melee swing
+  would still be on cooldown on arrival. Round-trip time is configurable
+  (default 2.5s); the marker is only honest if it matches how fast you move.
+  This is deliberately the Era model: WotLK linked the two timers (confirmed by
+  a 2022 blue post) and killed weaving there, and the tests pin the Era
+  behaviour so that model cannot be imported by accident.
+
+### Fixed
+- `ShotTimer`'s pcall wrapper truncated client returns at **three values**,
+  silently dropping the 4th field of `CombatLogGetCurrentEventInfo` (the source
+  GUID). Every melee swing would have looked like somebody else's. It now
+  forwards all returns, counted from a single call.
+
 ## [0.9.41] - 2026-09-05
 
 ### Added

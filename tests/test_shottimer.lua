@@ -182,10 +182,14 @@ ST.RescanSettings()
 -- 8) What the bar actually says
 -- ---------------------------------------------------------------------------
 Shooting(3.0, 1300)
+HK.db.shottimer.weave = false      -- weave cue tested separately, below
+ST.RescanSettings()
 At(1300)
 ST.OnUpdate()
 check("the label counts down the FREE time, not the raw cycle",
   ST.LabelText() == "2.5s", tostring(ST.LabelText()))
+HK.db.shottimer.weave = true
+ST.RescanSettings()
 
 At(1302.7)                    -- inside the lockout
 ST.OnUpdate()
@@ -254,6 +258,155 @@ check("the bar is OFF by default (it is a big, permanent UI change)",
   HK.defaults.shottimer.enabled == false)
 check("the clip readout is on once the bar is enabled",
   HK.defaults.shottimer.showDelay == true)
+
+
+-- ---------------------------------------------------------------------------
+-- 11) MELEE WEAVING
+--
+-- In Classic Era the melee and ranged cycles are INDEPENDENT -- that is what
+-- makes weaving possible at all. (WotLK deliberately linked them, which killed
+-- it there; these tests pin the Era behaviour so a future edit cannot quietly
+-- import the wrong model.)
+-- ---------------------------------------------------------------------------
+HK.db.shottimer.weave = true
+HK.db.shottimer.travel = 2.5
+ST.RescanSettings()
+
+-- A melee swing must NOT disturb the ranged cycle.
+Shooting(3.0, 2000)
+local before = ST.Progress(2000.5)
+ST._OnMeleeSwing(2000.5)
+local after = ST.Progress(2000.5)
+check("a melee swing does not touch the ranged timer (Era, not WotLK)",
+  math.abs(before - after) < 0.0001, tostring(before) .. " vs " .. tostring(after))
+
+-- ...and the shot does not reset the melee cycle either.
+HKTest.state.meleeSpeed = 2.4
+ST._ClearMelee()
+ST._OnMeleeSwing(2100)
+HKTest.state.now = 2101
+local meleeBefore = ST.MeleeReady(2101)
+ST._OnShotFired(2101)
+check("an auto shot does not reset the melee swing",
+  math.abs(ST.MeleeReady(2101) - meleeBefore) < 0.0001,
+  tostring(meleeBefore) .. " vs " .. tostring(ST.MeleeReady(2101)))
+
+-- The melee cycle counts down from an OBSERVED swing.
+ST._ClearMelee()
+check("with no swing seen, we admit we do not know", ST.MeleeReady(2200) == nil)
+ST._OnMeleeSwing(2200)
+check("after a swing, the melee cycle is full",
+  math.abs(ST.MeleeReady(2200) - 2.4) < 0.001, tostring(ST.MeleeReady(2200)))
+check("...and drains", math.abs(ST.MeleeReady(2201) - 1.4) < 0.001,
+  tostring(ST.MeleeReady(2201)))
+check("...and floors at zero, not negative",
+  ST.MeleeReady(2299) == 0, tostring(ST.MeleeReady(2299)))
+
+-- ---------------------------------------------------------------------------
+-- 12) The weave decision: does the round trip fit?
+-- ---------------------------------------------------------------------------
+HKTest.state.meleeSpeed = 2.4
+Shooting(3.3, 2300)          -- slow bow: 2.8s free, 2.5s trip -> fits
+ST._OnMeleeSwing(2290)       -- swing came off cooldown long ago
+local ok, free, need = ST.CanWeave(2300)
+check("a slow weapon leaves room to weave", ok == true,
+  string.format("free %.2f need %.2f", free or -1, need))
+
+Shooting(2.6, 2400)          -- 2.1s free vs a 2.5s trip -> does not fit
+ST._OnMeleeSwing(2390)
+ok, free, need = ST.CanWeave(2400)
+check("a faster weapon does not", ok == false,
+  string.format("free %.2f need %.2f", free or -1, need))
+
+-- Late in the cycle the window has gone, even on a slow weapon.
+Shooting(3.3, 2500)
+ST._OnMeleeSwing(2490)
+check("weaving is off once the window has passed", ST.CanWeave(2501.5) == false,
+  string.format("%.2f free", ST.SafeWindow(2501.5)))
+
+-- A melee swing still on cooldown makes the trip pointless.
+Shooting(3.3, 2600)
+ST._OnMeleeSwing(2599.9)     -- just swung: 2.4s until the next one
+ok = ST.CanWeave(2600)
+check("no weave when the swing would not be ready on arrival", ok == false)
+
+-- Travel time is the player's own number and must actually matter.
+Shooting(3.3, 2700)
+ST._OnMeleeSwing(2690)
+HK.db.shottimer.travel = 1.0
+ST.RescanSettings()
+check("a quicker player can weave where a slower one cannot",
+  ST.CanWeave(2700) == true)
+HK.db.shottimer.travel = 4.0
+ST.RescanSettings()
+check("a slow round trip never fits", ST.CanWeave(2700) == false)
+HK.db.shottimer.travel = 2.5
+ST.RescanSettings()
+
+-- ---------------------------------------------------------------------------
+-- 13) What the player sees
+-- ---------------------------------------------------------------------------
+Shooting(3.3, 2800)
+ST._OnMeleeSwing(2790)
+At(2800)
+ST.OnUpdate()
+check("the bar says WEAVE while the trip fits",
+  (ST.LabelText() or ""):find("WEAVE") ~= nil, tostring(ST.LabelText()))
+At(2802.0)                   -- window gone
+ST.OnUpdate()
+check("...and stops saying it once it does not",
+  (ST.LabelText() or ""):find("WEAVE") == nil, tostring(ST.LabelText()))
+
+-- The marker cannot be drawn honestly on a weapon too fast to weave with.
+Shooting(3.3, 2900)
+check("a slow weapon gets a weave marker", ST.WeaveMarkShown() == true)
+Shooting(2.0, 2950)          -- 1.5s free, 2.5s trip: impossible
+check("a weapon too fast to weave shows no marker", ST.WeaveMarkShown() == false)
+
+-- Switching the feature off removes all of it.
+Shooting(3.3, 3000)
+ST._OnMeleeSwing(2990)
+HK.db.shottimer.weave = false
+ST.RescanSettings()
+At(3000)
+ST.OnUpdate()
+check("weaving off: no marker", ST.WeaveMarkShown() == false)
+check("weaving off: no WEAVE cue",
+  (ST.LabelText() or ""):find("WEAVE") == nil, tostring(ST.LabelText()))
+HK.db.shottimer.weave = true
+ST.RescanSettings()
+
+-- ---------------------------------------------------------------------------
+-- 14) Combat log: only OUR swings, only real ones
+-- ---------------------------------------------------------------------------
+HKTest.state.meleeSpeed = 2.4
+ST._ClearMelee()
+HKTest.state.now = 3100
+local myGUID = UnitGUID("player")
+HKTest.state.clevent = { 0, "SWING_DAMAGE", false, myGUID }
+ST._OnCombatLog()
+check("our own melee swing is picked up", ST.MeleeReady(3100) ~= nil)
+
+ST._ClearMelee()
+HKTest.state.clevent = { 0, "SWING_DAMAGE", false, "guid-someone-else" }
+ST._OnCombatLog()
+check("somebody else's swing is ignored", ST.MeleeReady(3100) == nil)
+
+ST._ClearMelee()
+HKTest.state.clevent = { 0, "SPELL_DAMAGE", false, myGUID }
+ST._OnCombatLog()
+check("a spell is not a melee swing", ST.MeleeReady(3100) == nil)
+
+-- A miss still swings the weapon, so it still resets the cycle.
+ST._ClearMelee()
+HKTest.state.clevent = { 0, "SWING_MISSED", false, myGUID }
+ST._OnCombatLog()
+check("a missed swing still resets the melee cycle", ST.MeleeReady(3100) ~= nil)
+HKTest.state.clevent = nil
+
+check("the weave marker is on by default", HK.defaults.shottimer.weave == true)
+check("the default round trip matches the community figure",
+  HK.defaults.shottimer.travel == 2.5)
 
 say(string.format("\n%d passed, %d failed", passes, #failures))
 if #failures > 0 then

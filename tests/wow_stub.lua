@@ -114,6 +114,7 @@ HKTest.KNOWN_EVENTS = {
   UNIT_INVENTORY_CHANGED = true,
   UNIT_MAXHEALTH = true,
   UNIT_PET = true,
+  COMBAT_LOG_EVENT_UNFILTERED = true,
   UNIT_SPELLCAST_START = true,
   UNIT_SPELLCAST_SUCCEEDED = true,
   UNIT_THREAT_LIST_UPDATE = true,
@@ -607,6 +608,23 @@ function GetTime() return HKTest.state.now or 0 end
 -- Ranged weapon speed, with haste already applied by the client. A test can set
 -- HKTest.state.rangedSpeed to model a slow bow vs a fast one -- the difference
 -- that decides how much room a hunter has to weave.
+-- Melee attack speed, main and off hand. Hunters weave with the main hand, so
+-- offSpeed is nil unless a test asks for dual wield.
+function UnitAttackSpeed(unit)
+  if unit ~= "player" then return 2.0, nil end
+  local m = HKTest.state.meleeSpeed
+  if m == nil then m = 2.4 end
+  return m, HKTest.state.offSpeed
+end
+
+-- Combat log payload. A test sets HKTest.state.clevent to a table of args and
+-- fires COMBAT_LOG_EVENT_UNFILTERED; this returns them the way the client does.
+function CombatLogGetCurrentEventInfo()
+  local e = HKTest.state.clevent
+  if not e then return nil end
+  return unpack(e)
+end
+
 function UnitRangedDamage(unit)
   if unit ~= "player" then return 0, 0, 0, 0, 0, 0 end
   local s = HKTest.state.rangedSpeed

@@ -31,6 +31,28 @@
  keeps reading +0.3 you are clipping and can see it, which is precisely the
  feedback the popular WeakAuras give and the reason good hunters use them.
 
+ MELEE WEAVING
+ -------------
+ A hunter has TWO independent attack cycles -- the ranged one above and an
+ ordinary melee swing -- and in Classic Era they do NOT reset each other. That
+ is what makes weaving possible: run in, land a Raptor Strike in the free part
+ of the shot cycle, run back out, and the Auto Shot fires on schedule as if you
+ had never moved. It is worth real damage and is the skill ceiling of the class.
+
+ IMPORTANT -- this is version-specific and widely gotten wrong. In WotLK
+ Blizzard deliberately linked the two (a melee swing resets the ranged timer and
+ vice versa), which killed weaving there; a 2022 blue post confirms that as
+ intended 3.3.5 behaviour. Era is the older, UNLINKED model. This module targets
+ Era, so it treats the cycles as independent -- but it never *assumes* the swing
+ landed on time: the melee bar is driven by observed swings from the combat log,
+ so if a server did link them the bar would show that rather than lie.
+
+ The weave window is not simply "the green part". A round trip costs travel time
+ out and back, so the bar marks the point after which leaving would not get you
+ home before the shot. Community timing for a good hunter with a speed buff is
+ ~2.5s round trip, which is why weaving is only safe on slow weapons and why
+ every guide says never to weave while hasted.
+
  COST
  ----
  Event-driven. The OnUpdate that animates the bar is attached only while the bar
@@ -67,6 +89,15 @@ local MULTI_SHOT_IDS = {
   [2643] = true, [14288] = true, [14289] = true, [14290] = true, [25294] = true,
 }
 
+-- Melee weaving. DEFAULT_TRAVEL is the round trip a competent hunter manages
+-- (out to melee, swing, back to range) -- the figure the Classic hunter guides
+-- quote with a movement buff. It is a user setting because it depends on your
+-- speed buff and how far out you stand; the bar is only honest if this matches
+-- reality, so the option tooltip says so plainly.
+local DEFAULT_TRAVEL = 2.5
+local MELEE_MIN_SPEED = 0.5
+local MELEE_MAX_SPEED = 10
+
 local frame, track, fill, safeMark, castZone, tick, label, delayText
 local onUpdateBound = false
 
@@ -81,15 +112,28 @@ local lastDelay     = 0      -- measured clip on the previous shot, seconds
 local delayShownAt  = 0
 local shotCount, clipCount = 0, 0
 
+-- Melee cycle. Tracked from OBSERVED swings (combat log), never assumed: the
+-- client offers no "time of next swing" call, so the only honest anchor is a
+-- swing that actually happened.
+local meleeSpeed   = 2.4
+local meleeSwungAt = nil
+local weaveMark, meleeFill, meleeTrack
+
 local DELAY_HOLD  = 2.5      -- seconds the "+0.34s" readout lingers
 local CLIP_EPSILON = 0.08    -- below this, a delay is latency noise, not a clip
 
 -- Every client call is wrapped: a single missing API must not break the bar.
+-- Forwards ALL return values -- an earlier version truncated at three, which
+-- silently dropped the 4th field of CombatLogGetCurrentEventInfo (the source
+-- GUID) and made every melee swing look like somebody else's.
 local function Call(fn, ...)
   if type(fn) ~= "function" then return nil end
-  local ok, a, b, c = pcall(fn, ...)
-  if not ok then return nil end
-  return a, b, c
+  -- n is captured from the SAME call -- never call fn twice to count its
+  -- returns, these are live client calls. `n` is explicit because the result
+  -- list can contain nils, and both #r and table.maxn stop at the first hole.
+  local r = table.pack and table.pack(pcall(fn, ...)) or { pcall(fn, ...) }
+  if not r[1] then return nil end
+  return unpack(r, 2, r.n or #r)
 end
 
 -- ---------------------------------------------------------------------------
@@ -142,6 +186,59 @@ function ShotTimer.IsLocked(now)
   return locked == true
 end
 
+-- ---------------------------------------------------------------------------
+-- MELEE: the second, independent cycle
+-- ---------------------------------------------------------------------------
+local function ReadMeleeSpeed()
+  local m = Call(UnitAttackSpeed, "player")
+  m = tonumber(m)
+  if not m or m < MELEE_MIN_SPEED or m > MELEE_MAX_SPEED then return nil end
+  return m
+end
+
+function ShotTimer.MeleeSpeed() return meleeSpeed end
+
+-- Time until the melee weapon can swing again, or nil if we have never seen a
+-- swing (in which case we genuinely do not know, and say so rather than guess).
+function ShotTimer.MeleeReady(now)
+  if not meleeSwungAt then return nil end
+  now = tonumber(now) or (tonumber(Call(GetTime)) or 0)
+  local remaining = (meleeSwungAt + meleeSpeed) - now
+  if remaining < 0 then remaining = 0 end
+  return remaining
+end
+
+-- ---------------------------------------------------------------------------
+-- THE WEAVE DECISION
+--
+-- Can I run in, swing, and be back before the shot? Only if the whole round
+-- trip fits inside the free part of the ranged cycle:
+--
+--     travel out + swing + travel back  <=  time until the shot locks me
+--
+-- `travel` is the full round trip, so the test is simply travel <= free window.
+-- Returns: ok (boolean), free (seconds of free time), need (seconds required).
+--
+-- Deliberately conservative on two counts. It requires the melee weapon to be
+-- READY -- weaving into a swing that is still on cooldown spends the trip and
+-- lands nothing -- and it refuses while hasted, because every guide is emphatic
+-- that a hasted cycle is too short to weave and doing so loses damage.
+-- ---------------------------------------------------------------------------
+function ShotTimer.CanWeave(now)
+  now = tonumber(now) or (tonumber(Call(GetTime)) or 0)
+  local free = ShotTimer.SafeWindow(now)
+  local travel = tonumber(db and db.travel) or DEFAULT_TRAVEL
+  if not free then return false, nil, travel end
+
+  -- The melee swing must be off cooldown by the time we arrive, or the trip
+  -- buys nothing.
+  local meleeIn = ShotTimer.MeleeReady(now)
+  if meleeIn and meleeIn > (travel / 2) then
+    return false, free, travel
+  end
+  return (free >= travel), free, travel
+end
+
 function ShotTimer.LastDelay() return lastDelay end
 function ShotTimer.Stats() return shotCount, clipCount end
 
@@ -166,6 +263,37 @@ local function ApplySize()
     local frac = CAST_TIME / math.max(speed, MIN_SPEED)
     if frac > 1 then frac = 1 end
     castZone:SetSize(math.max(1, w * frac), h)
+  end
+
+  -- The melee strip sits just below the shot bar, a third of its height.
+  local mh = math.max(3, math.floor(h / 3))
+  if meleeTrack then
+    meleeTrack:ClearAllPoints()
+    meleeTrack:SetPoint("TOPLEFT", frame, "BOTTOMLEFT", 0, -2)
+    meleeTrack:SetSize(w, mh)
+  end
+  if meleeFill then
+    meleeFill:ClearAllPoints()
+    meleeFill:SetPoint("TOPLEFT", frame, "BOTTOMLEFT", 0, -2)
+    meleeFill:SetSize(1, mh)
+  end
+
+  -- The weave marker's position: the round trip measured back from the shot.
+  -- Anything left of this line is a safe departure.
+  if weaveMark then
+    local travel = tonumber(db and db.travel) or DEFAULT_TRAVEL
+    local latest = speed - CAST_TIME - travel      -- seconds into the cycle
+    weaveMark:ClearAllPoints()
+    weaveMark:SetSize(2, h)
+    if latest > 0 then
+      weaveMark:SetPoint("TOPLEFT", frame, "TOPLEFT",
+        w * (latest / math.max(speed, MIN_SPEED)), 0)
+      weaveMark:Show()
+    else
+      -- The trip does not fit in this weapon's cycle at all: no honest place to
+      -- put the line, so do not draw one.
+      weaveMark:Hide()
+    end
   end
 end
 
@@ -198,6 +326,22 @@ local function BuildBar()
   safeMark = frame:CreateTexture(nil, "OVERLAY")
   safeMark:SetTexture("Interface\\Buttons\\WHITE8X8")
   safeMark:SetVertexColor(1, 1, 1, 0.85)
+
+  -- The weave marker: the last moment you could still leave and get back in
+  -- time. Left of it, going is safe; right of it, you would clip the shot.
+  weaveMark = frame:CreateTexture(nil, "OVERLAY")
+  weaveMark:SetTexture("Interface\\Buttons\\WHITE8X8")
+  weaveMark:SetVertexColor(0.4, 0.75, 1, 0.95)
+
+  -- A thin second strip underneath for the MELEE cycle. Separate on purpose:
+  -- in Era the two cycles are independent, and drawing them as one bar would
+  -- imply a relationship the game does not have.
+  meleeTrack = frame:CreateTexture(nil, "BACKGROUND")
+  meleeTrack:SetTexture("Interface\\Buttons\\WHITE8X8")
+  meleeTrack:SetVertexColor(0, 0, 0, 0.5)
+  meleeFill = frame:CreateTexture(nil, "ARTWORK")
+  meleeFill:SetTexture("Interface\\Buttons\\WHITE8X8")
+  meleeFill:SetVertexColor(0.85, 0.7, 0.2, 0.9)
 
   label = frame:CreateFontString(nil, "OVERLAY")
   label:SetFont(STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF", 11, "OUTLINE")
@@ -260,7 +404,14 @@ local function Redraw(now)
     if db.showText ~= false then
       local free = remaining - CAST_TIME
       if free > 0 then
-        label:SetFormattedText("%.1fs", free)
+        -- While a weave actually fits, say so: that is the one moment the
+        -- player has a decision to make, and the number alone does not tell
+        -- them whether it is enough.
+        if db.weave ~= false and ShotTimer.CanWeave(now) then
+          label:SetFormattedText("|cff66ccffWEAVE|r %.1fs", free)
+        else
+          label:SetFormattedText("%.1fs", free)
+        end
       else
         label:SetText("hold")
       end
@@ -270,6 +421,30 @@ local function Redraw(now)
   else
     fill:SetWidth(1)
     label:SetText("")
+  end
+
+  -- The melee cycle, drawn only once we have actually seen a swing.
+  if meleeFill then
+    if db.weave ~= false then
+      local mIn = ShotTimer.MeleeReady(now)
+      if mIn then
+        local done = 1 - (mIn / math.max(meleeSpeed, MELEE_MIN_SPEED))
+        if done < 0 then done = 0 elseif done > 1 then done = 1 end
+        meleeFill:SetWidth(math.max(1, w * done))
+        -- Green once the swing is actually available to spend.
+        if mIn <= 0 then
+          meleeFill:SetVertexColor(0.3, 0.9, 0.3, 0.9)
+        else
+          meleeFill:SetVertexColor(0.85, 0.7, 0.2, 0.9)
+        end
+        meleeFill:Show(); meleeTrack:Show()
+      else
+        meleeFill:Hide(); meleeTrack:Hide()
+      end
+    else
+      meleeFill:Hide(); meleeTrack:Hide()
+      if weaveMark then weaveMark:Hide() end
+    end
   end
 
   -- The measured clip from the previous shot, held briefly then faded out.
@@ -388,6 +563,29 @@ local function OnTimerReset(now)
   ShotTimer.Refresh()
 end
 
+-- ---------------------------------------------------------------------------
+-- Melee swings, observed from the combat log.
+--
+-- There is no API for "when does my melee swing next". The only honest source
+-- is a swing that actually landed, so we watch our own SWING_ events. Note this
+-- also means a MISS or a PARRY still counts -- the weapon swung, which is what
+-- resets the cycle, regardless of whether it connected.
+-- ---------------------------------------------------------------------------
+local playerGUID
+
+local function OnCombatLog()
+  if not db or db.weave == false then return end
+  local ts, sub, _, srcGUID = Call(CombatLogGetCurrentEventInfo)
+  if not sub then return end
+  if not playerGUID then playerGUID = Call(UnitGUID, "player") end
+  if srcGUID ~= playerGUID then return end
+  -- SWING_DAMAGE and SWING_MISSED between them cover every outcome of an
+  -- actual melee swing; spell casts use SPELL_ prefixes and are ignored.
+  if sub ~= "SWING_DAMAGE" and sub ~= "SWING_MISSED" then return end
+  meleeSpeed = ReadMeleeSpeed() or meleeSpeed
+  meleeSwungAt = tonumber(Call(GetTime)) or 0
+end
+
 local function OnSpellSucceeded(unit, _, spellID)
   if unit ~= "player" then return end
   if spellID == AUTO_SHOT then
@@ -420,6 +618,15 @@ function ShotTimer.PrintDiag()
   end
   print(string.format("  shots: %d, clipped: %d, last clip: +%.2fs",
     shotCount, clipCount, lastDelay))
+  if db and db.weave ~= false then
+    local mIn = ShotTimer.MeleeReady()
+    print(string.format("  melee speed: %.2fs, swing ready in: %s",
+      meleeSpeed, mIn and string.format("%.2fs", mIn) or "no swing seen yet"))
+    local ok, free, need = ShotTimer.CanWeave()
+    print(string.format("  weave: %s (need %.2fs round trip, have %s)",
+      ok and "YES -- go now" or "no", need,
+      free and string.format("%.2fs", free) or "n/a"))
+  end
 end
 
 function ShotTimer.RescanSettings()
@@ -439,6 +646,9 @@ function ShotTimer.Init()
 
   HK.On("UNIT_SPELLCAST_SUCCEEDED", OnSpellSucceeded)
   HK.On("UNIT_SPELLCAST_START", OnSpellStarted)
+  -- The ONE combat-log registration in the addon, and only while weaving is on:
+  -- there is no other way to observe a melee swing.
+  HK.On("COMBAT_LOG_EVENT_UNFILTERED", OnCombatLog)
 
   -- Auto-repeat toggling is what shows and hides the bar.
   HK.On("START_AUTOREPEAT_SPELL", function()
@@ -455,6 +665,7 @@ function ShotTimer.Init()
   -- A new weapon changes the whole geometry of the bar.
   HK.On("PLAYER_EQUIPMENT_CHANGED", function()
     speed = ReadSpeed() or speed
+    meleeSpeed = ReadMeleeSpeed() or meleeSpeed
     ApplySize()
   end)
 
@@ -471,6 +682,8 @@ function ShotTimer.Init()
   end)
 
   speed = ReadSpeed() or DEFAULT_SPEED
+  meleeSpeed = ReadMeleeSpeed() or meleeSpeed
+  playerGUID = Call(UnitGUID, "player")
   ApplySize()
   ShotTimer.Refresh()
 end
@@ -485,5 +698,12 @@ function ShotTimer.FillWidth() return fill and fill:GetWidth() or 0 end
 function ShotTimer.LabelText() return label and label.text or nil end
 function ShotTimer.DelayText() return delayText and delayText.text or nil end
 function ShotTimer.IsAnimating() return onUpdateBound end
+function ShotTimer._OnMeleeSwing(t)
+  meleeSpeed = ReadMeleeSpeed() or meleeSpeed
+  meleeSwungAt = t or (tonumber(Call(GetTime)) or 0)
+end
+function ShotTimer._ClearMelee() meleeSwungAt = nil end
+ShotTimer._OnCombatLog = OnCombatLog
+function ShotTimer.WeaveMarkShown() return weaveMark ~= nil and weaveMark:IsShown() == true end
 
 HK.RegisterModule("ShotTimer", { Init = ShotTimer.Init })

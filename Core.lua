@@ -6,7 +6,7 @@
 
 local ADDON_NAME, HK = ...
 
-HK.version = "0.9.41"
+HK.version = "0.9.42"
 
 -- ---------------------------------------------------------------------------
 -- Defaults (schema). This is the source of truth for the options window and
@@ -14,7 +14,7 @@ HK.version = "0.9.41"
 -- ---------------------------------------------------------------------------
 HK.defaults = {
   enabled   = true,
-  dbVersion = 26,
+  dbVersion = 27,
   firstRun  = true,
 
   ui = {
@@ -93,6 +93,9 @@ HK.defaults = {
     moved     = false,
     showText  = true,    -- the "1.2s of free time left" countdown
     showDelay = true,    -- the measured "+0.34s" clip readout
+    weave     = true,    -- melee weave marker + melee swing strip
+    travel    = 2.5,     -- round-trip seconds out to melee and back
+    noHaste   = true,    -- never suggest a weave while ranged haste is up
   },
 
   range = {

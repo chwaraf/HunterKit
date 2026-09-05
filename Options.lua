@@ -736,6 +736,18 @@ function BuildWindow()
     function(v) db.shottimer.showText = v; RefreshShotTimer() end,
     "Counts down the time you still have to act before the shot locks you in place.")
   y = y - CHK
+  MakeCheckbox(content, y, "Melee weave marker",
+    function() return db.shottimer.weave end,
+    function(v) db.shottimer.weave = v; RefreshShotTimer() end,
+    "Adds a blue line marking the last moment you could run to melee, swing, and get back before the shot -- plus a thin strip showing your melee swing. In Classic Era the melee and ranged timers are independent, which is what makes weaving possible.")
+  y = y - CHK
+  -- Stored in tenths of a second: the slider widget formats with %d, so a
+  -- fractional step would crash it. 25 on the bar means 2.5s.
+  MakeSlider(content, y, "Weave round trip (tenths of a sec)", 10, 50, 5,
+    function() return (db.shottimer.travel or 2.5) * 10 end,
+    function(v) db.shottimer.travel = v / 10; RefreshShotTimer() end,
+    "Seconds for the full trip out to melee and back. 2.5s is a good hunter with a movement buff. The marker is only honest if this matches how fast you actually move, so time yourself and adjust.", true)
+  y = y - CHK
   MakeSlider(content, y, "Bar width", 120, 400, 10,
     function() return db.shottimer.width or 220 end,
     function(v) db.shottimer.width = v; RefreshShotTimer() end,

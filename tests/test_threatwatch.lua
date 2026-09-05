@@ -384,9 +384,21 @@ local live = 0
 for _, t in ipairs(HKTest.tickers) do if not t.cancelled then live = live + 1 end end
 check("combat cycles do not leak tickers", TW.IsPolling() == false)
 
--- The module registers NO combat-log event -- the entire reason it is cheap.
-check("no combat-log event is registered",
-  HK.bus.handlers["COMBAT_LOG_EVENT_UNFILTERED"] == nil)
+-- ThreatWatch itself registers NO combat-log event -- the entire reason it is
+-- cheap. The bus is shared addon-wide, so this cannot be asserted by checking
+-- the bus is empty (ShotTimer legitimately registers one to see melee swings);
+-- what matters is that no threat evaluation is driven by the combat log.
+local clHandler = HK.bus.handlers["COMBAT_LOG_EVENT_UNFILTERED"]
+if clHandler then
+  HKTest.threatCalls = 0
+  HKTest.state.clevent = { 0, "SWING_DAMAGE", false, "guid-player" }
+  for _ = 1, 20 do clHandler() end
+  check("combat-log traffic drives no threat work", HKTest.threatCalls == 0,
+    tostring(HKTest.threatCalls))
+  HKTest.state.clevent = nil
+else
+  check("no combat-log event is registered", true)
+end
 
 -- Throttling: a burst of threat events must not become a burst of work.
 Scene({ playerPct = 90 })
