@@ -271,12 +271,15 @@ function CheckInteractDistance(unit, dist)
 end
 function GetPetActionInfo() return nil end
 function UnitIsDead(u)
+  if (HKTest.state.dead or {})[u] then return true end
   if u == "target" then return HKTest.state.targetDead and true or false end
   return false
 end
 function UnitLevel() return HKTest.state.level or 60 end
 function UnitCanAttack(a, b)
   if b == "target" then return HKTest.state.targetAttackable ~= false end
+  -- Any unit the test put on a threat table is by definition an attackable mob.
+  if (HKTest.state.threat or {})[b] then return true end
   return false
 end
 function GetInventorySlotInfo(n)
@@ -448,6 +451,10 @@ function UnitClass() return "Testhunter", (HKTest.state.isHunter and "HUNTER" or
 function UnitExists(u)
   if u == "pet" then return HKTest.state.pet and true or false end
   if u == "target" then return HKTest.state.target and true or false end
+  -- Arbitrary units (notably "pettarget") exist when a test has said so, either
+  -- explicitly or by putting them on a threat table.
+  if (HKTest.state.units or {})[u] ~= nil then return HKTest.state.units[u] and true or false end
+  if (HKTest.state.threat or {})[u] then return true end
   return false
 end
 function UnitIsDeadOrGhost(u) return (u == "pet" and HKTest.state.petDead) and true or false end
@@ -457,6 +464,41 @@ function UnitAffectingCombat(u)
   if u == "pet" then return HKTest.state.petCombat and true or false end
   return HKTest.state.playerCombat and true or false
 end
+-- ---------------------------------------------------------------------------
+-- Threat API (reinstated by Blizzard in patch 1.13.5, live in Classic Era
+-- 1.15.x and TBC Anniversary). Tests describe the world declaratively:
+--
+--   HKTest.state.threat = {
+--     [unit] = { player = { tanking=, scaled=, raw=, value= },
+--                pet    = { ... } },
+--   }
+--
+-- A missing entry models "this unit is not on that mob's threat table", which
+-- the real API reports by returning nothing at all.
+-- ---------------------------------------------------------------------------
+HKTest.threatCalls = 0
+function UnitDetailedThreatSituation(unit, mobUnit)
+  HKTest.threatCalls = HKTest.threatCalls + 1
+  if HKTest.state.noThreatAPI then error("no such function") end
+  local mob = (HKTest.state.threat or {})[mobUnit]
+  local e = mob and mob[unit]
+  if not e then return nil end
+  return e.tanking and true or false, e.status or 0, e.scaled, e.raw or e.scaled,
+         e.value or 0
+end
+
+function UnitThreatSituation(unit, mobUnit)
+  local mob = (HKTest.state.threat or {})[mobUnit]
+  local e = mob and mob[unit]
+  return e and (e.status or 0) or nil
+end
+
+function UnitGUID(unit)
+  local g = (HKTest.state.guids or {})[unit]
+  if g ~= nil then return g end
+  return "guid-" .. tostring(unit)
+end
+
 function IsSpellInRange(spell, unit)
   if spell == nil then return nil end
   if unit == "target" then return HKTest.state.targetSpellInRange end
@@ -477,7 +519,11 @@ function GetSpellTexture(id)
   if id == 6991 then return "Interface\\Icons\\ability_hunter_beasttraining" end
   return nil
 end
-function UnitName(u) return (u == "pet") and "Fang" or "Testhunter" end
+function UnitName(u)
+  local n = (HKTest.state.names or {})[u]
+  if n then return n end
+  return (u == "pet") and "Fang" or "Testhunter"
+end
 function UnitPosition(u)
   if u ~= "pet" then return 100, 200, 0, 1 end
   if HKTest.state.petPosition == false then return nil end   -- client refuses pets

@@ -6,7 +6,7 @@
 
 local ADDON_NAME, HK = ...
 
-HK.version = "0.9.34"
+HK.version = "0.9.35"
 
 -- ---------------------------------------------------------------------------
 -- Defaults (schema). This is the source of truth for the options window and
@@ -14,7 +14,7 @@ HK.version = "0.9.34"
 -- ---------------------------------------------------------------------------
 HK.defaults = {
   enabled   = true,
-  dbVersion = 22,
+  dbVersion = 23,
   firstRun  = true,
 
   ui = {
@@ -55,6 +55,21 @@ HK.defaults = {
     reserveGold  = 0,          -- never spend below this many gold
     maxSpendGold = 0,          -- 0 = no per-visit cap
     showButton   = true,       -- "Refill ammo" button on the merchant frame
+  },
+
+  -- Pet aggro warning: warn before the player's threat overtakes the pet's.
+  -- Uses the threat API Blizzard reinstated in 1.13.5 (see ThreatWatch.lua) --
+  -- no combat-log parsing, no addon comms.
+  threat = {
+    enabled       = true,
+    threshold     = 80,      -- warn at this % of the aggro-pull point
+    sound         = true,
+    soundInterval = 4,       -- seconds between alarm sounds
+    channel       = "Master",
+    size          = 56,
+    offsetX       = 0,
+    offsetY       = 120,
+    moved         = false,
   },
 
   range = {
@@ -755,6 +770,12 @@ local function LoadDB()
     db.dbVersion = 22
   end
 
+  -- v22 -> v23: the pet aggro warning arrives. MergeDefaults adds the table;
+  -- nothing to force, but the version bump records the upgrade.
+  if db.dbVersion < 23 then
+    db.dbVersion = 23
+  end
+
   if db.dbVersion < 19 then
     -- 0.9.15: voice warnings are opt-in now; force the new default once so
     -- it reaches existing profiles too (the checkbox re-enables it).
@@ -822,7 +843,8 @@ local function FeatureStatus()
     tostring(d.feed and d.feed.enabled), tostring(d.range and d.range.enabled),
     tostring(d.sound and d.sound.enabled), tostring(d.pulse and d.pulse.enabled),
     tostring(d.mend and d.mend.enabled)) ..
-    string.format(" ammobuy=%s", tostring(d.ammobuy and d.ammobuy.enabled))
+    string.format(" ammobuy=%s threat=%s", tostring(d.ammobuy and d.ammobuy.enabled),
+      tostring(d.threat and d.threat.enabled))
 end
 
 local function PrintHelp()
@@ -836,6 +858,7 @@ local function PrintHelp()
   print("  /htk mend          — pet mend marker diagnostics")
   print("  /htk buy           — refill ammo at the open vendor")
   print("  /htk buyinfo       — ammo auto-buy diagnostics")
+  print("  /htk threat        — pet aggro warning diagnostics")
   print("  /htk selfcheck     — API diagnostics")
   print("  /htk gunlist       — list muted gun-sound FileDataIDs")
   print("  /htk debug         — toggle verbose logging")
@@ -868,6 +891,8 @@ SlashCmdList["HUNTERKIT"] = function(msg)
     if HK.AmmoBuy then HK.AmmoBuy.Refill(true) else print("HunterKit: AmmoBuy not initialised.") end
   elseif msg == "buyinfo" then
     if HK.AmmoBuy then HK.AmmoBuy.PrintDiag() else print("HunterKit: AmmoBuy not initialised.") end
+  elseif msg == "threat" then
+    if HK.ThreatWatch then HK.ThreatWatch.PrintDiag() else print("HunterKit: ThreatWatch not initialised.") end
   elseif msg == "gunlist" then
     if HK.Sounds then HK.Sounds.PrintGunList() end
   elseif msg == "selfcheck" then
@@ -940,6 +965,13 @@ function HK:SelfCheck()
   end)
   probe("sound diag", function()
     return HK.Sounds and HK.Sounds.Diagnostic() or "-"
+  end)
+  probe("threat api", function()
+    return HK.ThreatWatch and (HK.ThreatWatch.HasAPI() and "present" or "MISSING") or "-"
+  end)
+  probe("threat watch", function()
+    if not HK.ThreatWatch then return "-" end
+    return (HK.ThreatWatch.IsPolling() and "polling" or "idle")
   end)
   probe("db version", function()
     return HK.db and ("v" .. tostring(HK.db.dbVersion)) or "-"

@@ -442,9 +442,14 @@ check("the feature off means no plan", plan == nil, reason)
 -- ---------------------------------------------------------------------------
 -- 7) Executing the purchase
 -- ---------------------------------------------------------------------------
+-- Drive the PURCHASE ticker specifically. Matching purely on the 0.35s interval
+-- is fragile -- another module polling at the same rate would be driven instead,
+-- and the buy queue would look stalled -- so only run it while a refill is
+-- actually in flight.
 local function TickBuy(n)
   for _, t in ipairs(HKTest.tickers) do
-    if t.interval and math.abs(t.interval - 0.35) < 0.001 and not t.cancelled then
+    if t.interval and math.abs(t.interval - 0.35) < 0.001 and not t.cancelled
+       and AB.IsRunning() then
       for _ = 1, (n or 1) do t:Tick() end
       return true
     end

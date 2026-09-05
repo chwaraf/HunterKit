@@ -679,6 +679,35 @@ function BuildWindow()
     "Show a Refill ammo button on the vendor window. It shows the exact amount it would buy in its tooltip, or the reason it cannot.")
   y = y - CHK
 
+  -- Pet aggro warning
+  AddSection(content, y, "Pet aggro warning")
+  y = y - HDR
+  MakeCheckbox(content, y, "Warn before the pet loses aggro to me",
+    function() return db.threat.enabled end,
+    function(v) db.threat.enabled = v; RefreshThreat() end,
+    "Warns while your threat closes on your pet's on a mob the PET is tanking, so you can stop shooting or Feign Death before it turns on you. Uses the game's own threat numbers (the API Blizzard reinstated in patch 1.13.5) -- no combat-log guessing, and nothing to poll while you are out of combat.")
+  y = y - CHK
+  MakeSlider(content, y, "Warn at", 40, 100, 5,
+    function() return db.threat.threshold or 80 end,
+    function(v) db.threat.threshold = v; RefreshThreat() end,
+    "How close to pulling you may get before the warning fires, as a percentage of the aggro point. 100% is the instant the mob would turn on you, so leave headroom. Melee vs ranged distance is already accounted for.", true)
+  y = y - CHK
+  MakeCheckbox(content, y, "Play a warning sound",
+    function() return db.threat.sound end,
+    function(v) db.threat.sound = v; RefreshThreat() end,
+    "A short alert when the warning first appears, and a louder one if the mob actually switches to you. Repeats no more often than the interval below.")
+  y = y - CHK
+  MakeSlider(content, y, "Sound repeat interval", 2, 15, 1,
+    function() return db.threat.soundInterval or 4 end,
+    function(v) db.threat.soundInterval = v; RefreshThreat() end,
+    "Minimum seconds between warning sounds, so a long fight spent near the threshold cannot turn into a siren.", true)
+  y = y - CHK
+  MakeSlider(content, y, "Warning size", 32, 96, 4,
+    function() return db.threat.size or 56 end,
+    function(v) db.threat.size = v; RefreshThreat() end,
+    "Size of the on-screen warning icon. Unlock the frames (/htk unlock) to drag it where you want it.", true)
+  y = y - CHK
+
   -- Sound
   AddSection(content, y, "Gun Sound")
   y = y - HDR
@@ -802,7 +831,7 @@ function RefreshModules()
     if HK.PassivePulse and HK.PassivePulse.Refresh then HK.PassivePulse.Refresh() end
     if HK.MendMark and HK.MendMark.Update then HK.MendMark.Update() end
   else
-    RefreshFeed(); RefreshRange(); RefreshSound(); RefreshPulse(); RefreshAmmo(); RefreshAmmoBuy(); RefreshMend()
+    RefreshFeed(); RefreshRange(); RefreshSound(); RefreshPulse(); RefreshAmmo(); RefreshAmmoBuy(); RefreshMend(); RefreshThreat()
   end
 end
 function RefreshFeed() if HK.FeedPet and HK.FeedPet.RescanSettings then HK.FeedPet.RescanSettings() end end
@@ -812,6 +841,7 @@ function RefreshMend() if HK.MendMark and HK.MendMark.RescanSettings then HK.Men
 function RefreshSound() if HK.Sounds and HK.Sounds.RescanSettings then HK.Sounds.RescanSettings() end end
 function RefreshAmmo() if HK.AmmoWarn and HK.AmmoWarn.RescanSettings then HK.AmmoWarn.RescanSettings() end end
 function RefreshAmmoBuy() if HK.AmmoBuy and HK.AmmoBuy.RescanSettings then HK.AmmoBuy.RescanSettings() end end
+function RefreshThreat() if HK.ThreatWatch and HK.ThreatWatch.RescanSettings then HK.ThreatWatch.RescanSettings() end end
 
 -- ---------------------------------------------------------------------------
 -- Minimap button

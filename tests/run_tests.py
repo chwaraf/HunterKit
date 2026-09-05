@@ -20,6 +20,7 @@ TESTS = [
     os.path.join(HERE, "test_options_ui.lua"),
     os.path.join(HERE, "test_settings.lua"),
     os.path.join(HERE, "test_ammobuy.lua"),
+    os.path.join(HERE, "test_threatwatch.lua"),
     os.path.join(HERE, "test_docs.lua"),
 ]
 

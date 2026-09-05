@@ -3,6 +3,37 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.35] - 2026-09-05
+
+### Added
+- **Pet aggro warning.** Warns *before* your threat overtakes your pet's on a
+  mob the **pet is tanking** — the cue to stop shooting, Feign Death, or let
+  Growl catch up — and escalates to a louder alert if the mob does switch to
+  you. Threshold (40–100%, default 80), sound and repeat interval are
+  configurable; the alert is draggable like every other HunterKit frame.
+  `/htk threat` prints the live per-mob numbers and the verdict.
+
+  **It uses the game's own threat numbers, not a combat-log estimate.** The
+  well-known Classic threat meters (ThreatClassic2 / LibThreatClassic2, Details
+  TinyThreat) rebuild threat from `COMBAT_LOG_EVENT_UNFILTERED` with per-spell
+  coefficient tables, talent and buff modelling, and addon comms — because the
+  threat API was cut from the 1.13.0 launch client. It was **put back**: patch
+  1.13.5 (2020-07-07) "Reinstated Threat API", adding `UnitThreatSituation`,
+  `UnitDetailedThreatSituation`, `UnitThreatPercentageOfLead` and the
+  `UNIT_THREAT_LIST_UPDATE` / `UNIT_THREAT_SITUATION_UPDATE` events, all of
+  which are live in Classic Era 1.15.x and TBC Anniversary. So there is no
+  coefficient table to drift, nothing to model, and no comms — and it is exact
+  rather than estimated.
+
+  The percentage warned on is Blizzard's **scaled** figure, which already folds
+  in the melee-110% / ranged-130% pull rule *and* re-scales with distance, so
+  stepping forward mid-fight is handled without the addon modelling position.
+
+  Deliberately cheap: **zero combat-log events**, no polling at all out of
+  combat (the ticker only exists while you are in combat with a living pet),
+  only two units checked (your pet's target and your own, deduplicated by GUID),
+  and evaluations throttled so an event storm cannot become a work storm.
+
 ## [0.9.34] - 2026-09-04
 
 ### Fixed
