@@ -3,6 +3,16 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.39] - 2026-09-05
+
+### Fixed
+- **Damage-to-pull read about 100x too large** (`120k` where the honest answer
+  was `1.2k`). Threat guides are all written in the 1-damage-=-1-threat
+  normalisation, but the value the API returns is not in those units: the engine
+  stores threat at **100x damage** for cheap integer math. The figure is now
+  divided back into damage before it is shown. The percentage was never
+  affected — it is a ratio, so the normalisation cancels out.
+
 ## [0.9.38] - 2026-09-05
 
 ### Changed

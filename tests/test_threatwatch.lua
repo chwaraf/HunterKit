@@ -687,17 +687,23 @@ check("a stale sample is not comparable", state == nil, tostring(state))
 -- ---------------------------------------------------------------------------
 -- 12) DAMAGE TO PULL: the figure in front of the percentage
 -- ---------------------------------------------------------------------------
-check("at half the pull point, the gap equals your own threat",
-  math.abs(TW.DamageToPull(1000, 50) - 1000) < 0.01,
-  tostring(TW.DamageToPull(1000, 50)))
+-- The API reports threat at 100x damage, so these come back in DAMAGE: at half
+-- the pull point the gap equals your own threat (100000 units = 1000 damage).
+check("at half the pull point, the gap equals your own threat, in damage",
+  math.abs(TW.DamageToPull(100000, 50) - 1000) < 0.01,
+  tostring(TW.DamageToPull(100000, 50)))
 check("at 80% the gap is a quarter of your threat",
-  math.abs(TW.DamageToPull(4000, 80) - 1000) < 0.01,
-  tostring(TW.DamageToPull(4000, 80)))
-check("at the pull point the gap is zero", TW.DamageToPull(5000, 100) == 0,
-  tostring(TW.DamageToPull(5000, 100)))
+  math.abs(TW.DamageToPull(400000, 80) - 1000) < 0.01,
+  tostring(TW.DamageToPull(400000, 80)))
+-- The regression this guards: raw API units must never reach the screen.
+check("a raid-sized threat value reads as damage, not 100x damage",
+  math.abs(TW.DamageToPull(500000, 50) - 5000) < 0.01,
+  tostring(TW.DamageToPull(500000, 50)))
+check("at the pull point the gap is zero", TW.DamageToPull(500000, 100) == 0,
+  tostring(TW.DamageToPull(500000, 100)))
 check("no threat yet: no honest figure", TW.DamageToPull(0, 50) == nil)
 check("a percentage too small to divide by: no figure",
-  TW.DamageToPull(1000, 0) == nil)
+  TW.DamageToPull(100000, 0) == nil)
 check("nonsense inputs do not produce a nonsense number",
   TW.DamageToPull(nil, nil) == nil)
 
@@ -708,7 +714,7 @@ check("five figures drop the decimal", TW.ShortNum(15400) == "15k",
 
 -- ...and it reaches the readout, in front of the percentage.
 Scene({ threat = { pettarget = {
-          player = { scaled = 50, tanking = false, value = 2000 },
+          player = { scaled = 50, tanking = false, value = 200000 },
           pet    = { scaled = 100, tanking = true } } } })
 TW.UpdateReadout()
 local txt = TW.ReadoutText()

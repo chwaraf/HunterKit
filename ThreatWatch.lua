@@ -200,16 +200,26 @@ end
 -- the gap shrinks by itself. Verified algebraically against a worked pet-tank
 -- case at both 1.10 and 1.30 modifiers.
 --
--- Because a hunter's threat is ~1 threat per 1 damage (the Classic standard
--- every threat guide is defined around, and hunters carry no stance/spec
--- multiplier on ordinary shots), that gap reads directly as DAMAGE. It is an
--- honest approximation, not a promise: Growl landing, a pet crit, or the mob's
--- own threat drops all move the target while you are reading it.
+-- UNITS. The game's threat guides are all written in the 1-damage-=-1-threat
+-- normalisation, but the values the API hands back are NOT in those units:
+-- from 3.0 onward the engine stores threat at 100x damage (integer math is
+-- cheaper than floating point), so 500 damage reads back as 50000. Dividing by
+-- THREAT_PER_DAMAGE puts the figure back into damage, which is the only unit a
+-- player can act on. Without this the readout showed numbers ~100x too large --
+-- "120k" where the honest answer was "1.2k".
+--
+-- The percentage is unaffected: it is a ratio, so the normalisation cancels.
+--
+-- Hunters carry no stance/spec multiplier on ordinary shots, so after the
+-- rescale the gap reads directly as damage. It is an honest approximation, not
+-- a promise: Growl landing, a pet crit, or the mob's own threat drops all move
+-- the target while you are reading it.
 --
 -- Returns gap in threat/damage, or nil when it cannot be known.
 -- ---------------------------------------------------------------------------
-local GAP_MIN_PCT = 1        -- below this, 100/pct explodes into nonsense
-local GAP_MAX     = 9999999  -- sanity ceiling; anything above reads as unknown
+local GAP_MIN_PCT      = 1        -- below this, 100/pct explodes into nonsense
+local GAP_MAX          = 9999999  -- sanity ceiling; above this reads as unknown
+local THREAT_PER_DAMAGE = 100     -- API threat units per 1 point of damage
 
 function ThreatWatch.DamageToPull(myThreat, scaledPct)
   myThreat = tonumber(myThreat) or 0
@@ -217,7 +227,7 @@ function ThreatWatch.DamageToPull(myThreat, scaledPct)
   if myThreat <= 0 then return nil end          -- no threat yet: nothing to scale
   if scaledPct <= GAP_MIN_PCT then return nil end
   if scaledPct >= 100 then return 0 end          -- already at/over the pull point
-  local gap = myThreat * (100 / scaledPct - 1)
+  local gap = myThreat * (100 / scaledPct - 1) / THREAT_PER_DAMAGE
   if gap < 0 or gap > GAP_MAX then return nil end
   return gap
 end

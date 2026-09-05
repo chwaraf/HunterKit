@@ -6,7 +6,7 @@
 
 local ADDON_NAME, HK = ...
 
-HK.version = "0.9.38"
+HK.version = "0.9.39"
 
 -- ---------------------------------------------------------------------------
 -- Defaults (schema). This is the source of truth for the options window and
