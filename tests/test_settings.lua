@@ -674,6 +674,22 @@ check("a brand-new profile still gets the silenced gun default",
 check("...and voice warnings off by default", HK3.db.ammo.sound == false,
   tostring(HK3.db.ammo.sound))
 
+
+-- A full reset must refresh EVERY module. The list used to be hardcoded and had
+-- gone stale, omitting ThreatWatch and ShotTimer.
+local refreshed, missing = {}, {}
+for name in pairs(HK.modules) do
+  local m = HK[name]
+  if m and m.RescanSettings then refreshed[#refreshed + 1] = name end
+end
+for _, want in ipairs({ "ThreatWatch", "ShotTimer" }) do
+  local found = false
+  for _, got in ipairs(refreshed) do if got == want then found = true end end
+  if not found then missing[#missing + 1] = want end
+end
+check("the newer modules are reachable for a reset refresh",
+  #missing == 0, table.concat(missing, ","))
+
 say(string.format("\n%d passed, %d failed", passes, #failures))
 if #failures > 0 then
   for _, f in ipairs(failures) do say("  - " .. f) end

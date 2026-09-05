@@ -6,7 +6,7 @@
 
 local ADDON_NAME, HK = ...
 
-HK.version = "0.9.48"
+HK.version = "0.9.49"
 
 -- ---------------------------------------------------------------------------
 -- Defaults (schema). This is the source of truth for the options window and
@@ -493,7 +493,10 @@ function HK.ResetAll()
   -- Re-apply everywhere. RescanSettings re-reads the db slice and rebuilds what
   -- the setting controls; the mend marker also puts any leftover forced
   -- nameplate CVar back.
-  for _, name in ipairs({ "FeedPet", "Range", "Sounds", "PassivePulse", "AmmoWarn", "AmmoBuy", "MendMark" }) do
+  -- Every registered module, not a hardcoded list: this one had gone stale and
+  -- omitted ThreatWatch and ShotTimer, so a full reset left those two rendering
+  -- from their old settings until something else happened to refresh them.
+  for name in pairs(HK.modules) do
     local m = HK[name]
     if m and m.RescanSettings then pcall(m.RescanSettings) end
   end

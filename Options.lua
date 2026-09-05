@@ -822,10 +822,10 @@ function BuildWindow()
     function(v) db.shottimer.showText = v; RefreshShotTimer() end,
     "Counts down the time you still have to act before the shot locks you in place.")
   y = y - CHK
-  MakeCheckbox(content, y, "Melee weave marker",
+  MakeCheckbox(content, y, "Melee swing timer",
     function() return db.shottimer.weave end,
     function(v) db.shottimer.weave = v; RefreshShotTimer() end,
-    "Adds a blue line marking the last moment you could run to melee, swing, and get back before the shot -- plus a thin strip showing your melee swing. In Classic Era the melee and ranged timers are independent, which is what makes weaving possible.")
+    "Adds a bar tracking your melee swing, plus a blue line on the shot bar marking the last moment you could run to melee, swing, and get back in time. In Classic Era the melee and ranged timers are independent, which is what makes weaving possible.")
   y = y - CHK
   -- Stored in tenths on the bar (the widget formats with %d, so a fractional
   -- step would crash it) but DISPLAYED in seconds via the formatter -- the

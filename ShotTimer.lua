@@ -800,8 +800,19 @@ local function OnCombatLog()
   -- SWING_DAMAGE and SWING_MISSED between them cover every outcome of an
   -- actual melee swing; spell casts use SPELL_ prefixes and are ignored.
   if sub ~= "SWING_DAMAGE" and sub ~= "SWING_MISSED" then return end
+  local wasIdle = ShotTimer.IsIdle()
   meleeSpeed = ReadMeleeSpeed() or meleeSpeed
   meleeSwungAt = tonumber(Call(GetTime)) or 0
+
+  -- A swing STARTS the melee cycle, so it has to wake the bar up.
+  --
+  -- The update loop is only attached while something is animating. With no
+  -- ranged cycle running (you walked into melee, or never fired at all) the bar
+  -- was parked, and nothing re-evaluated that when a swing arrived -- so the
+  -- melee strip sat frozen at zero until some UNRELATED event happened to call
+  -- Refresh. Toggling a setting was one such event, which is why re-checking
+  -- the box "fixed" it. The first swing of a cycle now refreshes directly.
+  if wasIdle then ShotTimer.Refresh() end
 end
 
 local function OnSpellSucceeded(unit, _, spellID)

@@ -779,6 +779,48 @@ check("...and the loop is released", ST.IsAnimating() == false)
 HKTest.state.playerCombat = false
 ST._ClearMelee()
 
+
+-- ---------------------------------------------------------------------------
+-- 25) A SWING MUST WAKE THE BAR UP BY ITSELF
+--
+-- Regression: the update loop only runs while something is animating. With no
+-- ranged cycle (you walked into melee, or never fired at all) the bar was
+-- parked, and nothing re-evaluated that when a swing arrived -- so the melee
+-- strip stayed frozen at zero until some unrelated event called Refresh.
+-- Toggling a setting was one such event, which is exactly why the timer
+-- "started working" only after re-checking the box.
+-- ---------------------------------------------------------------------------
+HKTest.state.playerCombat = true
+HKTest.state.meleeSpeed = 2.4
+HK.db.shottimer.weave = true
+HK.db.shottimer.always = false
+ST.RescanSettings()
+
+-- Melee only: never fired a shot this fight.
+ST._SetRepeating(false)
+ST._ClearMelee()
+At(8000)
+ST.Refresh()
+check("melee-only: the bar is up", ST.IsShown() == true)
+check("...and parked, with nothing to animate yet", ST.IsAnimating() == false)
+
+-- The first swing arrives through the real combat-log path.
+At(8000)
+HKTest.state.clevent = { 0, "SWING_DAMAGE", false, UnitGUID("player") }
+ST._OnCombatLog()
+check("a swing wakes the bar up on its own", ST.IsAnimating() == true,
+  "no settings toggle should be needed")
+
+At(8000.6); ST.OnUpdate()
+local a = ST.MeleeFillWidth()
+At(8001.4); ST.OnUpdate()
+local b = ST.MeleeFillWidth()
+check("...and the melee bar fills from that first swing", b > a and a > 0,
+  string.format("%.1f -> %.1f", a, b))
+HKTest.state.clevent = nil
+HKTest.state.playerCombat = false
+ST._ClearMelee()
+
 say(string.format("\n%d passed, %d failed", passes, #failures))
 if #failures > 0 then
   for _, f in ipairs(failures) do say("  - " .. f) end

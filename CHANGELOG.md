@@ -3,6 +3,26 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.49] - 2026-09-05
+
+### Fixed
+- **The melee swing timer only started working after re-checking its box.** The
+  per-frame update loop is attached only while something is animating. With no
+  ranged cycle running -- you walked into melee, or never fired a shot that
+  fight -- the bar was parked, and nothing re-evaluated that when a swing
+  arrived, so the melee strip sat frozen at zero. Any unrelated Refresh woke it,
+  and toggling a setting was one; that is precisely why re-ticking the option
+  appeared to fix it. The first swing of a cycle now wakes the bar itself.
+- **A full settings reset skipped two modules.** `HK.ResetAll()` refreshed a
+  hardcoded list that had gone stale, omitting ThreatWatch and ShotTimer, so
+  those two kept rendering from their old settings until something else
+  refreshed them. It now walks every registered module.
+
+### Changed
+- The option is now **"Melee swing timer"** (was "Melee weave marker"). It draws
+  a swing bar as well as the weave line, and the old name described the smaller
+  half of what it does.
+
 ## [0.9.48] - 2026-09-05
 
 ### Fixed
