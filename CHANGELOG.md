@@ -3,6 +3,22 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.37] - 2026-09-05
+
+### Added
+- **The aggro percentage grows and pulses once it gets dangerous.** At the
+  **Warn at** threshold (and always once you actually hold aggro) the readout
+  scales to **1.5x** and pulses, so it registers peripherally instead of having
+  to be read. It uses the same threshold as the warning and the colour ramp, so
+  all three agree, and it works with the interrupting warning switched off --
+  the default pairing.
+
+  The pulse's `OnUpdate` is **attached only while the number is hot** and
+  detached the moment it cools, so a calm readout does no per-frame work at all;
+  cooling off, or leaving combat, restores normal scale rather than leaving the
+  number stuck large. The handler is also re-bound after a drag/lock cycle,
+  which otherwise blanks it (the same trap PassivePulse hit).
+
 ## [0.9.36] - 2026-09-05
 
 ### Changed

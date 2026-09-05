@@ -490,6 +490,87 @@ check("no threat API: the readout hides rather than lying",
   TW.IsReadoutShown() == false)
 UnitDetailedThreatSituation = realUDTS
 
+-- ---------------------------------------------------------------------------
+-- 10b) The readout goes BIG and PULSES once it reaches the warn threshold
+-- ---------------------------------------------------------------------------
+-- Below the threshold: normal size, and crucially NO per-frame work.
+Scene({ playerPct = 50, threshold = 80 })
+TW.Tick(true)
+check("a calm number is normal size", TW.ReadoutScale() == 1, tostring(TW.ReadoutScale()))
+check("a calm number is not flagged hot", TW.IsReadoutHot() == false)
+check("a calm number runs NO OnUpdate loop", TW.IsReadoutPulsing() == false)
+
+-- At the threshold: 1.5x and animating.
+Scene({ playerPct = 80, threshold = 80 })
+TW.Tick(true)
+check("reaching the threshold flags it hot", TW.IsReadoutHot() == true)
+check("...and starts the pulse loop", TW.IsReadoutPulsing() == true)
+check("...at 1.5x size", math.abs((TW.ReadoutScale() or 0) - 1.5) < 0.001,
+  tostring(TW.ReadoutScale()))
+
+-- One under the threshold must NOT emphasise (>= not >, matching the warning).
+Scene({ playerPct = 79, threshold = 80 })
+TW.Tick(true)
+check("one under the threshold stays small", TW.IsReadoutHot() == false,
+  tostring(TW.ReadoutScale()))
+
+-- It follows the USER'S threshold from the UI, not a hardcoded 80.
+Scene({ playerPct = 55, threshold = 50 })
+TW.Tick(true)
+check("a lower configured threshold emphasises earlier", TW.IsReadoutHot() == true)
+Scene({ playerPct = 55, threshold = 95 })
+TW.Tick(true)
+check("a higher configured threshold keeps it calm", TW.IsReadoutHot() == false)
+
+-- Actually holding aggro always emphasises, whatever the threshold.
+Scene({ playerPct = 100, playerTanking = true, threshold = 95 })
+TW.Tick(true)
+check("holding aggro always emphasises", TW.IsReadoutHot() == true)
+
+-- The pulse actually MOVES the scale, and stays around 1.5x.
+Scene({ playerPct = 90, threshold = 80 })
+TW.Tick(true)
+local pctF = _G["HunterKitThreatPct"]
+local drive = pctF:GetScript("OnUpdate")
+local seen, lo, hi = {}, 99, -99
+for i = 1, 12 do
+  drive(pctF, 0.05)
+  local sc = TW.ReadoutScale()
+  seen[#seen + 1] = sc
+  lo, hi = math.min(lo, sc), math.max(hi, sc)
+end
+check("the pulse animates the scale", hi > lo, string.format("%.3f..%.3f", lo, hi))
+check("...staying centred near 1.5x", lo > 1.25 and hi < 1.75,
+  string.format("%.3f..%.3f", lo, hi))
+
+-- Cooling off must stop the loop AND restore the size -- otherwise the number
+-- would be left permanently enlarged, or burning a frame handler forever.
+Scene({ playerPct = 90, threshold = 80 })
+TW.Tick(true)
+check("hot before cooling", TW.IsReadoutHot() == true)
+HKTest.state.threat.pettarget.player.scaled = 20
+TW.Tick(true)
+check("dropping below the threshold stops the pulse", TW.IsReadoutPulsing() == false)
+check("...and restores normal size", TW.ReadoutScale() == 1, tostring(TW.ReadoutScale()))
+
+-- Leaving combat while hot must also tear the animation down.
+Scene({ playerPct = 95, threshold = 80 })
+TW.Tick(true)
+check("hot during combat", TW.IsReadoutPulsing() == true)
+HKTest.state.playerCombat = false
+HKTest.state.petCombat = false
+HKTest.Fire("PLAYER_REGEN_ENABLED")
+check("leaving combat stops the pulse loop", TW.IsReadoutPulsing() == false)
+check("...and leaves the frame at normal scale", TW.ReadoutScale() == 1,
+  tostring(TW.ReadoutScale()))
+
+-- The emphasis is independent of the interrupting warning, which is off by
+-- default -- the number must still grow and pulse on its own.
+Scene({ playerPct = 90, threshold = 80, enabled = false })
+TW.Tick(true)
+check("emphasis works with the warning disabled", TW.IsReadoutHot() == true)
+check("...and the warning alert stays hidden", TW.IsShown() == false)
+
 -- Dragging: once moved it pins absolutely instead of following the player frame.
 Scene({ playerPct = 50, pctMoved = true })
 HK.db.threat.pctOffsetX, HK.db.threat.pctOffsetY = 120, 240

@@ -115,11 +115,20 @@ local HIDE_AFTER    = 2.5   -- keep the alert up this long after the danger ends
 -- Alert states, worst last -- Pick() relies on this ordering.
 local STATE_RANK = { warn = 1, pulled = 2 }
 
+-- Readout emphasis once the number reaches the warning threshold: it grows to
+-- 1.5x and pulses, so it catches the eye without the player having to read it.
+-- The scale is applied to the FRAME (the FontString is anchored to it), which
+-- scales the glyphs cleanly at any font size and cannot fight the anchor.
+local PCT_HOT_SCALE = 1.5
+local PCT_PULSE_HZ  = 3.4        -- radians/sec feed for the sine (~0.55 s cycle)
+local PCT_PULSE_AMP = 0.12       -- +/- fraction of the hot scale
+
 local ICON_WARN   = "Interface\\Icons\\Ability_Physical_Taunt"
 local ICON_PULLED = "Interface\\Icons\\Ability_Hunter_FeignDeath"
 
 local frame, icon, label, sub
 local readout, readoutText
+local pctHot, pctPulseT = false, 0
 local lastEval, lastSound = 0, -3600
 local current, shownUntil = nil, 0
 local ticker = nil
@@ -327,6 +336,32 @@ end
 -- gives: a child of a unit frame measures its coordinates in that frame's
 -- space, which breaks the drag maths. We only ANCHOR to PlayerFrame.
 -- ---------------------------------------------------------------------------
+-- The pulse loop. Runs ONLY while the number is "hot" (at/over the warning
+-- threshold): PctOnUpdate is attached on the way into hot and detached on the
+-- way out, so a calm readout costs no per-frame work at all. That matters --
+-- OnUpdate fires every rendered frame, which is the one place in this addon
+-- where sloppiness would actually show up in a framerate.
+local function PctOnUpdate(self, dt)
+  pctPulseT = pctPulseT + (dt or 0.03)
+  self:SetScale(PCT_HOT_SCALE * (1 + PCT_PULSE_AMP * math.sin(pctPulseT * PCT_PULSE_HZ)))
+end
+
+-- Enter/leave the emphasised state. Idempotent: called every evaluation, but
+-- only does work on an actual transition.
+local function SetPctHot(hot)
+  if not readout then return end
+  if hot == pctHot then return end
+  pctHot = hot
+  if hot then
+    pctPulseT = 0
+    readout:SetScript("OnUpdate", PctOnUpdate)
+    readout:SetScale(PCT_HOT_SCALE)
+  else
+    readout:SetScript("OnUpdate", nil)
+    readout:SetScale(1)
+  end
+end
+
 local function BuildReadout()
   if readout or not CreateFrame then return end
   readout = CreateFrame("Frame", "HunterKitThreatPct", UIParent)
@@ -344,6 +379,12 @@ local function BuildReadout()
 
   HK.RegisterDraggable("threatpct", readout, ThreatWatch.ApplyReadoutPosition,
     function(x, y) db.pctOffsetX, db.pctOffsetY = x, y end, {
+      -- The drag handlers blank the frame's OnUpdate, which would silently kill
+      -- the pulse after a lock/unlock cycle (PassivePulse hit exactly this).
+      -- Re-bind it, but only if we were mid-pulse when the drag started.
+      onUpdate = function()
+        if pctHot then readout:SetScript("OnUpdate", PctOnUpdate) end
+      end,
       saveFromScreen = function()
         -- Save in UIParent space, and record that it is now user-placed so the
         -- PlayerFrame anchor stops overriding it.
@@ -403,6 +444,7 @@ local function UpdateReadout()
 
   -- Edit mode: hold a sample value on screen so it can be dragged into place.
   if HK.Editing and HK.Editing() then
+    SetPctHot(false)          -- never animate a frame the player is dragging
     readoutText:SetText("64%")
     readoutText:SetTextColor(1, 0.82, 0)
     readout:Show()
@@ -413,11 +455,16 @@ local function UpdateReadout()
   if pct == nil then
     -- Out of combat, no pet, or no threat on anything: show nothing at all
     -- rather than a stale or zero number.
+    SetPctHot(false)          -- and stop the pulse loop with it
     readout:Hide()
     return
   end
   readoutText:SetFormattedText("%d%%", math.floor(pct))
   readoutText:SetTextColor(PctColor(pct, pulled))
+  -- Emphasise from the SAME threshold the warning uses (and always once you
+  -- actually hold aggro), so the size, the colour and the warning all agree.
+  local threshold = tonumber(db.threshold) or 80
+  SetPctHot(pulled == true or pct >= threshold)
   readout:Show()
 end
 ThreatWatch.UpdateReadout = UpdateReadout
@@ -430,6 +477,14 @@ end
 -- Exposed for tests and diagnostics: the colour currently applied to the number.
 function ThreatWatch.ReadoutColor()
   return readoutText and readoutText.textColor or nil
+end
+-- Exposed for tests: is the number currently emphasised, and at what scale.
+function ThreatWatch.IsReadoutHot() return pctHot == true end
+function ThreatWatch.ReadoutScale()
+  return readout and (readout:GetScale() or 1) or nil
+end
+function ThreatWatch.IsReadoutPulsing()
+  return readout ~= nil and readout:GetScript("OnUpdate") ~= nil
 end
 
 -- The audible half. Rate-limited independently of the visual, because the

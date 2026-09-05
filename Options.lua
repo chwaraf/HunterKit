@@ -685,7 +685,7 @@ function BuildWindow()
   MakeCheckbox(content, y, "Show aggro % by the player frame",
     function() return db.threat.showPct end,
     function(v) db.threat.showPct = v; RefreshThreat() end,
-    "A live threat percentage above and to the right of your player frame while you are in combat with a pet: green while safe, amber as it climbs, red once you are at the pull point. 100% is the moment the mob turns on you. Quiet and passive -- no sound, no popup. Unlock the frames (/htk unlock) to drag it anywhere.")
+    "A live threat percentage above and to the right of your player frame while you are in combat with a pet: green while safe, amber as it climbs, red once you are at the pull point. At the 'Warn at' threshold below it grows to 1.5x and pulses. 100% is the moment the mob turns on you. Quiet and passive -- no sound, no popup. Unlock the frames (/htk unlock) to drag it.")
   y = y - CHK
   MakeCheckbox(content, y, "Also warn me on screen (sound + alert)",
     function() return db.threat.enabled end,
@@ -695,7 +695,7 @@ function BuildWindow()
   MakeSlider(content, y, "Warn at", 40, 100, 5,
     function() return db.threat.threshold or 80 end,
     function(v) db.threat.threshold = v; RefreshThreat() end,
-    "How close to pulling you may get before the warning fires, as a percentage of the aggro point. 100% is the instant the mob would turn on you, so leave headroom. Melee vs ranged distance is already accounted for.", true)
+    "Where the warning fires and the percentage readout turns red, grows and pulses. 100% is the instant the mob turns on you, so leave headroom. Melee vs ranged distance is already accounted for.", true)
   y = y - CHK
   MakeCheckbox(content, y, "Play a warning sound",
     function() return db.threat.sound end,
