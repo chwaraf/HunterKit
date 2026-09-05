@@ -608,6 +608,21 @@ local function ShouldShow()
   -- Refresh); when idle it shows an empty, full-length track so you can see
   -- where it is and how much lockout a shot will cost.
   if db.always then return true end
+
+  -- Stay up in melee while weaving is enabled.
+  --
+  -- Stepping into melee range STOPS auto-repeat, which used to hide the whole
+  -- bar -- precisely when a weaving hunter needs it most. The melee half of the
+  -- display is the entire point of standing there, and the ranged cycle is
+  -- still running behind it (Era does not link them), so hiding everything the
+  -- moment you close the distance defeats the feature. Super Swing Timer solves
+  -- the same problem with a short hold-over to stop the bar flickering between
+  -- cycles; we keep it up for the whole of combat instead, which is simpler and
+  -- has no flicker at all.
+  if db.weave ~= false and Call(UnitAffectingCombat, "player") == true then
+    return true
+  end
+
   if not repeating then return false end
   return nextAt ~= nil
 end

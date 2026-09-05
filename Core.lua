@@ -6,7 +6,7 @@
 
 local ADDON_NAME, HK = ...
 
-HK.version = "0.9.45"
+HK.version = "0.9.46"
 
 -- ---------------------------------------------------------------------------
 -- Defaults (schema). This is the source of truth for the options window and
@@ -14,7 +14,7 @@ HK.version = "0.9.45"
 -- ---------------------------------------------------------------------------
 HK.defaults = {
   enabled   = true,
-  dbVersion = 29,
+  dbVersion = 30,
   firstRun  = true,
 
   ui = {
@@ -77,8 +77,8 @@ HK.defaults = {
     -- what makes the feature useful with the warning switched off.
     showPct       = true,
     showGap       = true,    -- prefix the % with the damage that would pull it
-    pctOffsetX    = -34,     -- nudge back over the frame's top-right corner
-    pctOffsetY    = -16,
+    pctOffsetX    = 0,       -- centred above the player frame
+    pctOffsetY    = 2,
     pctMoved      = false,   -- true once dragged (then pinned absolutely)
   },
 
@@ -854,6 +854,17 @@ local function LoadDB()
   -- MergeDefaults supplies them. Bumped so the version reflects the schema.
   if db.dbVersion < 29 then
     db.dbVersion = 29
+  end
+
+  -- v29 -> v30: the threat percentage now sits centred above the player frame
+  -- instead of hanging off its top-right corner. Move it for anyone who has not
+  -- placed it themselves.
+  if db.dbVersion < 30 then
+    if type(db.threat) == "table" and db.threat.pctMoved ~= true then
+      db.threat.pctOffsetX = HK.defaults.threat.pctOffsetX
+      db.threat.pctOffsetY = HK.defaults.threat.pctOffsetY
+    end
+    db.dbVersion = 30
   end
 
   if db.dbVersion < 19 then

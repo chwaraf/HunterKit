@@ -3,6 +3,33 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.46] - 2026-09-05
+
+### Fixed
+- **The threat percentage jumped across the screen when it went hot.** The
+  emphasis called `SetScale` on the frame, which scales its anchor offsets too
+  -- and the readout is anchored to the player frame, so at 1.5x it slid
+  visibly, then slid back on cooling. Only the font is scaled now, so the number
+  swells in place, and the emphasis is a modest 1.18x pulse rather than a lurch.
+- **The threat percentage now defaults to centred above the player frame**
+  (`BOTTOM` to the frame's `TOP`) instead of hanging off its top-right corner.
+  Migrated for anyone who has not placed it themselves.
+- **The threat preview icon stayed on screen after relocking frames.** Edit mode
+  forces it up as a drag target, but the post-lock "put yourselves away" pass
+  was nested inside the feed-macro branch and named only two modules, so nothing
+  ever told the warning to re-evaluate -- and its own linger check only fires
+  after a real alert. That pass now runs unconditionally and covers every module
+  with a preview.
+- **"Reset positions" only appeared to work after an unlock/lock cycle.** Same
+  root cause: the frames were never asked to redraw. Verified on the live
+  frames rather than the saved values.
+- **The bar vanished the moment you stepped into melee.** Walking into melee
+  range stops auto-repeat, which hid everything -- precisely when a weaving
+  hunter needs it, and with the melee row being the whole reason to be stood
+  there. While weaving is enabled the bar now stays up for the duration of
+  combat (Super Swing Timer keeps both bars up for the same reason), and still
+  packs itself away when the fight ends.
+
 ## [0.9.45] - 2026-09-05
 
 ### Fixed

@@ -1226,12 +1226,24 @@ function Positions.SetLock(locked)
       end
     end
   end
-  if unlock == false and HK.FeedPet and HK.FeedPet.RefreshMacro then
-    HK.FeedPet:RefreshMacro()   -- colon: RefreshMacro is a method, needs `self`
-    -- After locking, restore proper per-feature visibility (edit mode forced
-    -- everything shown).
+  if unlock == false then
+    if HK.FeedPet and HK.FeedPet.RefreshMacro then
+      HK.FeedPet:RefreshMacro() -- colon: RefreshMacro is a method, needs `self`
+    end
+    -- After locking, restore proper per-feature visibility: edit mode forces
+    -- every frame visible as a drag target, and each feature has to be given
+    -- the chance to put itself away again.
+    --
+    -- This list must cover EVERY module with an edit-mode preview. It used to
+    -- be nested inside the FeedPet branch (so it did not run at all without a
+    -- feed macro) and named only two modules, which is why the threat warning
+    -- icon stayed on screen after relocking -- nothing ever told it to
+    -- re-evaluate, and its own linger check only fires after a real alert.
     if HK.Range then HK.Range.Update() end
     if HK.PassivePulse then HK.PassivePulse.Refresh() end
+    if HK.ThreatWatch and HK.ThreatWatch.Tick then HK.ThreatWatch.Tick(true) end
+    if HK.ShotTimer and HK.ShotTimer.Refresh then HK.ShotTimer.Refresh() end
+    if HK.MendMark and HK.MendMark.Update then HK.MendMark.Update() end
   end
   UpdateLockButton()
 end

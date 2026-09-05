@@ -423,12 +423,11 @@ check("it tracks pet changes", HK.bus.handlers["UNIT_PET"] ~= nil)
 local pctFrame = _G["HunterKitThreatPct"]
 check("the percentage readout frame exists", pctFrame ~= nil)
 
--- It anchors ABOVE and to the RIGHT of the player frame: our BOTTOMLEFT to the
--- frame's TOPRIGHT. Anchoring the other way round would put the number on top
--- of the portrait art.
+-- It sits centred directly ABOVE the player frame: our BOTTOM to the frame's
+-- TOP. Anchoring by a corner left it hanging off to one side.
 local pp = pctFrame and pctFrame.points[1]
-check("the readout hangs off the player frame's top-right",
-  pp and pp[1] == "BOTTOMLEFT" and pp[2] == _G["PlayerFrame"] and pp[3] == "TOPRIGHT",
+check("the readout sits above the middle of the player frame",
+  pp and pp[1] == "BOTTOM" and pp[2] == _G["PlayerFrame"] and pp[3] == "TOP",
   pp and (tostring(pp[1]) .. "->" .. tostring(pp[2] and pp[2].name) .. "/" .. tostring(pp[3])))
 
 -- It must never eat clicks meant for the player frame underneath it.
@@ -543,8 +542,15 @@ Scene({ playerPct = 80, threshold = 80 })
 TW.Tick(true)
 check("reaching the threshold flags it hot", TW.IsReadoutHot() == true)
 check("...and starts the pulse loop", TW.IsReadoutPulsing() == true)
-check("...at 1.5x size", math.abs((TW.ReadoutScale() or 0) - 1.5) < 0.001,
+check("...at the hot size", (TW.ReadoutScale() or 0) > 1.05,
   tostring(TW.ReadoutScale()))
+-- The emphasis must be a SWELL, not a jump: a big multiplier on a number
+-- anchored to the player frame reads as the readout leaping across the screen.
+check("...but only modestly bigger, so it does not lurch",
+  (TW.ReadoutScale() or 0) < 1.3, tostring(TW.ReadoutScale()))
+check("...and the FRAME is never scaled, or the anchor offsets move with it",
+  math.abs((TW.ReadoutFrameScale() or 0) - 1) < 0.001,
+  tostring(TW.ReadoutFrameScale()))
 
 -- One under the threshold must NOT emphasise (>= not >, matching the warning).
 Scene({ playerPct = 79, threshold = 80 })
@@ -578,8 +584,21 @@ for i = 1, 12 do
   lo, hi = math.min(lo, sc), math.max(hi, sc)
 end
 check("the pulse animates the scale", hi > lo, string.format("%.3f..%.3f", lo, hi))
-check("...staying centred near 1.5x", lo > 1.25 and hi < 1.75,
+check("...as a gentle swell, never a lurch", lo > 1.0 and hi < 1.35,
   string.format("%.3f..%.3f", lo, hi))
+
+-- The whole point of the rewrite: the readout must not MOVE while it pulses.
+local ppBefore = pctF.points[#pctF.points]
+for i = 1, 8 do drive(pctF, 0.05) end
+local ppAfter = pctF.points[#pctF.points]
+check("the number stays put while it pulses",
+  ppBefore[1] == ppAfter[1] and ppBefore[4] == ppAfter[4]
+    and ppBefore[5] == ppAfter[5],
+  string.format("%s %s,%s -> %s %s,%s", tostring(ppBefore[1]),
+    tostring(ppBefore[4]), tostring(ppBefore[5]), tostring(ppAfter[1]),
+    tostring(ppAfter[4]), tostring(ppAfter[5])))
+check("...and the frame scale never budges",
+  math.abs((TW.ReadoutFrameScale() or 0) - 1) < 0.001)
 
 -- Cooling off must stop the loop AND restore the size -- otherwise the number
 -- would be left permanently enlarged, or burning a frame handler forever.
@@ -767,6 +786,41 @@ HKTest.state.threat.pettarget.player.scaled = 100
 TW.Tick(true)
 text = TW.AlertText() or ""
 check("losing the mob says AGGRO", text:find("AGGRO") ~= nil, text)
+
+
+-- ---------------------------------------------------------------------------
+-- THE EDIT-MODE PREVIEW MUST GO AWAY WHEN YOU RELOCK
+--
+-- Regression: unlocking forces the warning icon up as a drag target, but
+-- nothing hid it again on relock -- the linger check only fires once a REAL
+-- alert has set shownUntil, which a preview never does. The icon stayed on
+-- screen until the next genuine threat event.
+-- ---------------------------------------------------------------------------
+local alertFrame = _G["HunterKitThreatAlert"]
+HK.db.threat.enabled = true
+TW.RescanSettings()
+
+Scene({ playerPct = 10, threshold = 80 })     -- nothing alarming at all
+TW.Tick(true)
+check("no alert when nothing is wrong", alertFrame:IsShown() == false)
+
+pcall(HK.Positions.ToggleLock)                -- unlock -> preview
+check("unlocking previews the warning so you can place it",
+  alertFrame:IsShown() == true)
+
+pcall(HK.Positions.ToggleLock)                -- relock
+check("relocking clears the preview", alertFrame:IsShown() == false,
+  "the preview must not linger after you lock frames")
+
+-- And a real alert still works after a preview cycle.
+Scene({ playerPct = 95, threshold = 80 })
+TW.Tick(true)
+check("a genuine warning still shows after previewing",
+  alertFrame:IsShown() == true)
+Scene({ playerPct = 10, threshold = 80 })
+
+check("the readout defaults to centred above the player frame",
+  HK.defaults.threat.pctOffsetX == 0)
 
 say(string.format("\n%d passed, %d failed", passes, #failures))
 if #failures > 0 then

@@ -164,6 +164,7 @@ check("the bar shows while auto-repeat is on", ST.IsShown() == true)
 check("...and animates", ST.IsAnimating() == true)
 
 ST._SetRepeating(false)
+HKTest.state.playerCombat = false      -- out of combat entirely
 ST.Refresh()
 check("stopping auto-repeat hides the bar", ST.IsShown() == false)
 check("...and detaches the OnUpdate", ST.IsAnimating() == false,
@@ -467,6 +468,7 @@ HK.db.shottimer.always = false
 ST.RescanSettings()
 ST._ClearMelee()
 ST._SetRepeating(false)       -- not shooting
+HKTest.state.playerCombat = false   -- and not in a fight (see melee rule below)
 ST.Refresh()
 check("off: an idle bar is hidden", ST.IsShown() == false)
 
@@ -587,6 +589,45 @@ check("the specials gate is on by default", HK.defaults.shottimer.specials == tr
 local d = HK.draggables["shottimer"]
 check("the shot bar converts its drop point to centre space", 
   d and d.opts and d.opts.saveFromScreen ~= nil)
+
+
+-- ---------------------------------------------------------------------------
+-- 20) THE BAR MUST SURVIVE WALKING INTO MELEE
+--
+-- Regression: stepping into melee range stops auto-repeat, which hid the whole
+-- bar -- exactly when a weaving hunter needs it. The melee row is the reason
+-- you are stood there, and the ranged cycle is still running behind it. Other
+-- swing-timer addons (Super Swing Timer) keep both bars up for the same reason.
+-- ---------------------------------------------------------------------------
+HK.db.shottimer.always = false
+HK.db.shottimer.weave = true
+ST.RescanSettings()
+
+HKTest.state.playerCombat = true
+Shooting(3.0, 5000)
+check("shooting: the bar is up", ST.IsShown() == true)
+
+-- Walk in: auto-repeat stops, but we are still fighting.
+ST._SetRepeating(false)
+ST.Refresh()
+check("in melee, the bar stays up so you can weave", ST.IsShown() == true)
+check("...and the melee row is there", ST.MeleeTrackShown() == true)
+
+-- Out of combat it should still pack itself away.
+HKTest.state.playerCombat = false
+ST.Refresh()
+check("out of combat, the bar goes away again", ST.IsShown() == false)
+
+-- With weaving off there is no reason to hold it up in melee.
+HKTest.state.playerCombat = true
+HK.db.shottimer.weave = false
+ST.RescanSettings()
+ST._SetRepeating(false)
+ST.Refresh()
+check("weaving off: melee does not keep the bar up", ST.IsShown() == false)
+HK.db.shottimer.weave = true
+ST.RescanSettings()
+HKTest.state.playerCombat = false
 
 say(string.format("\n%d passed, %d failed", passes, #failures))
 if #failures > 0 then

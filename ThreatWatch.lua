@@ -119,9 +119,10 @@ local STATE_RANK = { warn = 1, pulled = 2 }
 -- 1.5x and pulses, so it catches the eye without the player having to read it.
 -- The scale is applied to the FRAME (the FontString is anchored to it), which
 -- scales the glyphs cleanly at any font size and cannot fight the anchor.
-local PCT_HOT_SCALE = 1.5
+local PCT_FONT_SIZE = 14         -- base size; the hot state scales THIS
+local PCT_HOT_SCALE = 1.18       -- a modest swell, not a lurch
 local PCT_PULSE_HZ  = 3.4        -- radians/sec feed for the sine (~0.55 s cycle)
-local PCT_PULSE_AMP = 0.12       -- +/- fraction of the hot scale
+local PCT_PULSE_AMP = 0.07       -- +/- fraction of the hot scale
 
 local ICON_WARN   = "Interface\\Icons\\Ability_Physical_Taunt"
 local ICON_PULLED = "Interface\\Icons\\Ability_Hunter_FeignDeath"
@@ -131,6 +132,7 @@ local readout, readoutText
 local pctHot, pctPulseT = false, 0
 local lastEval, lastSound = 0, -3600
 local current, shownUntil = nil, 0
+local previewing = false     -- the edit-mode preview is forcing the icon up
 local ticker = nil
 
 -- ---------------------------------------------------------------------------
@@ -460,9 +462,24 @@ end
 -- way out, so a calm readout costs no per-frame work at all. That matters --
 -- OnUpdate fires every rendered frame, which is the one place in this addon
 -- where sloppiness would actually show up in a framerate.
+-- Only the TEXT is scaled, never the frame.
+--
+-- SetScale on the frame scaled its anchor offsets too: the readout is anchored
+-- BOTTOMLEFT-to-PlayerFrame's-TOPRIGHT, so at 1.5x those offsets grew by half
+-- and the number visibly jumped across the screen the moment it went hot --
+-- and again when it cooled. Scaling the font string leaves the frame's anchor
+-- untouched, so the number swells in place. It also means the emphasis is a
+-- modest pulse rather than a lurch, which is what was actually wanted.
+local pctFontPath, pctFontFlags = nil, nil
+local function PctSetTextScale(mult)
+  if not readoutText or not pctFontPath then return end
+  readoutText:SetFont(pctFontPath, math.max(6, PCT_FONT_SIZE * (mult or 1)),
+    pctFontFlags)
+end
+
 local function PctOnUpdate(self, dt)
   pctPulseT = pctPulseT + (dt or 0.03)
-  self:SetScale(PCT_HOT_SCALE * (1 + PCT_PULSE_AMP * math.sin(pctPulseT * PCT_PULSE_HZ)))
+  PctSetTextScale(PCT_HOT_SCALE * (1 + PCT_PULSE_AMP * math.sin(pctPulseT * PCT_PULSE_HZ)))
 end
 
 -- Enter/leave the emphasised state. Idempotent: called every evaluation, but
@@ -474,10 +491,10 @@ local function SetPctHot(hot)
   if hot then
     pctPulseT = 0
     readout:SetScript("OnUpdate", PctOnUpdate)
-    readout:SetScale(PCT_HOT_SCALE)
+    PctSetTextScale(PCT_HOT_SCALE)
   else
     readout:SetScript("OnUpdate", nil)
-    readout:SetScale(1)
+    PctSetTextScale(1)
   end
 end
 
@@ -491,7 +508,9 @@ local function BuildReadout()
 
   readoutText = readout:CreateFontString(nil, "OVERLAY")
   -- Font BEFORE text (SetText on a font-less FontString throws on the client).
-  readoutText:SetFont(STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF", 14, "OUTLINE")
+  pctFontPath = STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF"
+  pctFontFlags = "OUTLINE"
+  readoutText:SetFont(pctFontPath, PCT_FONT_SIZE, pctFontFlags)
   readoutText:SetPoint("CENTER", readout, "CENTER", 0, 0)
   readoutText:SetText("")
 
@@ -528,13 +547,13 @@ function ThreatWatch.ApplyReadoutPosition()
       tonumber(db.pctOffsetX) or 0, tonumber(db.pctOffsetY) or 0)
     return
   end
-  -- Default: above and to the RIGHT of the player frame. Anchoring our
-  -- BOTTOMLEFT to the frame's TOPRIGHT puts the number outside the portrait
-  -- artwork instead of on top of it, whatever the frame's size or scale.
+  -- Default: centred directly ABOVE the player frame. Anchoring our BOTTOM to
+  -- the frame's TOP keeps the number horizontally centred on the portrait
+  -- whatever the frame's size or scale, instead of hanging off one corner.
   local anchor = _G["PlayerFrame"]
   if anchor and anchor.GetObjectType then
-    readout:SetPoint("BOTTOMLEFT", anchor, "TOPRIGHT",
-      tonumber(db.pctOffsetX) or -34, tonumber(db.pctOffsetY) or -16)
+    readout:SetPoint("BOTTOM", anchor, "TOP",
+      tonumber(db.pctOffsetX) or 0, tonumber(db.pctOffsetY) or 2)
   else
     -- No player frame (heavily reskinned UI): fall back to a sane screen spot
     -- rather than leaving the widget unanchored.
@@ -612,7 +631,18 @@ function ThreatWatch.ReadoutColor()
 end
 -- Exposed for tests: is the number currently emphasised, and at what scale.
 function ThreatWatch.IsReadoutHot() return pctHot == true end
+-- The emphasis multiplier currently applied. Reported from the FONT SIZE, not
+-- the frame scale: scaling the frame moved the readout (its anchor offsets
+-- scaled too), so only the text grows now.
 function ThreatWatch.ReadoutScale()
+  if not readoutText then return nil end
+  local _, size = readoutText:GetFont()
+  if not size or PCT_FONT_SIZE == 0 then return 1 end
+  return size / PCT_FONT_SIZE
+end
+
+-- The frame's own scale must stay at 1 forever, or the number drifts.
+function ThreatWatch.ReadoutFrameScale()
   return readout and (readout:GetScale() or 1) or nil
 end
 function ThreatWatch.IsReadoutPulsing()
@@ -686,8 +716,18 @@ local function Evaluate(force)
       label:SetText("|cffffcc00THREAT|r")
       sub:SetText("(preview)")
       frame:Show()
+      previewing = true
     end
     return
+  end
+
+  -- Just left edit mode: the preview was forced visible and nothing below will
+  -- necessarily hide it (the linger check only fires when a real alert has set
+  -- shownUntil, which a preview never does). Clear it explicitly, or the icon
+  -- stays on screen after relocking until the next real threat event.
+  if previewing then
+    previewing = false
+    Hide()
   end
 
   local state, pct, _, mobName = ThreatWatch.Evaluate()

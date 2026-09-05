@@ -641,6 +641,46 @@ check("no frame jumps when you lock it", #jumped == 0, table.concat(jumped, "; "
 
 pcall(HK.Positions.ToggleLock)
 
+-- ---------------------------------------------------------------------------
+-- 5f) RESET MUST TAKE EFFECT AT ONCE, not on the next unlock/lock
+--
+-- Reset writes the defaults and calls every draggable's apply(), but a frame
+-- also has to be told to redraw itself. Verified on the live frames, not on the
+-- saved values -- the complaint was that the bar visibly stayed put.
+-- ---------------------------------------------------------------------------
+local function AnchorOf(f)
+  local p = f.points and f.points[#f.points]
+  if not p then return "none" end
+  return string.format("%s/%s %.0f,%.0f", tostring(p[1]), tostring(p[3]),
+    tonumber(p[4]) or 0, tonumber(p[5]) or 0)
+end
+
+pcall(HK.Positions.ToggleLock)          -- unlock
+local movedFrames = {}
+for name, d in pairs(HK.draggables) do
+  local f = d.frame
+  if f and f.scripts and f.scripts["OnDragStart"] and HK.DraggableActive(d) then
+    HKTest.cursorX, HKTest.cursorY = 660, 380
+    f.scripts["OnDragStart"](f)
+    f.scripts["OnUpdate"](f)
+    f.scripts["OnDragStop"](f)
+    movedFrames[name] = AnchorOf(f)
+  end
+end
+pcall(HK.Positions.ToggleLock)          -- lock
+
+HK.Positions.Reset()                    -- no unlock/lock afterwards
+
+local notReset = {}
+for name, was in pairs(movedFrames) do
+  local d = HK.draggables[name]
+  if d and d.frame and AnchorOf(d.frame) == was then
+    notReset[#notReset + 1] = name .. " still at " .. was
+  end
+end
+check("every dragged frame moves back the moment you press Reset",
+  #notReset == 0, table.concat(notReset, "; "))
+
 say(string.format("\n%d passed, %d failed", passes, #failures))
 if #failures > 0 then
   for _, f in ipairs(failures) do say("  - " .. f) end

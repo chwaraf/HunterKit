@@ -158,6 +158,7 @@ function Frame:SetDesaturated(v) self.desaturated = v and true or false; self:Re
 function Frame:GetDesaturated() return self.desaturated end
 function Frame:SetAllPoints() end
 function Frame:SetFont(f, s, o) self.font = f; self.fontSize = s; self.fontOutline = o end
+function Frame:GetFont() return self.font, self.fontSize, self.fontOutline end
 function Frame:SetFontObject(o) self.fontObject = o end
 function Frame:SetText(t) self.text = t; self:Record("SetText", t) end
 function Frame:GetText() return self.text end
