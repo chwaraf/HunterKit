@@ -109,9 +109,23 @@ end
 -- ---------------------------------------------------------------------------
 local function Call(fn, ...)
   if type(fn) ~= "function" then return nil end
-  local res = { pcall(fn, ...) }
-  if not res[1] then return nil end
-  return unpack(res, 2, #res)
+  -- table.pack records the REAL return count in `n`. A plain { pcall(...) }
+  -- cannot: when fn returns nil (or nothing at all) the table holds just the
+  -- `true` from pcall, so #res is 1 and `unpack(res, 2, 1)` yields ZERO values.
+  -- The caller then gets no argument rather than nil -- and `tonumber()` with
+  -- no argument throws "bad argument #1 (value expected)". That is exactly how
+  -- a vendor frame that had not been laid out yet (GetLeft() -> nil) blew up
+  -- the whole ammo flow. Explicit `n` also survives nils in the middle of a
+  -- result list, which both #r and table.maxn stop at.
+  local r = table.pack and table.pack(pcall(fn, ...)) or { pcall(fn, ...) }
+  if not r[1] then return nil end
+  local n = r.n or #r
+  -- pcall succeeded but fn returned NOTHING (n == 1 is just the `true`). Return
+  -- an explicit nil: expanding to zero values would make the caller's argument
+  -- vanish, and e.g. tonumber() with no argument throws rather than returning
+  -- nil. A wrapper meant to make calls safe must never hand back "no value".
+  if n < 2 then return nil end
+  return unpack(r, 2, n)
 end
 
 -- freeSlots, bagFamily for a bag index.
@@ -793,7 +807,13 @@ local FRAME_PAD = 12       -- breathing room kept inside the merchant frame
 -- out yet returns nil, and reskinning addons replace these widgets wholesale.
 local function Edge(frame, which)
   if type(frame) ~= "table" or type(frame[which]) ~= "function" then return nil end
-  return tonumber(Call(frame[which], frame))
+  -- Bind the result to a local FIRST. A frame that has not been laid out yet
+  -- returns nil from GetLeft/GetRight, and passing a call expression straight
+  -- into tonumber() forwards an empty argument list rather than nil, which
+  -- throws "bad argument #1 (value expected)". The local collapses any number
+  -- of return values (including none) to exactly one nil-able value.
+  local v = Call(frame[which], frame)
+  return tonumber(v)
 end
 
 local function AnchorButton()
@@ -997,5 +1017,7 @@ function AmmoBuy.Init()
     if button and button:IsShown() then UpdateButton() end
   end)
 end
+
+AmmoBuy._Call = Call
 
 HK.RegisterModule("AmmoBuy", { Init = AmmoBuy.Init })

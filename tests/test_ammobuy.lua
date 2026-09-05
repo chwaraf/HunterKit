@@ -864,6 +864,47 @@ check("auto-buy defaults to filling completely", HK.defaults.ammobuy.full == tru
 check("money reads as g/s/c", AB.MoneyString(12345) == "1g 23s 45c", AB.MoneyString(12345))
 check("copper-only money reads plainly", AB.MoneyString(7) == "7c", AB.MoneyString(7))
 
+
+-- ---------------------------------------------------------------------------
+-- A VENDOR FRAME THAT IS NOT LAID OUT YET MUST NOT CRASH THE ADDON
+--
+-- Regression: Edge() did `tonumber(Call(frame.GetLeft, frame))`. When GetLeft
+-- returns nil, `{ pcall(f) }` holds only the `true`, so #res == 1 and
+-- `unpack(res, 2, 1)` expands to ZERO values -- tonumber() then receives no
+-- argument at all and throws "bad argument #1 to 'tonumber' (value expected)".
+-- That killed the whole merchant path, so no refill happened.
+-- ---------------------------------------------------------------------------
+MerchantFrame.unlaid = true
+MerchantMoneyInset.unlaid = true
+MerchantMoneyFrame.unlaid = true
+
+local okCold = pcall(function()
+  local h = HK.bus.handlers["MERCHANT_SHOW"]
+  if h then h() end
+end)
+check("opening a vendor before layout does not error", okCold,
+  "a pre-layout frame returns nil edges")
+
+-- And it must still work once the frame HAS been laid out.
+MerchantFrame.unlaid = nil
+MerchantMoneyInset.unlaid = nil
+MerchantMoneyFrame.unlaid = nil
+local okWarm = pcall(function()
+  local h = HK.bus.handlers["MERCHANT_SHOW"]
+  if h then h() end
+end)
+check("opening a laid-out vendor still works", okWarm)
+
+-- The Call helper itself must return nil, not an empty argument list, when the
+-- wrapped function returns nothing -- that is the root cause.
+local probe = HK.AmmoBuy._Call
+if probe then
+  local okNil = pcall(function() return tonumber(probe(function() return nil end)) end)
+  check("Call() of a nil-returning function is safe to pass to tonumber", okNil)
+  local okNone = pcall(function() return tonumber(probe(function() end)) end)
+  check("Call() of a value-less function is safe to pass to tonumber", okNone)
+end
+
 say(string.format("\n%d passed, %d failed", passes, #failures))
 if #failures > 0 then
   for _, f in ipairs(failures) do say("  - " .. f) end

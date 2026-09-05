@@ -46,8 +46,11 @@ function Frame:GetHeight() return self.height end
 function Frame:GetCenter() return (self.width or 0) / 2, (self.height or 0) / 2 end
 -- Screen edges. Tests that care about layout overflow set `edgeLeft` / `width`
 -- on a frame; everything else keeps the old 0-origin answer.
-function Frame:GetLeft() return self.edgeLeft or 0 end
-function Frame:GetRight() return (self.edgeLeft or 0) + (self.width or 0) end
+-- A frame that has not been laid out yet returns NOTHING from these (not even
+-- nil) on the live client. Setting `unlaid` models that, which is what a vendor
+-- frame does for the first frames after it opens.
+function Frame:GetLeft() if self.unlaid then return end return self.edgeLeft or 0 end
+function Frame:GetRight() if self.unlaid then return end return (self.edgeLeft or 0) + (self.width or 0) end
 function Frame:GetBottom() return 0 end
 function Frame:GetRect() return 0, 0, self.width, self.height end
 function Frame:SetShown(v) self.shown = v and true or false end
@@ -350,8 +353,18 @@ function GetInventorySlotLink(unit, slot)
   if slot == 100 then return HKTest.state.ammoLink end
   return nil
 end
+-- slotApiCold models a loading screen (hearthstone / zone change): during one,
+-- EVERY inventory slot reads nil for a few frames even though the character is
+-- fully equipped. The ammo warning must not read that as "no ammo".
 function GetInventoryItemID(unit, slot)
+  if HKTest.state.slotApiCold then return nil end
   if slot == 100 then return HKTest.state.ammoID or nil end
+  -- A hunter has a weapon equipped; the module uses this as a liveness probe to
+  -- tell "inventory not synced yet" apart from "ranged slot genuinely empty".
+  if slot == 16 then
+    if HKTest.state.mainHandID == nil then return 12592 end
+    return HKTest.state.mainHandID or nil
+  end
   return nil
 end
 function GetInventoryItemCount(unit, slot)

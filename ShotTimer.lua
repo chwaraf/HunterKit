@@ -144,7 +144,13 @@ local function Call(fn, ...)
   -- list can contain nils, and both #r and table.maxn stop at the first hole.
   local r = table.pack and table.pack(pcall(fn, ...)) or { pcall(fn, ...) }
   if not r[1] then return nil end
-  return unpack(r, 2, r.n or #r)
+  local n = r.n or #r
+  -- pcall succeeded but fn returned NOTHING (n == 1 is just the `true`). Return
+  -- an explicit nil: expanding to zero values would make the caller's argument
+  -- vanish, and e.g. tonumber() with no argument throws rather than returning
+  -- nil. A wrapper meant to make calls safe must never hand back "no value".
+  if n < 2 then return nil end
+  return unpack(r, 2, n)
 end
 
 -- ---------------------------------------------------------------------------

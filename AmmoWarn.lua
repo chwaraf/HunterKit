@@ -70,6 +70,24 @@ local function AmmoSlot()
   return (ok and slot) or nil
 end
 
+-- Is the inventory API awake yet? During a loading screen every slot reads nil;
+-- once the client has synced, the main-hand (or any equipped slot) answers. We
+-- ask about a slot we do NOT warn on, so this is a pure liveness probe.
+local function SlotApiAwake()
+  if not GetInventoryItemID then return false end
+  for _, s in ipairs({ 16, 17, 5, 1 }) do     -- main hand, off hand, chest, head
+    local ok, v = pcall(GetInventoryItemID, "player", s)
+    if ok and v then return true end
+  end
+  -- Nothing equipped anywhere is possible but vanishingly rare on a hunter with
+  -- a ranged weapon; fall back to the link API before giving up.
+  if GetInventorySlotLink then
+    local ok, link = pcall(GetInventorySlotLink, "player", 16)
+    if ok and type(link) == "string" then return true end
+  end
+  return false
+end
+
 local function AmmoCount()
   local slot = AmmoSlot()
   if not slot then return nil, nil end
@@ -89,7 +107,15 @@ local function AmmoCount()
   end
   if id then invReady = true end     -- a real read: the inventory has synced
   if not id then
-    if not invReady then return nil, nil end  -- cold cache: no opinion, no warning
+    -- No ammo id. That is only "nothing equipped" if the inventory API is
+    -- actually answering right now. During a loading screen (hearthstone, zone
+    -- change) EVERY slot reads nil for a few frames, and invReady may still be
+    -- set from before the load -- so the flag alone is not enough. Re-prove
+    -- liveness against a slot we never warn on before believing the empty read.
+    if not invReady or not SlotApiAwake() then
+      invReady = false               -- went cold again; make it re-prove itself
+      return nil, nil                -- no opinion, no warning
+    end
     return 0, nil end                -- slot exists but nothing equipped
   local n = 0
   if GetItemCount then
@@ -221,7 +247,12 @@ local function Tick()
   -- arrives, believe the empty read after ~10 ticks so that case still warns.
   if not invReady then
     pewTicks = pewTicks + 1
-    if pewTicks > 10 then invReady = true end
+    -- Only believe a persistently-empty read once the slot API is answering at
+    -- all. If it is still returning nil we are mid-sync, not out of ammo, and
+    -- the counter must not run the gate down. GetInventoryItemID answers for
+    -- ANY equipped item, so the ranged slot being empty is a real answer while
+    -- the whole API being cold is not.
+    if pewTicks > 10 and SlotApiAwake() then invReady = true end
   end
   if HK.db.enabled == false or not db.enabled or not HK.isHunter then
     frame:SetShown(false)
@@ -300,10 +331,18 @@ function AmmoWarn.Init()
 
   BuildFrame()
 
-  HK.On("BAG_UPDATE_DELAYED", function() invReady = true; lastWarn = 0; Tick() end)
+  -- NEITHER of these may declare the inventory ready by itself.
+  --
+  -- Both fire during a loading screen (hearthstone, zone change) while
+  -- GetInventoryItemID/GetInventorySlotLink still return nil. Forcing
+  -- invReady = true there defeated the very gate that exists to stop a nil read
+  -- being treated as "nothing equipped" -- which is how a false "NO AMMO!"
+  -- appeared after hearthing with a full quiver. Only a REAL slot read may set
+  -- the flag (see AmmoCount), so these just prompt a re-check.
+  HK.On("BAG_UPDATE_DELAYED", function() lastWarn = 0; Tick() end)
   -- UNIT_INVENTORY_CHANGED, not ..._UPDATE: the latter has never existed, and
   -- RegisterEvent throws on an unknown name, which aborted this whole module.
-  HK.On("UNIT_INVENTORY_CHANGED", function() invReady = true end)
+  HK.On("UNIT_INVENTORY_CHANGED", Tick)
   HK.On("PLAYER_ENTERING_WORLD", AmmoWarn.Rearm)
 
   HK.Ticker(1, Tick)

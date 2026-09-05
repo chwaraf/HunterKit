@@ -3,6 +3,28 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.51] - 2026-09-05
+
+### Fixed
+- **`AmmoBuy.lua:796: bad argument #1 to 'tonumber' (value expected)` when
+  opening a vendor.** The `Call` helper wrapped results as `{ pcall(fn, ...) }`
+  and returned `unpack(res, 2, #res)`. When the wrapped function returned nil --
+  as `GetLeft()` does on a merchant frame that has not been laid out yet -- the
+  table held only pcall's `true`, so `#res` was 1 and the unpack expanded to
+  ZERO values. `tonumber()` then received no argument at all and threw, killing
+  the whole merchant path so no refill ran. A helper whose job is to make calls
+  safe now always yields an explicit nil instead of "no value". The same latent
+  bug was present in three copies of `Call` (AmmoBuy, ThreatWatch, ShotTimer)
+  and is fixed in all of them.
+- **A false "NO AMMO!" after hearthstoning with a full quiver.** Every inventory
+  slot reads nil for a few frames during a loading screen. The sync gate that
+  exists for exactly this was disarmed by `BAG_UPDATE_DELAYED` and
+  `UNIT_INVENTORY_CHANGED`, which both set "inventory ready" unconditionally --
+  and both fire during the load. Those events now only prompt a re-check, and an
+  empty ammo read is believed only when the inventory API is provably answering
+  (probed against a slot the warning never uses). A genuinely empty ammo slot
+  still warns as before.
+
 ## [0.9.50] - 2026-09-05
 
 ### Fixed

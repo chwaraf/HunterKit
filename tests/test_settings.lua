@@ -690,6 +690,63 @@ end
 check("the newer modules are reachable for a reset refresh",
   #missing == 0, table.concat(missing, ","))
 
+
+-- ---------------------------------------------------------------------------
+-- HEARTHSTONE MUST NOT PRODUCE A FALSE "NO AMMO"
+--
+-- Regression: after a loading screen every inventory slot reads nil for a few
+-- frames. An inventory-sync gate existed for exactly this, but BAG_UPDATE_DELAYED
+-- and UNIT_INVENTORY_CHANGED both set invReady = true unconditionally -- and
+-- both fire during the loading screen, before the slot API is warm. So the gate
+-- was disarmed at the worst possible moment and a full quiver read as empty.
+-- ---------------------------------------------------------------------------
+HKTest.state.ammoID = 2515
+HKTest.state.items = { [2515] = 1438 }       -- 1438 arrows, as reported
+HKTest.state.ammoEquipped = 1438
+HKTest.state.slotApiCold = false
+HKTest.state.now = 70000
+HK.AmmoWarn.Rearm()
+ammoTicker:Tick()
+check("stocked and synced: no warning", not HK.AmmoWarn.IsShown())
+
+-- Hearthstone: PLAYER_ENTERING_WORLD, then the API goes cold mid-load.
+HK.AmmoWarn.Rearm()
+HKTest.state.slotApiCold = true
+local bagEvent = HK.bus.handlers["BAG_UPDATE_DELAYED"]
+local invEvent = HK.bus.handlers["UNIT_INVENTORY_CHANGED"]
+if bagEvent then bagEvent() end              -- fires during the loading screen
+if invEvent then invEvent("player") end
+for i = 1, 4 do
+  HKTest.state.now = HKTest.state.now + 1
+  ammoTicker:Tick()
+end
+check("mid-loading-screen: a cold inventory never reads as NO AMMO",
+  not HK.AmmoWarn.IsShown(), "1438 arrows are still in the bags")
+
+-- The world finishes loading: still quiet, because we are stocked.
+HKTest.state.slotApiCold = false
+if bagEvent then bagEvent() end
+HKTest.state.now = HKTest.state.now + 1
+ammoTicker:Tick()
+check("after the load completes: still no warning",
+  not HK.AmmoWarn.IsShown())
+
+-- And a genuinely empty slot AFTER a load must still warn -- the gate must not
+-- have become a permanent mute.
+HKTest.state.ammoID = nil
+HKTest.state.items = {}
+HKTest.state.ammoEquipped = 0
+HK.AmmoWarn.Rearm()
+for i = 1, 12 do
+  HKTest.state.now = HKTest.state.now + 1
+  ammoTicker:Tick()
+end
+check("genuinely out of ammo after a load: the warning still fires",
+  HK.AmmoWarn.IsShown())
+HKTest.state.ammoID = 2515
+HKTest.state.items = { [2515] = 1438 }
+HKTest.state.ammoEquipped = 1438
+
 say(string.format("\n%d passed, %d failed", passes, #failures))
 if #failures > 0 then
   for _, f in ipairs(failures) do say("  - " .. f) end
