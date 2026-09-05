@@ -682,10 +682,15 @@ function BuildWindow()
   -- Pet aggro warning
   AddSection(content, y, "Pet aggro warning")
   y = y - HDR
-  MakeCheckbox(content, y, "Warn before the pet loses aggro to me",
+  MakeCheckbox(content, y, "Show aggro % by the player frame",
+    function() return db.threat.showPct end,
+    function(v) db.threat.showPct = v; RefreshThreat() end,
+    "A live threat percentage above and to the right of your player frame while you are in combat with a pet: green while safe, amber as it climbs, red once you are at the pull point. 100% is the moment the mob turns on you. Quiet and passive -- no sound, no popup. Unlock the frames (/htk unlock) to drag it anywhere.")
+  y = y - CHK
+  MakeCheckbox(content, y, "Also warn me on screen (sound + alert)",
     function() return db.threat.enabled end,
     function(v) db.threat.enabled = v; RefreshThreat() end,
-    "Warns while your threat closes on your pet's on a mob the PET is tanking, so you can stop shooting or Feign Death before it turns on you. Uses the game's own threat numbers (the API Blizzard reinstated in patch 1.13.5) -- no combat-log guessing, and nothing to poll while you are out of combat.")
+    "Off by default. Adds an interrupting centre-screen alert and a sound when your threat closes on your pet's on a mob the PET is tanking, and a louder one if the mob actually switches to you. The percentage readout above works with or without this.")
   y = y - CHK
   MakeSlider(content, y, "Warn at", 40, 100, 5,
     function() return db.threat.threshold or 80 end,

@@ -210,6 +210,12 @@ function UIParent:GetEffectiveScale() return 1 end
 -- The default-UI pet unit frame the marker falls back to when the client exposes
 -- no pet name plate. Hidden here on purpose: Edit Mode lets players hide it, and
 -- the marker must still anchor to its layout.
+-- The default-UI player frame. The aggro percentage readout anchors to its
+-- TOPRIGHT, so it has to exist and report a real object type.
+PlayerFrame = newFrame("Frame", "PlayerFrame", UIParent)
+PlayerFrame:SetSize(232, 100)
+function PlayerFrame:GetObjectType() return "Frame" end
+
 PetFrame = newFrame("Frame", "PetFrame", UIParent)
 PetFrame:SetSize(120, 40)
 PetFrame:Hide()

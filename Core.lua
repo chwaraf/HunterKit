@@ -6,7 +6,7 @@
 
 local ADDON_NAME, HK = ...
 
-HK.version = "0.9.35"
+HK.version = "0.9.36"
 
 -- ---------------------------------------------------------------------------
 -- Defaults (schema). This is the source of truth for the options window and
@@ -14,7 +14,7 @@ HK.version = "0.9.35"
 -- ---------------------------------------------------------------------------
 HK.defaults = {
   enabled   = true,
-  dbVersion = 23,
+  dbVersion = 24,
   firstRun  = true,
 
   ui = {
@@ -61,7 +61,9 @@ HK.defaults = {
   -- Uses the threat API Blizzard reinstated in 1.13.5 (see ThreatWatch.lua) --
   -- no combat-log parsing, no addon comms.
   threat = {
-    enabled       = true,
+    -- The interrupting warning is OPT-IN (user): a centre-screen alert plus a
+    -- sound is a deliberate interruption, and not everyone wants one.
+    enabled       = false,
     threshold     = 80,      -- warn at this % of the aggro-pull point
     sound         = true,
     soundInterval = 4,       -- seconds between alarm sounds
@@ -70,6 +72,13 @@ HK.defaults = {
     offsetX       = 0,
     offsetY       = 120,
     moved         = false,
+    -- The quiet half: a live threat percentage above-right of the player frame.
+    -- On by default -- it is a passive readout, not an interruption, and it is
+    -- what makes the feature useful with the warning switched off.
+    showPct       = true,
+    pctOffsetX    = -34,     -- nudge back over the frame's top-right corner
+    pctOffsetY    = -16,
+    pctMoved      = false,   -- true once dragged (then pinned absolutely)
   },
 
   range = {
@@ -774,6 +783,16 @@ local function LoadDB()
   -- nothing to force, but the version bump records the upgrade.
   if db.dbVersion < 23 then
     db.dbVersion = 23
+  end
+
+  -- v23 -> v24: the interrupting warning becomes opt-in, and the quiet
+  -- percentage readout arrives alongside it. Anyone who installed v23 got the
+  -- warning switched on by default without asking for it, so it is forced back
+  -- off once; a deliberate re-enable afterwards survives, because this runs
+  -- exactly once per profile. MergeDefaults supplies the new showPct keys.
+  if db.dbVersion < 24 then
+    if type(db.threat) == "table" then db.threat.enabled = false end
+    db.dbVersion = 24
   end
 
   if db.dbVersion < 19 then

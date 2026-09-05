@@ -72,6 +72,8 @@ local function Scene(o)
   d.threshold     = o.threshold or 80
   d.sound         = o.sound ~= false
   d.soundInterval = o.soundInterval or 4
+  d.showPct       = o.showPct ~= false
+  d.pctMoved      = o.pctMoved or false
   TW.RescanSettings()
   return d
 end
@@ -326,8 +328,13 @@ check("no pet: not polling even in combat", TW.IsPolling() == false)
 Scene({ playerPct = 10, combat = true, petDead = true })
 check("dead pet: not polling", TW.IsPolling() == false)
 
+-- Disabling the WARNING alone must NOT stop the poll any more: the percentage
+-- readout is a separate feature that still needs fresh numbers. Only when BOTH
+-- halves are off does the module go fully idle.
 Scene({ playerPct = 10, combat = true, enabled = false })
-check("disabled: not polling", TW.IsPolling() == false)
+check("warning off but readout on: still polling", TW.IsPolling() == true)
+Scene({ playerPct = 10, combat = true, enabled = false, showPct = false })
+check("both halves off: not polling", TW.IsPolling() == false)
 
 -- Leaving combat must tear the ticker down again, not leak one per fight.
 Scene({ playerPct = 10, combat = true })
@@ -372,8 +379,131 @@ check("it listens for threat situation updates",
 check("it tracks combat entry", HK.bus.handlers["PLAYER_REGEN_DISABLED"] ~= nil)
 check("it tracks pet changes", HK.bus.handlers["UNIT_PET"] ~= nil)
 
+-- ---------------------------------------------------------------------------
+-- 10) The live aggro percentage readout by the player frame
+-- ---------------------------------------------------------------------------
+local pctFrame = _G["HunterKitThreatPct"]
+check("the percentage readout frame exists", pctFrame ~= nil)
+
+-- It anchors ABOVE and to the RIGHT of the player frame: our BOTTOMLEFT to the
+-- frame's TOPRIGHT. Anchoring the other way round would put the number on top
+-- of the portrait art.
+local pp = pctFrame and pctFrame.points[1]
+check("the readout hangs off the player frame's top-right",
+  pp and pp[1] == "BOTTOMLEFT" and pp[2] == _G["PlayerFrame"] and pp[3] == "TOPRIGHT",
+  pp and (tostring(pp[1]) .. "->" .. tostring(pp[2] and pp[2].name) .. "/" .. tostring(pp[3])))
+
+-- It must never eat clicks meant for the player frame underneath it.
+check("the readout does not intercept mouse clicks",
+  pctFrame.mouseEnabled ~= true, tostring(pctFrame.mouseEnabled))
+
+-- The number itself, at a range of threat levels.
+Scene({ playerPct = 42 })
+TW.Tick(true)
+check("the readout shows the live percentage", TW.IsReadoutShown() == true)
+check("...with the actual number", TW.ReadoutText() == "42%", tostring(TW.ReadoutText()))
+
+Scene({ playerPct = 7 })
+TW.Tick(true)
+check("a low percentage is still shown (not only scary ones)",
+  TW.ReadoutText() == "7%", tostring(TW.ReadoutText()))
+
+-- THE REGRESSION THIS SPLIT EXISTS FOR: the readout must work while the
+-- interrupting warning is switched OFF, which is now the default pairing.
+Scene({ playerPct = 55, enabled = false })
+TW.Tick(true)
+check("the readout works with the warning disabled", TW.IsReadoutShown() == true,
+  tostring(TW.ReadoutText()))
+check("...and the warning alert stays hidden", TW.IsShown() == false)
+
+-- ...and vice versa: turning the readout off must not affect the warning.
+Scene({ playerPct = 95, enabled = true, showPct = false })
+TW.Tick(true)
+check("the readout can be switched off on its own", TW.IsReadoutShown() == false)
+check("...while the warning still fires", TW.IsShown() == true)
+
+-- Colour ramp: green safe, amber closing, red at/over the pull point. Tied to
+-- the SAME threshold the warning uses, so the colour and the warning can never
+-- disagree with each other.
+local function ColorOf(pct, threshold)
+  Scene({ playerPct = pct, threshold = threshold or 80, enabled = false })
+  TW.Tick(true)
+  local c = TW.ReadoutColor()
+  if not c then return "none" end
+  local r, g, b = c[1] or 0, c[2] or 0, c[3] or 0
+  if r > 0.9 and g < 0.2 and b < 0.2 then return "red" end
+  if r > 0.9 and g > 0.2 and g < 0.5 then return "orange" end
+  if r > 0.9 and g > 0.7 then return "amber" end
+  if g > 0.9 and r < 0.5 then return "green" end
+  return string.format("%.2f/%.2f/%.2f", r, g, b)
+end
+
+check("a safe percentage reads green", ColorOf(20) == "green", ColorOf(20))
+check("closing on the threshold reads amber", ColorOf(65) == "amber", ColorOf(65))
+check("at the threshold reads orange", ColorOf(85) == "orange", ColorOf(85))
+check("having pulled reads red", ColorOf(100) == "red", ColorOf(100))
+-- The ramp follows the user's threshold, it is not hardcoded to 80.
+check("a lower threshold reddens the ramp earlier",
+  ColorOf(55, 50) == "orange", ColorOf(55, 50))
+check("...and a higher one keeps it calm longer",
+  ColorOf(55, 95) == "green", ColorOf(55, 95))
+
+-- No danger at all: nothing to show.
+Scene({ playerPct = 30, combat = false })
+TW.Tick(true)
+check("out of combat the readout hides", TW.IsReadoutShown() == false)
+
+Scene({ playerPct = 30, pet = false })
+TW.Tick(true)
+check("with no pet the readout hides", TW.IsReadoutShown() == false)
+
+-- A mob a real TANK is holding still shows a percentage -- the readout is a
+-- plain "how hot am I", not the pet-specific warning, so it must not go blank
+-- just because the pet is not the one tanking.
+Scene({ playerPct = 60, petTanking = false })
+TW.Tick(true)
+check("the readout reports threat even when the pet is not tanking",
+  TW.IsReadoutShown() == true and TW.ReadoutText() == "60%",
+  tostring(TW.ReadoutText()))
+check("...while the pet-specific warning correctly stays silent", TW.IsShown() == false)
+
+-- Having actually pulled reads as 100%.
+Scene({ playerPct = 100, playerTanking = true })
+TW.Tick(true)
+check("holding aggro yourself reads 100%", TW.ReadoutText() == "100%",
+  tostring(TW.ReadoutText()))
+
+-- Leaving combat clears the number rather than freezing a stale one on screen.
+Scene({ playerPct = 88 })
+TW.Tick(true)
+check("number on screen during combat", TW.IsReadoutShown() == true)
+HKTest.state.playerCombat = false
+HKTest.state.petCombat = false
+HKTest.Fire("PLAYER_REGEN_ENABLED")
+check("leaving combat clears the number", TW.IsReadoutShown() == false)
+
+-- No threat API: the readout must stay hidden, not show a bogus 0%.
+UnitDetailedThreatSituation = nil
+Scene({ playerPct = 50 })
+TW.Tick(true)
+check("no threat API: the readout hides rather than lying",
+  TW.IsReadoutShown() == false)
+UnitDetailedThreatSituation = realUDTS
+
+-- Dragging: once moved it pins absolutely instead of following the player frame.
+Scene({ playerPct = 50, pctMoved = true })
+HK.db.threat.pctOffsetX, HK.db.threat.pctOffsetY = 120, 240
+TW.ApplyReadoutPosition()
+local mp = pctFrame.points[1]
+check("a dragged readout pins to UIParent, not the player frame",
+  mp and mp[2] == UIParent and mp[4] == 120 and mp[5] == 240,
+  mp and (tostring(mp[2] and mp[2].name) .. " " .. tostring(mp[4]) .. "," .. tostring(mp[5])))
+HK.db.threat.pctMoved = false
+TW.ApplyReadoutPosition()
+
 -- Defaults are sane and safe.
-check("the feature is on by default", HK.defaults.threat.enabled == true)
+check("the interrupting warning is OFF by default", HK.defaults.threat.enabled == false)
+check("the percentage readout is ON by default", HK.defaults.threat.showPct == true)
 check("the default threshold leaves room to react",
   HK.defaults.threat.threshold == 80, HK.defaults.threat.threshold)
 check("the alarm is rate-limited by default",

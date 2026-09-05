@@ -3,6 +3,34 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.36] - 2026-09-05
+
+### Changed
+- **The pet aggro warning is now OFF by default.** A centre-screen alert plus a
+  sound is a deliberate interruption, so it is opt-in. Anyone who installed
+  0.9.35 (where it defaulted on) has it switched off once by a migration; a
+  deliberate re-enable after that survives, since the migration runs exactly
+  once per profile.
+
+### Added
+- **Live aggro percentage by the player frame.** A quiet readout sitting
+  **above and to the right of the player frame** showing your current threat as
+  a percentage of the pull point — 100% is the moment the mob turns on you. It
+  colour-ramps green -> amber -> red against the *same* threshold the warning
+  uses, so the colour and the warning can never disagree. **On by default**, and
+  it works with the interrupting warning switched off, which is the new default
+  pairing. Draggable like every other HunterKit frame (`/htk unlock`); once
+  dragged it pins absolutely instead of following the player frame.
+
+  The measurement was split from the warning decision to make this possible:
+  the warning only speaks past a threshold, whereas the readout has to show a
+  live number the whole fight — including, in fact especially, while it is
+  comfortably low.
+
+  Polling now runs when **either** half needs it, so the readout stays live with
+  the warning off; with both off the module is fully idle, as before. `/htk
+  threat` reports which halves are on and the current live percentage.
+
 ## [0.9.35] - 2026-09-05
 
 ### Added

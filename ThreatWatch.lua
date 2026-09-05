@@ -119,6 +119,7 @@ local ICON_WARN   = "Interface\\Icons\\Ability_Physical_Taunt"
 local ICON_PULLED = "Interface\\Icons\\Ability_Hunter_FeignDeath"
 
 local frame, icon, label, sub
+local readout, readoutText
 local lastEval, lastSound = 0, -3600
 local current, shownUntil = nil, 0
 local ticker = nil
@@ -153,22 +154,72 @@ end
 -- have done nothing to it". That is the correct time to stay silent: a player
 -- with no threat cannot pull anything.
 -- ---------------------------------------------------------------------------
-local function JudgeMob(unit)
+-- MEASUREMENT ONLY -- no threshold is applied here.
+--
+-- Split deliberately from the warning decision: the percentage readout has to
+-- show a live number the whole fight, including (in fact, especially) while it
+-- is comfortably low, whereas the warning only speaks past a threshold. Folding
+-- the threshold in here, as an earlier cut did, meant the readout could only
+-- ever display numbers that were already alarming.
+--
+-- Returns pct, isPulled, petTanking  |  nil
+local function MeasureMob(unit)
   local myTanking, _, myScaled = Call(UnitDetailedThreatSituation, "player", unit)
   if myScaled == nil then return nil end
   myScaled = tonumber(myScaled) or 0
+  if myTanking then return 100, true, false end
 
-  if myTanking then return "pulled", 100 end
+  -- Is the PET the one holding this mob? Only then can the pet "lose" it.
+  local petTanking = Call(UnitDetailedThreatSituation, "pet", unit)
+  return myScaled, false, (petTanking and true or false)
+end
+
+-- The warning decision, layered on top of the measurement.
+local function JudgeMob(unit)
+  local pct, pulled, petTanking = MeasureMob(unit)
+  if pct == nil then return nil end
+  if pulled then return "pulled", 100 end
 
   -- Only a mob the PET is holding can be "lost by the pet". If a real tank (or
   -- another player) has it, the pet is not the one about to lose it and this
   -- feature has no opinion -- that is a threat meter's job, not a pet warning.
-  local petTanking = Call(UnitDetailedThreatSituation, "pet", unit)
   if not petTanking then return nil end
 
   local threshold = tonumber(db and db.threshold) or 80
-  if myScaled >= threshold then return "warn", myScaled end
+  if pct >= threshold then return "warn", pct end
   return nil
+end
+
+-- ---------------------------------------------------------------------------
+-- The live percentage for the readout: the player's HIGHEST threat percentage
+-- across the checked mobs, whatever it is.
+--
+-- Independent of the warning's threshold and of the warning being enabled at
+-- all, because the readout is its own feature -- a player can want the number
+-- without wanting to be shouted at, which is now the default pairing.
+--
+-- Returns pct, isPulled  |  nil
+-- ---------------------------------------------------------------------------
+function ThreatWatch.CurrentPct()
+  if not ThreatWatch.HasAPI() then return nil end
+  if not Call(UnitExists, "pet") then return nil end
+  if not Call(UnitAffectingCombat, "player") and not Call(UnitAffectingCombat, "pet") then
+    return nil
+  end
+  local best, bestPulled = nil, false
+  local seen = {}
+  for _, unit in ipairs(MOB_UNITS) do
+    if Call(UnitExists, unit) and not Call(UnitIsDead, unit)
+       and Call(UnitCanAttack, "player", unit) then
+      local guid = Call(UnitGUID, unit)
+      if guid == nil or not seen[guid] then
+        if guid then seen[guid] = true end
+        local pct, pulled = MeasureMob(unit)
+        if pct and (best == nil or pct > best) then best, bestPulled = pct, pulled end
+      end
+    end
+  end
+  return best, bestPulled
 end
 
 -- ---------------------------------------------------------------------------
@@ -263,6 +314,124 @@ function ThreatWatch.ApplyPosition()
     tonumber(db.offsetX) or 0, tonumber(db.offsetY) or 120)
 end
 
+-- ---------------------------------------------------------------------------
+-- The live percentage readout, sitting above and to the RIGHT of the player
+-- frame.
+--
+-- A separate widget from the warning alert on purpose: this one is a quiet,
+-- always-on number you glance at, the other is a deliberate interruption. They
+-- have separate enables, and the number is useful precisely when the warning is
+-- off -- which is now the default pairing.
+--
+-- Parented to UIParent, never to PlayerFrame, for the same reason Range.lua
+-- gives: a child of a unit frame measures its coordinates in that frame's
+-- space, which breaks the drag maths. We only ANCHOR to PlayerFrame.
+-- ---------------------------------------------------------------------------
+local function BuildReadout()
+  if readout or not CreateFrame then return end
+  readout = CreateFrame("Frame", "HunterKitThreatPct", UIParent)
+  readout:SetFrameStrata("MEDIUM")
+  readout:SetSize(60, 18)
+  readout:EnableMouse(false)          -- never intercept clicks on the player frame
+
+  readoutText = readout:CreateFontString(nil, "OVERLAY")
+  -- Font BEFORE text (SetText on a font-less FontString throws on the client).
+  readoutText:SetFont(STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF", 14, "OUTLINE")
+  readoutText:SetPoint("CENTER", readout, "CENTER", 0, 0)
+  readoutText:SetText("")
+
+  ThreatWatch.ApplyReadoutPosition()
+
+  HK.RegisterDraggable("threatpct", readout, ThreatWatch.ApplyReadoutPosition,
+    function(x, y) db.pctOffsetX, db.pctOffsetY = x, y end, {
+      saveFromScreen = function()
+        -- Save in UIParent space, and record that it is now user-placed so the
+        -- PlayerFrame anchor stops overriding it.
+        local fx, fy = readout:GetCenter()
+        local uw = (UIParent:GetWidth() or 0) / 2
+        local uh = (UIParent:GetHeight() or 0) / 2
+        db.pctOffsetX = (fx or 0) - uw
+        db.pctOffsetY = (fy or 0) - uh
+        db.pctMoved = true
+      end,
+    })
+  readout:Hide()
+end
+
+function ThreatWatch.ApplyReadoutPosition()
+  if not readout or not db then return end
+  readout:ClearAllPoints()
+  if db.pctMoved then
+    -- Dragged: pin absolutely so it stays exactly where it was dropped.
+    readout:SetPoint("CENTER", UIParent, "CENTER",
+      tonumber(db.pctOffsetX) or 0, tonumber(db.pctOffsetY) or 0)
+    return
+  end
+  -- Default: above and to the RIGHT of the player frame. Anchoring our
+  -- BOTTOMLEFT to the frame's TOPRIGHT puts the number outside the portrait
+  -- artwork instead of on top of it, whatever the frame's size or scale.
+  local anchor = _G["PlayerFrame"]
+  if anchor and anchor.GetObjectType then
+    readout:SetPoint("BOTTOMLEFT", anchor, "TOPRIGHT",
+      tonumber(db.pctOffsetX) or -34, tonumber(db.pctOffsetY) or -16)
+  else
+    -- No player frame (heavily reskinned UI): fall back to a sane screen spot
+    -- rather than leaving the widget unanchored.
+    readout:SetPoint("CENTER", UIParent, "CENTER",
+      tonumber(db.pctOffsetX) or 0, tonumber(db.pctOffsetY) or 160)
+  end
+end
+
+-- Colour ramp for the number: green while safe, amber as it closes on the
+-- warning threshold, red once it is at or past it (or you already have aggro).
+-- The ramp is tied to the SAME threshold the warning uses, so the colour and
+-- the warning always agree with each other.
+local function PctColor(pct, pulled)
+  if pulled or pct >= 100 then return 1, 0.1, 0.1 end
+  local threshold = tonumber(db and db.threshold) or 80
+  if pct >= threshold then return 1, 0.35, 0.1 end
+  if pct >= threshold * 0.75 then return 1, 0.82, 0 end
+  return 0.2, 1, 0.2
+end
+
+local function UpdateReadout()
+  if not readout then return end
+  if not db or db.showPct == false or not HK.isHunter then
+    readout:Hide()
+    return
+  end
+
+  -- Edit mode: hold a sample value on screen so it can be dragged into place.
+  if HK.Editing and HK.Editing() then
+    readoutText:SetText("64%")
+    readoutText:SetTextColor(1, 0.82, 0)
+    readout:Show()
+    return
+  end
+
+  local pct, pulled = ThreatWatch.CurrentPct()
+  if pct == nil then
+    -- Out of combat, no pet, or no threat on anything: show nothing at all
+    -- rather than a stale or zero number.
+    readout:Hide()
+    return
+  end
+  readoutText:SetFormattedText("%d%%", math.floor(pct))
+  readoutText:SetTextColor(PctColor(pct, pulled))
+  readout:Show()
+end
+ThreatWatch.UpdateReadout = UpdateReadout
+function ThreatWatch.ReadoutText()
+  return readout and readout:IsShown() and readoutText and readoutText.text or nil
+end
+function ThreatWatch.IsReadoutShown()
+  return readout ~= nil and readout:IsShown() == true
+end
+-- Exposed for tests and diagnostics: the colour currently applied to the number.
+function ThreatWatch.ReadoutColor()
+  return readoutText and readoutText.textColor or nil
+end
+
 -- The audible half. Rate-limited independently of the visual, because the
 -- visual may legitimately stay up for a whole fight while a sound repeating at
 -- that rate would be unbearable.
@@ -311,6 +480,11 @@ local function Evaluate(force)
   if not force and (now - lastEval) < MIN_INTERVAL then return end
   lastEval = now
 
+  -- The readout is its own feature with its own enable, so it refreshes on
+  -- every tick regardless of what the warning decides below (including when the
+  -- warning is switched off entirely, which is the default).
+  UpdateReadout()
+
   -- Edit mode: hold the frame visible so it can be dragged into place.
   if HK.Editing and HK.Editing() then
     if frame then
@@ -347,7 +521,11 @@ ThreatWatch.Tick = Evaluate
 -- nothing at all -- no timer, no polling, only the cheap event handlers.
 -- ---------------------------------------------------------------------------
 local function ShouldPoll()
-  if not db or db.enabled == false then return false end
+  if not db then return false end
+  -- EITHER feature can justify the ticker. The warning is off by default now,
+  -- so gating the poll on `db.enabled` alone would leave the percentage readout
+  -- permanently frozen for everyone using the defaults.
+  if db.enabled == false and db.showPct == false then return false end
   if not HK.isHunter or not ThreatWatch.HasAPI() then return false end
   if not Call(UnitExists, "pet") or Call(UnitIsDeadOrGhost, "pet") then return false end
   return Call(UnitAffectingCombat, "player") == true
@@ -362,6 +540,7 @@ local function SyncTicker()
     if ticker.Cancel then pcall(ticker.Cancel, ticker) end
     ticker = nil
     Hide()
+    UpdateReadout()      -- combat over: drop the number too, don't freeze it
   end
 end
 ThreatWatch.SyncTicker = SyncTicker
@@ -376,6 +555,12 @@ function ThreatWatch.PrintDiag()
   print("  threat API: " .. (ThreatWatch.HasAPI()
     and "present (1.13.5+ reinstated API)" or "MISSING -- feature cannot run"))
   print("  polling: " .. tostring(ticker ~= nil))
+  print(string.format("  warning: %s | percentage readout: %s",
+    (db and db.enabled ~= false) and "on" or "off",
+    (db and db.showPct ~= false) and "on" or "off"))
+  local livePct, livePulled = ThreatWatch.CurrentPct()
+  print("  live aggro %: " .. (livePct and (math.floor(livePct) .. "%"
+    .. (livePulled and " (you have aggro)" or "")) or "none"))
   for _, unit in ipairs(MOB_UNITS) do
     if Call(UnitExists, unit) then
       local myTank, myStatus, myScaled = Call(UnitDetailedThreatSituation, "player", unit)
@@ -400,6 +585,7 @@ end
 function ThreatWatch.RescanSettings()
   db = HK.db.threat
   ThreatWatch.ApplyPosition()
+  ThreatWatch.ApplyReadoutPosition()
   SyncTicker()
   Evaluate(true)
 end
@@ -409,6 +595,7 @@ function ThreatWatch.Init()
   if not HK.isHunter then return end       -- structural gate: no hunter, no feature
 
   Build()
+  BuildReadout()
 
   -- Event-driven where the client cooperates...
   HK.On("UNIT_THREAT_LIST_UPDATE", function() Evaluate() end)
@@ -418,9 +605,14 @@ function ThreatWatch.Init()
   HK.On("PLAYER_REGEN_DISABLED", function() SyncTicker(); Evaluate(true) end)
   HK.On("PLAYER_REGEN_ENABLED", function() SyncTicker() end)
   HK.On("UNIT_PET", function() SyncTicker() end)
-  HK.On("PLAYER_ENTERING_WORLD", function() SyncTicker() end)
+  HK.On("PLAYER_ENTERING_WORLD", function()
+    -- The player frame may not have existed when we first anchored.
+    ThreatWatch.ApplyReadoutPosition()
+    SyncTicker()
+  end)
 
   SyncTicker()
+  UpdateReadout()
 end
 
 HK.RegisterModule("ThreatWatch", { Init = ThreatWatch.Init })
