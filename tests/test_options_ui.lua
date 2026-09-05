@@ -681,6 +681,51 @@ end
 check("every dragged frame moves back the moment you press Reset",
   #notReset == 0, table.concat(notReset, "; "))
 
+-- ---------------------------------------------------------------------------
+-- 5g) RESET POSITIONS MUST NOT TAINT IN COMBAT
+--
+-- Regression: the feed button is a SECURE frame, so moving it in combat is a
+-- protected action -- the client throws ADDON_ACTION_BLOCKED on
+-- HunterKitFeedButton:ClearAllPoints(). FeedPet.RescanSettings knew that and
+-- guarded it, but "reset positions" called every draggable's apply() directly
+-- and bypassed the guard. The guard now lives inside ApplyPosition, so no
+-- caller can get it wrong, and the move replays when combat ends.
+-- ---------------------------------------------------------------------------
+local feedButton = _G["HunterKitFeedButton"]
+check("the feed button exists", feedButton ~= nil)
+
+-- Model the client: ClearAllPoints on this secure frame throws while in combat.
+local blocked = {}
+local realClear = feedButton.ClearAllPoints
+feedButton.ClearAllPoints = function(self, ...)
+  if InCombatLockdown() then
+    blocked[#blocked + 1] = "ClearAllPoints"
+    error("ADDON_ACTION_BLOCKED: HunterKitFeedButton:ClearAllPoints()")
+  end
+  return realClear(self, ...)
+end
+
+HKTest.state.combatLockdown = true
+local okReset, errReset = pcall(HK.Positions.Reset)
+check("resetting positions in combat does not error", okReset, tostring(errReset))
+check("...and never touches the secure frame", #blocked == 0,
+  table.concat(blocked, ","))
+
+-- Leaving combat must land the move that was skipped.
+HKTest.state.combatLockdown = false
+local pointsBefore = #feedButton.points
+local regen = HK.bus.handlers["PLAYER_REGEN_ENABLED"]
+if regen then pcall(regen) end
+check("leaving combat re-applies the deferred move",
+  #feedButton.points > 0, tostring(pointsBefore))
+
+feedButton.ClearAllPoints = realClear
+
+-- Out of combat it must still move immediately.
+HK.Positions.Reset()
+check("out of combat the feed button moves at once",
+  #feedButton.points > 0)
+
 say(string.format("\n%d passed, %d failed", passes, #failures))
 if #failures > 0 then
   for _, f in ipairs(failures) do say("  - " .. f) end

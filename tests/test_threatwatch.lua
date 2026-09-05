@@ -431,8 +431,10 @@ local pp = pctFrame and pctFrame.points[1]
 check("the readout sits centred over the player frame's name",
   pp and pp[1] == "BOTTOM" and pp[2] == _G["PlayerName"] and pp[3] == "TOP",
   pp and (tostring(pp[1]) .. "->" .. tostring(pp[2] and pp[2].name) .. "/" .. tostring(pp[3])))
-check("...and is nudged down onto the name, not floating above it",
-  (tonumber(pp and pp[5]) or 0) < 0, tostring(pp and pp[5]))
+-- Our BOTTOM is on the name's TOP, so the offset must be POSITIVE or the
+-- number is driven down into the name text and the frame art behind it.
+check("...and sits clear of the frame, not on top of it",
+  (tonumber(pp and pp[5]) or 0) > 0, tostring(pp and pp[5]))
 
 -- It must never eat clicks meant for the player frame underneath it.
 check("the readout does not intercept mouse clicks",
@@ -825,7 +827,7 @@ Scene({ playerPct = 10, threshold = 80 })
 
 check("the readout defaults to horizontally centred",
   HK.defaults.threat.pctOffsetX == 0)
-check("...and sits down over the name", HK.defaults.threat.pctOffsetY < 0,
+check("...and clears the player frame", HK.defaults.threat.pctOffsetY > 0,
   tostring(HK.defaults.threat.pctOffsetY))
 
 say(string.format("\n%d passed, %d failed", passes, #failures))

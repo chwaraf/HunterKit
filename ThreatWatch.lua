@@ -119,6 +119,8 @@ local STATE_RANK = { warn = 1, pulled = 2 }
 -- 1.5x and pulses, so it catches the eye without the player having to read it.
 -- The scale is applied to the FRAME (the FontString is anchored to it), which
 -- scales the glyphs cleanly at any font size and cannot fight the anchor.
+-- Gap above the player frame's name text. Positive = clear of the frame.
+local PCT_NAME_GAP  = 4
 local PCT_FONT_SIZE = 14         -- base size; the hot state scales THIS
 local PCT_HOT_SCALE = 1.18       -- a modest swell, not a lurch
 local PCT_PULSE_HZ  = 3.4        -- radians/sec feed for the sine (~0.55 s cycle)
@@ -550,12 +552,16 @@ function ThreatWatch.ApplyReadoutPosition()
   -- Default: centred over the player frame's NAME. Prefer anchoring to the name
   -- text itself (PlayerName) so the number tracks it exactly whatever the
   -- frame's size, scale or skin; fall back to the frame's TOP when a reskinned
-  -- UI has no such region. A small negative Y tucks it down onto the name
-  -- rather than leaving it floating above the frame.
+  -- UI has no such region.
+  --
+  -- The Y offset must be POSITIVE: our BOTTOM sits on the name's TOP, so a
+  -- negative value drives the number down into the name text and the frame
+  -- artwork behind it. A small positive gap clears the frame while still
+  -- reading as attached to it.
   local anchor = _G["PlayerName"] or _G["PlayerFrame"]
   if anchor and anchor.GetObjectType then
     readout:SetPoint("BOTTOM", anchor, "TOP",
-      tonumber(db.pctOffsetX) or 0, tonumber(db.pctOffsetY) or -6)
+      tonumber(db.pctOffsetX) or 0, tonumber(db.pctOffsetY) or PCT_NAME_GAP)
   else
     -- No player frame (heavily reskinned UI): fall back to a sane screen spot
     -- rather than leaving the widget unanchored.

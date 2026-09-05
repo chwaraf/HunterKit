@@ -1277,15 +1277,33 @@ function Positions.Reset()
       end
     end
   end
-  -- refresh positions
-  for _, d in pairs(HK.draggables) do
-    if d.apply then d.apply() end
+  -- Re-apply every position. pcall'd individually: one frame that refuses to
+  -- move (a secure frame in combat, a restricted anchor) must not abort the
+  -- reset for all the others. The modules themselves defer their own protected
+  -- work to PLAYER_REGEN_ENABLED, so anything skipped here lands when combat
+  -- ends rather than being lost.
+  for name, d in pairs(HK.draggables) do
+    if d.apply then
+      local ok, err = pcall(d.apply)
+      if not ok then HK.Dbg("reset: " .. tostring(name) .. " apply failed: " .. tostring(err)) end
+    end
   end
-  if HK.FeedPet then HK.FeedPet.RescanSettings() end
-  if HK.Range then HK.Range.RescanSettings() end
-  if HK.PassivePulse then HK.PassivePulse.RescanSettings() end
-  if HK.MendMark then HK.MendMark.RescanSettings() end
-  if HK.ThreatWatch then HK.ThreatWatch.RescanSettings() end
-  if HK.ShotTimer then HK.ShotTimer.RescanSettings() end
-  print("|cff39ff14HunterKit|r positions reset to defaults.")
+  -- Every registered module, rather than a hardcoded list that goes stale each
+  -- time one is added (this list had already missed ThreatWatch and ShotTimer
+  -- once). Individually pcall'd for the same reason as the applies above.
+  for name in pairs(HK.modules) do
+    local m = HK[name]
+    if m and m.RescanSettings then
+      local ok, err = pcall(m.RescanSettings)
+      if not ok then HK.Dbg("reset: " .. tostring(name) .. " rescan failed: " .. tostring(err)) end
+    end
+  end
+
+  if InCombatLockdown and InCombatLockdown() then
+    -- Be honest rather than silently half-applying: the feed button is secure
+    -- and physically cannot be moved mid-fight.
+    print("|cff39ff14HunterKit|r positions reset — the feed button will move when you leave combat.")
+  else
+    print("|cff39ff14HunterKit|r positions reset to defaults.")
+  end
 end

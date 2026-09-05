@@ -3,6 +3,25 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.50] - 2026-09-05
+
+### Fixed
+- **"Reset positions" threw ADDON_ACTION_BLOCKED in combat.** The feed button is
+  a secure frame, so moving it mid-fight is a protected action and the client
+  blocks `HunterKitFeedButton:ClearAllPoints()`. `FeedPet.RescanSettings` knew
+  that and guarded it, but Reset called every draggable's `apply()` directly and
+  went straight past the guard. The combat check now lives inside
+  `FeedPet.ApplyPosition` itself, so no caller can get it wrong, and the move
+  replays on `PLAYER_REGEN_ENABLED`. Reset also pcalls each frame individually
+  (one refusal must not abort the rest) and says so plainly when it defers.
+- **The threat percentage overlapped the player frame.** The offset added in
+  v0.9.49 was negative, but the readout's BOTTOM is anchored to the name's TOP,
+  so it drove the number down into the name and the artwork behind it. It is now
+  a small positive gap: horizontally centred as before, sitting just clear of
+  the frame.
+- `Positions.Reset` now refreshes every registered module instead of a hardcoded
+  list -- the same staleness that had already lost ThreatWatch and ShotTimer.
+
 ## [0.9.49] - 2026-09-05
 
 ### Fixed

@@ -13,6 +13,7 @@ HK.FeedPet = FeedPet
 local db
 local button, iconTex, countText, border
 local pending = false           -- attribute refresh deferred (combat)
+local positionPending = false   -- a move was blocked by combat; replay on regen
 local bagsDirty = true          -- food rescan needed (CPU: scan only on real changes)
 local initialised = false
 -- forward declarations (referenced before their bodies are defined in this chunk)
@@ -125,7 +126,7 @@ function FeedPet.Init()
     bagsDirty = true
     if button and not InCombatLockdown() then
       button:SetSize(db.size, db.size)   -- deferred secure resize
-      FeedPet.ApplyPosition()
+      FeedPet.ApplyPosition()            -- replays any move blocked in combat
     end
     RefreshEverything()            -- re-applies show/hide + macro now that we're safe
   end)
@@ -277,6 +278,16 @@ end
 
 function FeedPet.ApplyPosition()
   if not button then return end
+  -- The feed button is a SECURE frame: moving it in combat is a protected
+  -- action and throws ADDON_ACTION_BLOCKED. Every caller used to have to
+  -- remember that (RescanSettings did, "reset positions" did not, and it threw
+  -- on ClearAllPoints). Guarding here means no caller can get it wrong, and the
+  -- move is replayed on PLAYER_REGEN_ENABLED, which already re-applies position.
+  if InCombatLockdown and InCombatLockdown() then
+    positionPending = true
+    return
+  end
+  positionPending = false
   button:ClearAllPoints()
   -- Once the user has dragged it (or selected a UIParent anchor), pin it to the
   -- absolute UIParent CENTRE offset so it stays exactly where dropped. Otherwise

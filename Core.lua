@@ -6,7 +6,7 @@
 
 local ADDON_NAME, HK = ...
 
-HK.version = "0.9.49"
+HK.version = "0.9.50"
 
 -- ---------------------------------------------------------------------------
 -- Defaults (schema). This is the source of truth for the options window and
@@ -14,7 +14,7 @@ HK.version = "0.9.49"
 -- ---------------------------------------------------------------------------
 HK.defaults = {
   enabled   = true,
-  dbVersion = 31,
+  dbVersion = 32,
   firstRun  = true,
 
   ui = {
@@ -78,7 +78,7 @@ HK.defaults = {
     showPct       = true,
     showGap       = true,    -- prefix the % with the damage that would pull it
     pctOffsetX    = 0,       -- centred above the player frame
-    pctOffsetY    = -6,      -- tucked down over the name, not floating above
+    pctOffsetY    = 4,       -- just above the name, clear of the frame art
     pctMoved      = false,   -- true once dragged (then pinned absolutely)
   },
 
@@ -895,6 +895,15 @@ local function LoadDB()
       db.threat.pctOffsetY = HK.defaults.threat.pctOffsetY
     end
     db.dbVersion = 31
+  end
+
+  -- v31 -> v32: the -6 offset introduced in v31 pushed the percentage down into
+  -- the player frame instead of sitting above the name. Lift it clear.
+  if db.dbVersion < 32 then
+    if type(db.threat) == "table" and db.threat.pctMoved ~= true then
+      db.threat.pctOffsetY = HK.defaults.threat.pctOffsetY
+    end
+    db.dbVersion = 32
   end
 
   if db.dbVersion < 19 then
