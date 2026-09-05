@@ -107,11 +107,14 @@ HKTest.KNOWN_EVENTS = {
   PLAYER_REGEN_ENABLED = true,
   PLAYER_TARGET_CHANGED = true,
   SPELLS_CHANGED = true,
+  START_AUTOREPEAT_SPELL = true,
+  STOP_AUTOREPEAT_SPELL = true,
   UNIT_HAPPINESS = true,
   UNIT_HEALTH = true,
   UNIT_INVENTORY_CHANGED = true,
   UNIT_MAXHEALTH = true,
   UNIT_PET = true,
+  UNIT_SPELLCAST_START = true,
   UNIT_SPELLCAST_SUCCEEDED = true,
   UNIT_THREAT_LIST_UPDATE = true,
   UNIT_THREAT_SITUATION_UPDATE = true,
@@ -600,6 +603,16 @@ function SetCVar(n, v)
   return true
 end
 function GetTime() return HKTest.state.now or 0 end
+
+-- Ranged weapon speed, with haste already applied by the client. A test can set
+-- HKTest.state.rangedSpeed to model a slow bow vs a fast one -- the difference
+-- that decides how much room a hunter has to weave.
+function UnitRangedDamage(unit)
+  if unit ~= "player" then return 0, 0, 0, 0, 0, 0 end
+  local s = HKTest.state.rangedSpeed
+  if s == nil then s = 2.8 end
+  return s, 100, 200, 0, 0, 100
+end
 
 C_Spell = {
   GetSpellInfo = function(id)

@@ -70,7 +70,7 @@ local KNOWN_GLOBALS = {
   MakeDropdown = true, RangedWeaponInfo = true, RefreshFeed = true,
   RefreshMend = true, RefreshModules = true, RefreshPulse = true,
   RefreshRange = true, RefreshSound = true, RefreshAmmo = true,
-  RefreshAmmoBuy = true, RefreshThreat = true,
+  RefreshAmmoBuy = true, RefreshThreat = true, RefreshShotTimer = true,
 }
 local stray = {}
 for _, n in ipairs(HKTest.StrayGlobals()) do
@@ -104,8 +104,9 @@ for _, t in ipairs(content.textures) do
   if t.height == 1 then rules[#rules + 1] = t end
 end
 -- Master, Feed Pet, Sniper Mark, Pet Mend Marker, Ammo, Ammo auto-buy,
--- Pet aggro warning, Gun Sound, Passive pet alert, Positions, Reset.
-check("every section has a divider rule", #rules == 11, tostring(#rules))
+-- Pet aggro warning, Auto Shot timer, Gun Sound, Passive pet alert, Positions,
+-- Reset.
+check("every section has a divider rule", #rules == 12, tostring(#rules))
 local spanning = 0
 for _, r in ipairs(rules) do
   local a, b = r.points[1], r.points[2]

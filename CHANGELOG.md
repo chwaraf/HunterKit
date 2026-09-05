@@ -3,6 +3,24 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.41] - 2026-09-05
+
+### Added
+- **Auto Shot timer / weave bar** (`ShotTimer.lua`, off by default, `/htk shot`).
+  In Classic, Auto Shot is a fixed **0.5s cast** followed by a weapon-speed
+  cooldown, so the bar shows a long **green** stretch where you are free to move
+  and weave, and a **red** lockout at the end where acting **clips** the shot and
+  loses the damage. The red zone is drawn **to scale**, which makes visible why a
+  slow ranged weapon is easier to play (3.0s bow = 2.5s free; 1.8s = 1.3s).
+- **Measured clip feedback.** After every shot the bar compares when the shot was
+  expected against when it actually fired and reports the difference (`+0.34s`).
+  That is ground truth -- it includes your latency, spell batching and the
+  server's re-shot timer, none of which a pure prediction can know. A steady
+  `+0.00` means you are clean.
+- Follows **haste procs** (the ranged speed is re-read every shot, so Aspect of
+  the Hawk landing mid-fight moves the lockout correctly) and restarts on
+  **Aimed Shot**, which resets the auto-shot cycle.
+
 ## [0.9.40] - 2026-09-05
 
 ### Fixed

@@ -718,6 +718,35 @@ function BuildWindow()
     "Size of the on-screen warning icon. Unlock the frames (/htk unlock) to drag it where you want it.", true)
   y = y - CHK
 
+  -- Auto Shot timer
+  AddSection(content, y, "Auto Shot timer")
+  y = y - HDR
+  MakeCheckbox(content, y, "Show the auto shot / weave bar",
+    function() return db.shottimer.enabled end,
+    function(v) db.shottimer.enabled = v; RefreshShotTimer() end,
+    "A bar showing your Auto Shot cycle while you are firing. Green means you are free to move and weave in a shot; the red zone at the end is the 0.5s where doing anything clips the shot and loses the damage. Appears only while auto-shooting.")
+  y = y - CHK
+  MakeCheckbox(content, y, "Show how much you clipped",
+    function() return db.shottimer.showDelay end,
+    function(v) db.shottimer.showDelay = v; RefreshShotTimer() end,
+    "After each shot, shows how late it actually landed, e.g. +0.34s. Measured, not predicted, so it accounts for your latency. A steady +0.00 means you are clean.")
+  y = y - CHK
+  MakeCheckbox(content, y, "Show the free-time countdown",
+    function() return db.shottimer.showText end,
+    function(v) db.shottimer.showText = v; RefreshShotTimer() end,
+    "Counts down the time you still have to act before the shot locks you in place.")
+  y = y - CHK
+  MakeSlider(content, y, "Bar width", 120, 400, 10,
+    function() return db.shottimer.width or 220 end,
+    function(v) db.shottimer.width = v; RefreshShotTimer() end,
+    "Width of the shot bar in pixels. Unlock the frames (/htk unlock) to drag it.", true)
+  y = y - CHK
+  MakeSlider(content, y, "Bar height", 8, 40, 2,
+    function() return db.shottimer.height or 18 end,
+    function(v) db.shottimer.height = v; RefreshShotTimer() end,
+    "Height of the shot bar in pixels.", true)
+  y = y - CHK
+
   -- Sound
   AddSection(content, y, "Gun Sound")
   y = y - HDR
@@ -841,7 +870,7 @@ function RefreshModules()
     if HK.PassivePulse and HK.PassivePulse.Refresh then HK.PassivePulse.Refresh() end
     if HK.MendMark and HK.MendMark.Update then HK.MendMark.Update() end
   else
-    RefreshFeed(); RefreshRange(); RefreshSound(); RefreshPulse(); RefreshAmmo(); RefreshAmmoBuy(); RefreshMend(); RefreshThreat()
+    RefreshFeed(); RefreshRange(); RefreshSound(); RefreshPulse(); RefreshAmmo(); RefreshAmmoBuy(); RefreshMend(); RefreshThreat(); RefreshShotTimer()
   end
 end
 function RefreshFeed() if HK.FeedPet and HK.FeedPet.RescanSettings then HK.FeedPet.RescanSettings() end end
@@ -852,6 +881,7 @@ function RefreshSound() if HK.Sounds and HK.Sounds.RescanSettings then HK.Sounds
 function RefreshAmmo() if HK.AmmoWarn and HK.AmmoWarn.RescanSettings then HK.AmmoWarn.RescanSettings() end end
 function RefreshAmmoBuy() if HK.AmmoBuy and HK.AmmoBuy.RescanSettings then HK.AmmoBuy.RescanSettings() end end
 function RefreshThreat() if HK.ThreatWatch and HK.ThreatWatch.RescanSettings then HK.ThreatWatch.RescanSettings() end end
+function RefreshShotTimer() if HK.ShotTimer and HK.ShotTimer.RescanSettings then HK.ShotTimer.RescanSettings() end end
 
 -- ---------------------------------------------------------------------------
 -- Minimap button

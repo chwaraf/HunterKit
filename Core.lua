@@ -6,7 +6,7 @@
 
 local ADDON_NAME, HK = ...
 
-HK.version = "0.9.40"
+HK.version = "0.9.41"
 
 -- ---------------------------------------------------------------------------
 -- Defaults (schema). This is the source of truth for the options window and
@@ -14,7 +14,7 @@ HK.version = "0.9.40"
 -- ---------------------------------------------------------------------------
 HK.defaults = {
   enabled   = true,
-  dbVersion = 25,
+  dbVersion = 26,
   firstRun  = true,
 
   ui = {
@@ -80,6 +80,19 @@ HK.defaults = {
     pctOffsetX    = -34,     -- nudge back over the frame's top-right corner
     pctOffsetY    = -16,
     pctMoved      = false,   -- true once dragged (then pinned absolutely)
+  },
+
+  -- Auto Shot timer: the 0.5s cast + weapon-speed cooldown cycle, with the
+  -- clip-lockout drawn to scale. See ShotTimer.lua for the mechanics.
+  shottimer = {
+    enabled   = false,   -- opt-in: a persistent combat bar is a big UI change
+    width     = 220,
+    height    = 18,
+    offsetX   = 0,
+    offsetY   = -140,    -- below centre, out of the way of the alert stack
+    moved     = false,
+    showText  = true,    -- the "1.2s of free time left" countdown
+    showDelay = true,    -- the measured "+0.34s" clip readout
   },
 
   range = {
@@ -893,6 +906,7 @@ local function PrintHelp()
   print("  /htk buy           — refill ammo at the open vendor")
   print("  /htk buyinfo       — ammo auto-buy diagnostics")
   print("  /htk threat        — pet aggro warning diagnostics")
+  print("  /htk shot          — auto shot timer diagnostics")
   print("  /htk selfcheck     — API diagnostics")
   print("  /htk gunlist       — list muted gun-sound FileDataIDs")
   print("  /htk debug         — toggle verbose logging")
@@ -927,6 +941,8 @@ SlashCmdList["HUNTERKIT"] = function(msg)
     if HK.AmmoBuy then HK.AmmoBuy.PrintDiag() else print("HunterKit: AmmoBuy not initialised.") end
   elseif msg == "threat" then
     if HK.ThreatWatch then HK.ThreatWatch.PrintDiag() else print("HunterKit: ThreatWatch not initialised.") end
+  elseif msg == "shot" then
+    if HK.ShotTimer then HK.ShotTimer.PrintDiag() else print("HunterKit: ShotTimer not initialised.") end
   elseif msg == "gunlist" then
     if HK.Sounds then HK.Sounds.PrintGunList() end
   elseif msg == "selfcheck" then
