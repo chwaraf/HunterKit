@@ -121,9 +121,46 @@ local COL_CHARGING = { 0.20, 0.90, 0.30, 0.90 }   -- winding up
 local COL_READY    = { 0.55, 1.00, 0.55, 1.00 }   -- available to spend
 local COL_LOCKED   = { 1.00, 0.30, 0.10, 0.95 }   -- acting now clips the shot
 local COL_ZONE     = { 0.75, 0.12, 0.12, 0.55 }   -- the lockout region
+local COL_PIP_DOWN = { 0.35, 0.35, 0.38, 0.90 }   -- special on cooldown
+local COL_PIP_READY= { 0.30, 0.90, 0.30, 0.95 }   -- special ready to spend
+
+-- Last-drawn cache for the per-frame redraw. OnUpdate runs on EVERY rendered
+-- frame (60-150+ Hz), but almost nothing it draws changes that fast: the label
+-- shows one decimal so it changes ~10x/sec, and the colours change a handful of
+-- times per cycle. Re-issuing identical SetWidth/SetVertexColor/SetText calls is
+-- the addon's single busiest piece of pointless work, so each one is now gated
+-- on the value having actually moved. Widths are compared at sub-pixel
+-- resolution -- finer than that cannot be seen.
+local lastFillW, lastMeleeW = -1, -1
+local lastFillCol, lastMeleeCol
+local lastLabel, lastDelayStr
 
 local function Paint(tex, c)
   if tex and c then tex:SetVertexColor(c[1], c[2], c[3], c[4]) end
+end
+
+-- Paint only if the colour actually differs from what is already there.
+local function PaintIf(tex, c, prev)
+  if not tex or not c then return prev end
+  if prev == c then return prev end
+  tex:SetVertexColor(c[1], c[2], c[3], c[4])
+  return c
+end
+
+-- Show/Hide are not free either, and they were being called every frame on
+-- widgets whose visibility changes a few times per fight.
+local function ShownIf(tex, want)
+  if not tex then return end
+  if (tex:IsShown() == true) ~= want then
+    if want then tex:Show() else tex:Hide() end
+  end
+end
+
+local function SetWidthIf(tex, w, prev)
+  if not tex then return prev end
+  if math.abs(w - prev) < 0.5 then return prev end   -- sub-pixel: invisible
+  tex:SetWidth(w)
+  return w
 end
 
 local MELEE_IDLE_AFTER = 2
@@ -542,24 +579,32 @@ local function DrawSpecialPips(now)
   if not specialRow then return end
   if db.weave == false or db.showSpecials == false then
     for i = 1, 2 do
-      if specialRow[i] then specialRow[i]:Hide() end
-      if specialRow[i .. "text"] then specialRow[i .. "text"]:Hide() end
+      ShownIf(specialRow[i], false)
+      ShownIf(specialRow[i .. "text"], false)
     end
     return
   end
   local _, aimedIn, multiIn = ShotTimer.SpecialsDown(now)
-  local pairsIn = { { "Aimed", aimedIn }, { "Multi", multiIn } }
+  local names = { "Aimed", "Multi" }
+  local lefts = { aimedIn, multiIn }
   for i = 1, 2 do
     local pip, fs = specialRow[i], specialRow[i .. "text"]
-    local left = pairsIn[i][2] or 0
+    local left = lefts[i] or 0
+    -- The countdown is whole seconds, so this text changes once a second while
+    -- OnUpdate runs every frame. Cache both it and the colour.
+    local txt, col
     if left > 0 then
-      pip:SetVertexColor(0.35, 0.35, 0.38, 0.9)      -- on cooldown
-      fs:SetFormattedText("|cff9a9a9a%s %.0fs|r", pairsIn[i][1], left)
+      col = COL_PIP_DOWN
+      txt = string.format("|cff9a9a9a%s %.0fs|r", names[i], left)
     else
-      pip:SetVertexColor(0.30, 0.90, 0.30, 0.95)     -- ready: spend it
-      fs:SetFormattedText("|cff55dd55%s|r", pairsIn[i][1])
+      col = COL_PIP_READY
+      txt = string.format("|cff55dd55%s|r", names[i])
     end
-    pip:Show(); fs:Show()
+    specialRow[i .. "col"] = PaintIf(pip, col, specialRow[i .. "col"])
+    if txt ~= specialRow[i .. "txt"] then
+      fs:SetText(txt); specialRow[i .. "txt"] = txt
+    end
+    ShownIf(pip, true); ShownIf(fs, true)
   end
 end
 
@@ -572,41 +617,48 @@ local function Redraw(now)
     -- Fill grows toward the shot, so the bar is "charging up" to fire.
     local done = 1 - (remaining / math.max(total, MIN_SPEED))
     if done < 0 then done = 0 elseif done > 1 then done = 1 end
-    fill:SetWidth(math.max(1, w * done))
+    lastFillW = SetWidthIf(fill, math.max(1, w * done), lastFillW)
     -- Same three-state rule as the melee bar below.
+    local c
     if locked then
-      Paint(fill, COL_LOCKED)                    -- acting now clips the shot
+      c = COL_LOCKED                             -- acting now clips the shot
     elseif remaining <= CAST_TIME then
-      Paint(fill, COL_READY)                     -- about to fire
+      c = COL_READY                              -- about to fire
     else
-      Paint(fill, COL_CHARGING)                  -- winding up, free to act
+      c = COL_CHARGING                           -- winding up, free to act
     end
+    lastFillCol = PaintIf(fill, c, lastFillCol)
 
     if db.showText ~= false then
       local free = remaining - CAST_TIME
+      local txt
       if free > 0 then
         -- While a weave actually fits, say so: that is the one moment the
         -- player has a decision to make, and the number alone does not tell
         -- them whether it is enough.
         if db.weave ~= false and ShotTimer.CanWeave(now) then
-          label:SetFormattedText("|cff66ccffWEAVE|r %.1fs", free)
+          txt = string.format("|cff66ccffWEAVE|r %.1fs", free)
         else
-          label:SetFormattedText("%.1fs", free)
+          txt = string.format("%.1fs", free)
         end
       else
-        label:SetText("hold")
+        txt = "hold"
       end
-    else
-      label:SetText("")
+      -- One decimal means this string only changes ~10x a second, but OnUpdate
+      -- runs every frame. Skip the write when it has not moved.
+      if txt ~= lastLabel then label:SetText(txt); lastLabel = txt end
+    elseif lastLabel ~= "" then
+      label:SetText(""); lastLabel = ""
     end
   else
     -- No live ranged cycle: an empty bed, exactly like the melee bar shows when
     -- it has seen no swing. Hiding the fill (rather than leaving a 1px sliver)
     -- makes the two bars read identically when idle.
-    fill:Hide()
-    label:SetText("")
+    ShownIf(fill, false)
+    lastFillW = -1
+    if lastLabel ~= "" then label:SetText(""); lastLabel = "" end
   end
-  if remaining then fill:Show() end
+  if remaining then ShownIf(fill, true) end
 
   -- The melee cycle. The TRACK is always visible while weaving is enabled, even
   -- before we have seen a swing -- the speedrunner pattern is to shoot a distant
@@ -617,22 +669,20 @@ local function Redraw(now)
   -- show an empty track rather than invent a position we cannot know.
   if meleeTrack then
     if db.weave ~= false then
-      meleeTrack:Show()
+      ShownIf(meleeTrack, true)
       local mIn = ShotTimer.MeleeReady(now)
       if mIn then
         local done = 1 - (mIn / math.max(meleeSpeed, MELEE_MIN_SPEED))
         if done < 0 then done = 0 elseif done > 1 then done = 1 end
-        meleeFill:SetWidth(math.max(1, w * done))
+        lastMeleeW = SetWidthIf(meleeFill, math.max(1, w * done), lastMeleeW)
         -- Green once the swing is actually available to spend.
-        if mIn <= 0 then
-          Paint(meleeFill, COL_READY)            -- swing available to spend
-        else
-          Paint(meleeFill, COL_CHARGING)         -- winding up
-        end
-        meleeFill:Show()
+        lastMeleeCol = PaintIf(meleeFill,
+          (mIn <= 0) and COL_READY or COL_CHARGING, lastMeleeCol)
+        ShownIf(meleeFill, true)
       else
         -- No swing observed yet: an empty track, honestly blank.
         meleeFill:Hide()
+        lastMeleeW = -1
       end
     else
       meleeFill:Hide(); meleeTrack:Hide()
@@ -643,12 +693,12 @@ local function Redraw(now)
   DrawSpecialPips(now)
 
   -- The measured clip from the previous shot, held briefly then faded out.
+  local dtxt = ""
   if db.showDelay ~= false and delayShownAt > 0
      and (now - delayShownAt) < DELAY_HOLD and lastDelay > CLIP_EPSILON then
-    delayText:SetFormattedText("|cffff4040+%.2fs|r", lastDelay)
-  else
-    delayText:SetText("")
+    dtxt = string.format("|cffff4040+%.2fs|r", lastDelay)
   end
+  if dtxt ~= lastDelayStr then delayText:SetText(dtxt); lastDelayStr = dtxt end
 end
 
 function ShotTimer.OnUpdate()

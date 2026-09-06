@@ -3,6 +3,30 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.55] - 2026-09-05
+
+### Performance
+- **The weapon-timer redraw does ~80% less work per frame.** `OnUpdate` runs on
+  every rendered frame (60-150+ Hz), but almost nothing it draws changes that
+  fast: the countdown shows one decimal so it changes ~10 times a second, the
+  pip countdown once a second, and the bar colours a handful of times per cycle.
+  It was re-issuing identical `SetWidth` / `SetVertexColor` / `SetText` /
+  `Show` / `Hide` calls regardless. Every write is now gated on the value having
+  actually changed (widths at sub-pixel resolution -- finer than the eye can
+  see). Measured over 3 seconds of a live cycle at 100 fps: **10.1 -> 1.9 widget
+  writes per frame.** Nothing about the rendering changed; the same states, in
+  the same colours, at the same moments.
+- A test now enforces a per-frame write budget, so a future change cannot
+  quietly start hammering the widgets again. It fails at 7.0 writes/frame if the
+  caching is removed.
+
+### Notes
+- The rest of the addon was profiled and left alone: idle cost with no pet, no
+  target and out of combat is ~1.2 microseconds per 10 Hz tick for the range
+  mark and mend marker combined, and the threat poll correctly stops entirely
+  out of combat. The shot bar detaches its update loop when hidden. There was no
+  measurable waste worth trading readability for.
+
 ## [0.9.54] - 2026-09-05
 
 ### Changed

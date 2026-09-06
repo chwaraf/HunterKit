@@ -948,6 +948,65 @@ check("an idle melee bar shows no fill", ST.MeleeFillWidth() <= 1,
   string.format("%.1f", ST.MeleeFillWidth()))
 HKTest.state.playerCombat = false
 
+
+-- ---------------------------------------------------------------------------
+-- 28) THE PER-FRAME REDRAW MUST NOT DO POINTLESS WORK
+--
+-- OnUpdate runs on EVERY rendered frame (60-150+ Hz), but almost nothing it
+-- draws changes that fast: the countdown shows one decimal so it changes ~10
+-- times a second, the pip countdown once a second, and the colours a handful of
+-- times per cycle. Re-issuing identical SetWidth/SetVertexColor/SetText calls
+-- was the addon's busiest piece of wasted work. Each write is now gated on the
+-- value having actually moved.
+--
+-- This is a BUDGET, not an exact figure: it fails loudly if a future change
+-- starts hammering the widgets again, without pinning the implementation.
+-- ---------------------------------------------------------------------------
+local writes = 0
+local Frame = getmetatable(UIParent) and getmetatable(UIParent).__index
+if Frame then
+  for _, m in ipairs({ "SetWidth", "SetVertexColor", "SetText",
+                       "SetFormattedText", "Show", "Hide" }) do
+    local real = Frame[m]
+    if real then
+      Frame[m] = function(...) writes = writes + 1; return real(...) end
+    end
+  end
+
+  HKTest.state.playerCombat = true
+  HK.db.shottimer.weave = true
+  HK.db.shottimer.showSpecials = true
+  ST.RescanSettings()
+  SpecialsOnCD(12000)
+  Shooting(3.3, 12000)
+  ST._OnMeleeSwing(12000)
+
+  -- Three seconds of a live cycle at 100 fps.
+  At(12000); ST.OnUpdate()
+  writes = 0
+  local FRAMES = 300
+  for i = 1, FRAMES do
+    At(12000 + i * 0.01)
+    ST.OnUpdate()
+  end
+  local perFrame = writes / FRAMES
+
+  check("the redraw does not rewrite every widget every frame",
+    perFrame < 4, string.format("%.1f widget writes per frame", perFrame))
+
+  -- And it must still be drawing the right thing at the end of that run.
+  check("...while still showing a live countdown",
+    (ST.LabelText() or "") ~= "", tostring(ST.LabelText()))
+  check("...and a filled ranged bar", ST.FillWidth() > 1,
+    string.format("%.1f", ST.FillWidth()))
+  check("...and a filled melee bar", ST.MeleeFillWidth() > 1,
+    string.format("%.1f", ST.MeleeFillWidth()))
+
+  HK.db.shottimer.showSpecials = false
+  ST.RescanSettings()
+  HKTest.state.playerCombat = false
+end
+
 say(string.format("\n%d passed, %d failed", passes, #failures))
 if #failures > 0 then
   for _, f in ipairs(failures) do say("  - " .. f) end
