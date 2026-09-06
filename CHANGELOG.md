@@ -3,6 +3,32 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.56] - 2026-09-05
+
+### Added
+- **Macros section**, opening a separate window (`Macros.lua`) with five hunter
+  macros, each with a short explanation of what it does and when it helps. Click
+  a macro to select it, Ctrl+C to copy. It lives in its own window on purpose:
+  these are reference material you visit once, and five multi-line boxes inline
+  would have doubled the length of the options list.
+- **The bar now tells you WHEN to weave, not just whether you can.** Ranged and
+  melee weapons run at different speeds, so the two cycles drift against each
+  other and the ideal moment to leave moves every cycle. The label now counts
+  down -- "weave in 0.4s" -- and says **GO** at the instant the round trip fits
+  the shot cycle *and* your swing is ready when you arrive. Leaving earlier just
+  means standing in melee waiting; leaving later clips the shot.
+  `CanWeave` is correspondingly stricter: a swing that only comes up after the
+  last safe departure is no longer treated as weaveable.
+
+### Fixed
+- **The false "NO AMMO" after hearthstoning, for real this time.** The previous
+  two fixes guarded the inventory SLOT api, which reads nil for every slot
+  during a loading screen. But the ammo *id* can come back fine while
+  `GetItemCount` still answers 0 for a second or two, and that path produced the
+  warning with a full pouch. A valid ammo id means that item IS in the slot, so
+  a count of zero is a contradiction and only ever a stale cache -- firing your
+  last arrow EMPTIES the slot and the id goes nil, which still warns correctly.
+
 ## [0.9.55] - 2026-09-05
 
 ### Performance

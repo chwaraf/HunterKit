@@ -370,8 +370,10 @@ Shooting(3.3, 2800)
 ST._OnMeleeSwing(2790)
 At(2800)
 ST.OnUpdate()
-check("the bar says WEAVE while the trip fits",
-  (ST.LabelText() or ""):find("WEAVE") ~= nil, tostring(ST.LabelText()))
+-- "GO" is the cue now: the bar counts down to the ideal departure and says GO
+-- at the moment the shot cycle and the melee swing line up.
+check("the bar tells you to go while the trip fits",
+  (ST.LabelText() or ""):find("GO") ~= nil, tostring(ST.LabelText()))
 At(2802.0)                   -- window gone
 ST.OnUpdate()
 check("...and stops saying it once it does not",
@@ -1006,6 +1008,76 @@ if Frame then
   ST.RescanSettings()
   HKTest.state.playerCombat = false
 end
+
+
+-- ---------------------------------------------------------------------------
+-- 29) WHEN TO WEAVE, not just whether
+--
+-- Ranged and melee run at DIFFERENT speeds, so the two cycles drift against
+-- each other and the ideal moment to leave moves every cycle. WeaveWindow finds
+-- the departure where the round trip fits in the shot cycle AND the swing is up
+-- when you arrive.
+-- ---------------------------------------------------------------------------
+HKTest.state.playerCombat = true
+HKTest.state.meleeSpeed = 2.6            -- deliberately not the ranged speed
+HK.db.shottimer.weave = true
+HK.db.shottimer.travel = 2.5
+HK.db.shottimer.specials = false         -- isolate the timing maths
+ST.RescanSettings()
+
+SpecialsOnCD(13000)
+Shooting(3.3, 13000)
+
+-- Swing landed 1.2s ago on a 2.6s weapon: next swing in 1.4s. You arrive after
+-- travel/2 = 1.25s, so leaving in ~0.15s lines the two up.
+ST._OnMeleeSwing(13000 - 1.2)
+local best, latest = ST.WeaveWindow(13000)
+check("it says how long until the ideal departure",
+  best ~= nil and math.abs(best - 0.15) < 0.02,
+  tostring(best))
+check("...and how long that window stays open",
+  latest ~= nil and latest > best, tostring(latest))
+
+-- Wait for that moment: now it should say go.
+local goNow = ST.WeaveWindow(13000.2)
+check("at the right instant it says go now", goNow ~= nil and goNow <= 0.05,
+  tostring(goNow))
+
+At(13000.2); ST.OnUpdate()
+check("the bar says GO at that moment",
+  (ST.LabelText() or ""):find("GO") ~= nil, tostring(ST.LabelText()))
+
+At(13000); ST.OnUpdate()
+check("...and counts down to it beforehand",
+  (ST.LabelText() or ""):find("weave in") ~= nil, tostring(ST.LabelText()))
+
+-- Too late in the cycle: the trip no longer fits, so no advice at all.
+check("no window once the trip cannot fit", ST.WeaveWindow(13002.5) == nil)
+
+-- A swing that only comes up AFTER the last safe departure is unusable: going
+-- would mean standing in melee waiting while the shot locks out.
+Shooting(3.3, 13100)
+ST._OnMeleeSwing(13100)                  -- 2.6s away, far later than the window
+check("a swing that lands too late is not advised",
+  ST.WeaveWindow(13100) == nil, tostring(ST.WeaveWindow(13100)))
+check("...and CanWeave agrees", ST.CanWeave(13100) == false)
+
+-- With no swing ever observed there is no melee clock to line up against, so it
+-- must not invent one -- just report that the trip fits.
+Shooting(3.3, 13200)
+ST._ClearMelee()
+local noClock = ST.WeaveWindow(13200)
+check("with no observed swing it still reports the plain window",
+  noClock == 0, tostring(noClock))
+
+-- Weaving switched off: no advice at all.
+HK.db.shottimer.weave = false
+ST.RescanSettings()
+check("no weave advice when weaving is off", ST.WeaveWindow(13200) == nil)
+HK.db.shottimer.weave = true
+HK.db.shottimer.specials = true
+ST.RescanSettings()
+HKTest.state.playerCombat = false
 
 say(string.format("\n%d passed, %d failed", passes, #failures))
 if #failures > 0 then

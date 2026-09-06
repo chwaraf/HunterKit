@@ -893,6 +893,23 @@ function BuildWindow()
     function(v) db.pulse.label = v; RefreshPulse() end, "'PET PASSIVE!' under the icon.")
   y = y - CHK
 
+  -- Macros -- a button, not a wall of text. The macros live in their own window
+  -- (Macros.lua): they are reference material you visit once and copy from, not
+  -- settings, and five multi-line boxes inline would double the length of this
+  -- list for something you rarely touch.
+  AddSection(content, y, "Macros")
+  y = y - HDR
+  local macroBtn = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
+  macroBtn:SetWidth(180); macroBtn:SetHeight(24)
+  macroBtn:SetText("Open macro library")
+  macroBtn:SetPoint("TOPLEFT", content, "TOPLEFT", 0, y)
+  macroBtn:SetScript("OnClick", function()
+    if HK.Macros then HK.Macros.Toggle() end
+  end)
+  AttachTooltip(macroBtn, "Macro library",
+    "Hunter macros worth having, each with a short explanation. Click a macro to select it, then Ctrl+C to copy it into your macro window.")
+  y = y - 30
+
   -- Positions
   AddSection(content, y, "Positions")
   y = y - HDR

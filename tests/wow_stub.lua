@@ -203,6 +203,15 @@ function Frame:GetChecked() return self.checked end
 function Frame:SetNormalTexture() end
 function Frame:SetPushedTexture() end
 function Frame:SetHighlightTexture() end
+-- EditBox surface, used by the macro library's copy boxes.
+function Frame:SetMultiLine(v) self.multiLine = v and true or false end
+function Frame:SetAutoFocus(v) self.autoFocus = v and true or false end
+function Frame:HighlightText() self.highlighted = true end
+function Frame:ClearFocus() self.focused = false end
+function Frame:SetFocus() self.focused = true end
+function Frame:GetStringHeight() return 24 end
+function Frame:SetVerticalScroll(v) self.vscroll = v end
+function Frame:GetVerticalScroll() return self.vscroll or 0 end
 function Frame:SetCheckedTexture() end
 function Frame:SetDisabledCheckedTexture() end
 function Frame:SetHitRectInsets() end

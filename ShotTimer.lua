@@ -335,11 +335,21 @@ function ShotTimer.CanWeave(now)
   local travel = tonumber(db and db.travel) or DEFAULT_TRAVEL
   if not free then return false, nil, travel end
 
-  -- The melee swing must be off cooldown by the time we arrive, or the trip
-  -- buys nothing.
+  -- The melee swing must be READY by the time you arrive, or the trip buys
+  -- nothing -- you would stand in melee waiting for a swing that is not up.
+  --
+  -- Ranged and melee run at different speeds and drift against each other, so
+  -- "is there room" is not enough: the two cycles have to line up. You reach
+  -- melee after travel/2, and must be back before the shot locks out, so the
+  -- swing has to land inside that window. Being early is fine (you wait a
+  -- moment); being late means the swing never happens.
   local meleeIn = ShotTimer.MeleeReady(now)
-  if meleeIn and meleeIn > (travel / 2) then
-    return false, free, travel
+  if meleeIn then
+    local arrive = travel / 2
+    if meleeIn > arrive + (free - travel) then
+      -- The swing comes up after the last moment you could still act on it.
+      return false, free, travel
+    end
   end
 
   -- Never suggest a weave while a special shot is available: Aimed or Multi is
@@ -352,6 +362,43 @@ function ShotTimer.CanWeave(now)
     if not down then return false, free, travel end
   end
   return (free >= travel), free, travel
+end
+
+-- ---------------------------------------------------------------------------
+-- WHEN to leave for melee.
+--
+-- CanWeave answers "is a weave possible right now". This answers the question a
+-- weaving hunter actually has: the ranged and melee weapons run at different
+-- speeds and drift against each other, so the ideal departure is the moment
+-- where the round trip fits in the shot cycle AND your melee swing is up when
+-- you arrive. That instant moves every cycle as the two clocks slide apart.
+--
+-- Returns secondsUntilBestDeparture (0 = go now), or nil when this shot cycle
+-- has no honest window at all. Never guesses: with no observed swing there is
+-- no melee clock to line up against, so it falls back to "as soon as the trip
+-- fits", which is the old behaviour.
+-- ---------------------------------------------------------------------------
+function ShotTimer.WeaveWindow(now)
+  now = tonumber(now) or (tonumber(Call(GetTime)) or 0)
+  if not db or db.weave == false then return nil end
+  local free = ShotTimer.SafeWindow(now)
+  if not free then return nil end
+  local travel = tonumber(db.travel) or DEFAULT_TRAVEL
+  if free < travel then return nil end          -- no room in this cycle at all
+
+  -- Latest departure that still gets you home before the lockout.
+  local latest = free - travel
+  local meleeIn = ShotTimer.MeleeReady(now)
+  if not meleeIn then
+    return 0, latest                            -- no melee clock yet: go now
+  end
+
+  -- Earliest departure whose ARRIVAL coincides with the swing being ready.
+  -- Leaving before this just means standing in melee doing nothing.
+  local best = meleeIn - (travel / 2)
+  if best < 0 then best = 0 end                 -- swing already up: go now
+  if best > latest then return nil end          -- swing lands too late to use
+  return best, latest
 end
 
 function ShotTimer.LastDelay() return lastDelay end
@@ -636,8 +683,19 @@ local function Redraw(now)
         -- While a weave actually fits, say so: that is the one moment the
         -- player has a decision to make, and the number alone does not tell
         -- them whether it is enough.
-        if db.weave ~= false and ShotTimer.CanWeave(now) then
-          txt = string.format("|cff66ccffWEAVE|r %.1fs", free)
+        --
+        -- The two weapons run at different speeds and drift apart, so "GO" and
+        -- a countdown to the ideal departure is far more use than a flat yes:
+        -- it tells you WHEN the shot cycle and the swing actually line up.
+        local best = ShotTimer.WeaveWindow(now)
+        if db.weave ~= false and best then
+          if best <= 0.05 and ShotTimer.CanWeave(now) then
+            txt = string.format("|cff66ccffGO|r %.1fs", free)
+          elseif best <= 0.05 then
+            txt = string.format("%.1fs", free)
+          else
+            txt = string.format("|cff9fd8ffweave in %.1fs|r", best)
+          end
         else
           txt = string.format("%.1fs", free)
         end

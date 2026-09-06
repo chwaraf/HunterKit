@@ -337,14 +337,21 @@ ammoTicker:Tick()
 check("low voice cooldown: re-warn without voice inside 60 s",
   HK.AmmoWarn.IsShown() and #HKTest.soundsPlayed == s3,
   tostring(HK.AmmoWarn.IsShown()) .. "/" .. tostring(#HKTest.soundsPlayed))
+-- Firing your LAST arrow empties the ammo slot: the client stops returning an
+-- item id for it. (Keeping an id while reporting a count of zero is not a real
+-- state -- that combination only ever means a stale bag cache after a loading
+-- screen, and the module deliberately ignores it. See AmmoCount.)
 HKTest.state.items[2515] = 0
+HKTest.state.ammoEquipped = 0
+HKTest.state.ammoID = nil
 HKTest.state.now = 4000
 ammoTicker:Tick()
 check("empty ammo is the most persistent tier", HK.AmmoWarn.IsShown(),
   tostring(HK.AmmoWarn.IsShown()))
-check("empty tier speaks: bundled voice clip for the equipped ammo",
-  HKTest.soundsPlayed[#HKTest.soundsPlayed] ==
-    "Interface\\AddOns\\HunterKit\\Media\\voice_noarrows.ogg",
+-- With the slot empty the client no longer tells us WHICH ammo it was, so the
+-- generic "no ammo" line is the honest one to play.
+check("empty tier speaks", (HKTest.soundsPlayed[#HKTest.soundsPlayed] or "")
+  :match("voice_no") ~= nil,
   tostring(HKTest.soundsPlayed[#HKTest.soundsPlayed]))
 local v1 = #HKTest.soundsPlayed
 HKTest.state.now = 4011
@@ -359,6 +366,8 @@ check("voice returns once the 45 s cooldown is over", #HKTest.soundsPlayed == v1
 -- frequency multiplier: 4x divides the warn periods (90 -> 22.5 s at tier 1)
 HK.db.ammo.sound = false
 HK.db.ammo.frequency = 4
+HKTest.state.ammoID = 2515          -- re-equipped after restocking
+HKTest.state.ammoEquipped = 150
 HKTest.state.items[2515] = 150
 HKTest.state.now = 5000
 ammoTicker:Tick()
@@ -786,6 +795,60 @@ check("a new profile gets the current threat position",
   HKn.db.threat.offsetX == HKn.defaults.threat.offsetX)
 check("a new profile gets the specials row off",
   HKn.db.shottimer.showSpecials == false)
+
+
+-- ---------------------------------------------------------------------------
+-- A COLD BAG CACHE MUST NOT READ AS AN EMPTY QUIVER
+--
+-- Third and final part of the hearthstone false-alarm. The first two fixes
+-- guarded the SLOT api (every slot reads nil during a loading screen). But the
+-- id can come back fine while GetItemCount still answers 0 for a second or two,
+-- and that produced "NO AMMO" with a full pouch.
+--
+-- A valid ammo id means that item IS in the slot, so a count of zero is a
+-- contradiction, never a real state: firing your last arrow EMPTIES the slot
+-- and the id goes nil (which still warns, see above).
+-- ---------------------------------------------------------------------------
+HKTest.state.ammoID = 2515
+HKTest.state.items = { [2515] = 1438 }
+HKTest.state.ammoEquipped = 1438
+HKTest.state.now = 80000
+HK.AmmoWarn.Rearm()
+ammoTicker:Tick()
+check("stocked: quiet", not HK.AmmoWarn.IsShown())
+
+-- Hearthstone: id still readable, bag + equipped counts briefly cold.
+HK.AmmoWarn.Rearm()
+HKTest.state.items = {}
+HKTest.state.ammoEquipped = 0
+for i = 1, 12 do
+  HKTest.state.now = 80000 + i
+  local bag = HK.bus.handlers["BAG_UPDATE_DELAYED"]
+  if bag then bag() end
+end
+check("a cold bag cache never fires NO AMMO with ammo equipped",
+  not HK.AmmoWarn.IsShown(), "1438 arrows are still in the pouch")
+
+-- Cache warms up: still quiet, we are stocked.
+HKTest.state.items = { [2515] = 1438 }
+HKTest.state.ammoEquipped = 1438
+HKTest.state.now = 80020
+ammoTicker:Tick()
+check("...and stays quiet once the cache warms", not HK.AmmoWarn.IsShown())
+
+-- Genuinely out: the slot empties, so the id goes nil. That MUST still warn.
+HKTest.state.ammoID = nil
+HKTest.state.items = {}
+HKTest.state.ammoEquipped = 0
+HK.AmmoWarn.Rearm()
+for i = 1, 12 do
+  HKTest.state.now = 80100 + i
+  ammoTicker:Tick()
+end
+check("a genuinely empty ammo slot still warns", HK.AmmoWarn.IsShown())
+HKTest.state.ammoID = 2515
+HKTest.state.items = { [2515] = 1438 }
+HKTest.state.ammoEquipped = 1438
 
 say(string.format("\n%d passed, %d failed", passes, #failures))
 if #failures > 0 then

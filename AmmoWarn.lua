@@ -126,6 +126,22 @@ local function AmmoCount()
     local ok, ec = pcall(GetInventoryItemCount, "player", slot)
     if ok and type(ec) == "number" and ec > 0 then n = ec end
   end
+
+  -- A count of ZERO for ammo that is still EQUIPPED is a contradiction, and
+  -- always a stale cache -- never a real state.
+  --
+  -- This is the other half of the loading-screen problem, and why the false
+  -- "NO AMMO" survived the previous two fixes: those guarded the SLOT api (id
+  -- reads nil), but after a hearthstone the id comes back fine while
+  -- GetItemCount still answers 0 for a second or two.
+  --
+  -- The client just told us the item id of the thing in the ammo slot, so that
+  -- item exists and its count is at least 1. When you genuinely fire your last
+  -- arrow the slot EMPTIES and the id goes nil -- which is the `not id` branch
+  -- above, and still warns correctly. So "valid id, zero count" can only be the
+  -- bag cache lagging, and reporting it as an empty quiver is never right.
+  if n == 0 then return nil, id end   -- no opinion; the next tick will know
+
   return n, id
 end
 
