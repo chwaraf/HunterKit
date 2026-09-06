@@ -835,7 +835,7 @@ function BuildWindow()
   MakeSlider(content, y, "Weave round trip (seconds)", 10, 50, 5,
     function() return (db.shottimer.travel or 2.5) * 10 end,
     function(v) db.shottimer.travel = v / 10; RefreshShotTimer() end,
-    "Time for the full trip out to melee and back. 2.5s is a good hunter with a movement buff. The marker is only honest if it matches how fast you really move.",
+    "Time for the full trip out to melee and back. 2.5s is a good hunter with a movement buff. Ignored entirely when your target is already in melee range -- there is no trip to pay for then.",
     true, function(v) return string.format("%.1fs", v / 10) end)
   y = y - CHK
   MakeCheckbox(content, y, "Show Aimed / Multi-Shot cooldowns",

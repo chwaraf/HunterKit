@@ -349,7 +349,9 @@ end
 function ShotTimer.CanWeave(now)
   now = tonumber(now) or (tonumber(Call(GetTime)) or 0)
   local free = ShotTimer.SafeWindow(now)
-  local travel = tonumber(db and db.travel) or DEFAULT_TRAVEL
+  -- No travel cost when the target is already in melee (static weaving).
+  local travel = ShotTimer.InMeleeOfTarget() and 0
+    or (tonumber(db and db.travel) or DEFAULT_TRAVEL)
   if not free then return false, nil, travel end
 
   -- The melee swing must be READY by the time you arrive, or the trip buys
@@ -395,12 +397,39 @@ end
 -- no melee clock to line up against, so it falls back to "as soon as the trip
 -- fits", which is the old behaviour.
 -- ---------------------------------------------------------------------------
+-- Are you ALREADY standing in melee of your current target?
+--
+-- This is the "static weaving" case from Bouk's guide, and the one the round
+-- trip model completely missed: pet holds a distant mob you shoot with a
+-- mouseover macro, while a SECOND mob stands next to you and is your target.
+-- You never move, so there is no travel cost -- the only question is whether a
+-- swing fits before the shot locks out.
+--
+-- Uses the same 11 yd "Trade" interaction probe Range.lua settled on. Raptor
+-- Strike's IsSpellInRange is unreliable on this client (it reports in-range at
+-- 28+ yd), so it is deliberately not used here either.
+function ShotTimer.InMeleeOfTarget()
+  if not UnitExists or not Call(UnitExists, "target") then return false end
+  if UnitCanAttack and not Call(UnitCanAttack, "player", "target") then return false end
+  if UnitIsDead and Call(UnitIsDead, "target") then return false end
+  if not CheckInteractDistance then return false end
+  local v = Call(CheckInteractDistance, "target", 2)   -- 2 = Trade, ~11 yd
+  return v == 1 or v == true
+end
+
 function ShotTimer.WeaveWindow(now)
   now = tonumber(now) or (tonumber(Call(GetTime)) or 0)
   if not db or db.weave == false then return nil end
   local free = ShotTimer.SafeWindow(now)
   if not free then return nil end
-  local travel = tonumber(db.travel) or DEFAULT_TRAVEL
+  -- Standing in melee already? Then there is no trip to pay for.
+  --
+  -- The whole model was built around running out and back, so it kept charging
+  -- a 2.5s round trip even when the target was at your feet -- which silenced
+  -- the advice entirely during static weaving. With no travel, a swing only has
+  -- to land before the shot locks out.
+  local static = ShotTimer.InMeleeOfTarget()
+  local travel = static and 0 or (tonumber(db.travel) or DEFAULT_TRAVEL)
   -- Report WHY there is no window, so the caller can say something useful
   -- instead of falling silent: "tooslow" = this weapon's cycle is too short for
   -- the round trip at all, "specials" = you have a better button to press.

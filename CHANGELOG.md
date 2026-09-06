@@ -3,6 +3,24 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.58] - 2026-09-05
+
+### Fixed
+- **No weave advice while static weaving.** The weave model was built entirely
+  around running out to melee and back, so it charged the full round trip (2.5s
+  by default) even when your target was standing at your feet. That silenced the
+  advice for the standard speedrun setup -- pet holding a distant mob you shoot
+  through a mouseover macro, while a second mob is targeted and in melee with
+  you. You never move, so there is no trip to pay for: the only question is
+  whether a swing lands before the shot locks out.
+  The addon now detects that your target is already in melee (the same 11 yd
+  interaction probe the range mark uses) and drops the travel cost, so the bar
+  counts down to your swing and says GO when it is up. At range the round trip
+  is still charged exactly as before -- the same fight gives a tight 0.15s
+  departure window at range, and the full 1.4s wait standing still.
+- The "Weave round trip" tooltip now says it is ignored when you are already in
+  melee.
+
 ## [0.9.57] - 2026-09-05
 
 ### Fixed

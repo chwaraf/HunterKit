@@ -1146,6 +1146,82 @@ HKTest.state.spellKnown = {}
 ST.RescanSettings()
 HKTest.state.playerCombat = false
 
+
+-- ---------------------------------------------------------------------------
+-- 32) STATIC WEAVING: already standing in melee
+--
+-- The whole weave model was built around running out and back, so it charged a
+-- 2.5s round trip even when the target was at your feet. That silenced the
+-- advice completely for the standard speedrun setup: pet holds a distant mob
+-- you shoot with a mouseover macro, while a SECOND mob stands next to you and
+-- is your target. You never move, so there is no trip to pay for -- the only
+-- question is whether a swing fits before the shot locks out.
+-- ---------------------------------------------------------------------------
+HKTest.state.playerCombat = true
+HKTest.state.rangedSpeed = 3.3
+HKTest.state.meleeSpeed = 2.4
+HK.db.shottimer.weave = true
+HK.db.shottimer.travel = 2.5
+ST.RescanSettings()
+
+HKTest.state.target = "target"
+HKTest.state.targetTooClose = true          -- the adjacent mob is in melee
+check("the addon can tell you are already in melee",
+  ST.InMeleeOfTarget() == true)
+
+SpecialsOnCD(15000)
+Shooting(3.3, 15000)
+ST._OnMeleeSwing(15000 - 1.0)               -- swing due in 1.4s
+
+-- 1.4s to the swing, 2.8s of free time: trivially weaveable standing still,
+-- but impossible if a 2.5s round trip is (wrongly) charged.
+local best, latest = ST.WeaveWindow(15000)
+check("standing in melee, it advises the weave",
+  best ~= nil, "no round trip to pay for")
+check("...counting down to the swing itself",
+  best ~= nil and math.abs(best - 1.4) < 0.05, tostring(best))
+
+At(15000); ST.OnUpdate()
+check("the bar counts down to the static weave",
+  (ST.LabelText() or ""):find("weave in") ~= nil, tostring(ST.LabelText()))
+
+At(15001.4); ST.OnUpdate()
+check("and says GO when the swing is up",
+  (ST.LabelText() or ""):find("GO") ~= nil, tostring(ST.LabelText()))
+
+-- The SAME timings at range must still charge the full round trip, and so
+-- must NOT advise a weave here.
+HKTest.state.targetTooClose = false
+SpecialsOnCD(15100)
+Shooting(3.3, 15100)
+ST._OnMeleeSwing(15100 - 1.0)
+-- At range the trip IS charged, so the advice is different: you must leave
+-- almost immediately (0.15s) to arrive as the swing comes up, and the window
+-- slams shut 0.3s later. Standing in melee, the same timings give you the full
+-- 1.4s to wait. Same fight, different answer -- which is the point.
+local rBest, rLatest = ST.WeaveWindow(15100)
+check("at range the round trip is still charged",
+  rBest ~= nil and rBest < 0.5 and rLatest ~= nil and rLatest < 0.5,
+  string.format("best=%s latest=%s -- must be a tight window, not the 1.4s "
+    .. "wait a static weaver gets", tostring(rBest), tostring(rLatest)))
+check("...and InMeleeOfTarget says so", ST.InMeleeOfTarget() == false)
+
+-- No target at all: no static weave, fall back to the travel model.
+HKTest.state.target = nil
+check("no target means no static weave", ST.InMeleeOfTarget() == false)
+HKTest.state.target = "target"
+
+-- A dead target is not something you are meleeing.
+HKTest.state.targetTooClose = true
+HKTest.state.dead = { target = true }
+check("a dead target does not count as melee range",
+  ST.InMeleeOfTarget() == false)
+HKTest.state.dead = {}
+
+HKTest.state.targetTooClose = false
+HKTest.state.playerCombat = false
+ST.RescanSettings()
+
 say(string.format("\n%d passed, %d failed", passes, #failures))
 if #failures > 0 then
   for _, f in ipairs(failures) do say("  - " .. f) end
