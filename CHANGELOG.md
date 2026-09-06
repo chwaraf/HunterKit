@@ -3,6 +3,22 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.59] - 2026-09-05
+
+### Changed
+- **Travel ("normal") weaving is now opt-in, and off by default.** Running out
+  to a distant target and back between shots is a genuine Era technique -- it is
+  what the 2.5s round trip models, and Bouk's guide documents it alongside
+  static weaving -- so the logic stays. But it is the advanced, movement-heavy
+  case, and most hunters weaving at all are doing the static version. With the
+  new option off, the bar only ever advises a melee hit you can take WITHOUT
+  MOVING: a target at range now produces a plain countdown and no weave cue, no
+  matter how roomy the shot cycle is.
+- Static weaving is unaffected and needs no options: a target already in melee
+  is still advised, since there is no trip to pay for.
+- The "Weave round trip" slider and the blue departure marker now say they only
+  apply to running weaves.
+
 ## [0.9.58] - 2026-09-05
 
 ### Fixed

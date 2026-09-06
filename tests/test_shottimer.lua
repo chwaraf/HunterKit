@@ -271,6 +271,9 @@ check("the clip readout is on once the bar is enabled",
 -- ---------------------------------------------------------------------------
 HK.db.shottimer.weave = true
 HK.db.shottimer.travel = 2.5
+-- These scenarios are about the ROUND-TRIP ("normal") weave, which is opt-in:
+-- by default the bar only advises a weave you can take without moving.
+HK.db.shottimer.travelWeave = true
 ST.RescanSettings()
 
 -- These scenarios test the weave TIMING, so put both specials on cooldown --
@@ -1162,6 +1165,9 @@ HKTest.state.rangedSpeed = 3.3
 HKTest.state.meleeSpeed = 2.4
 HK.db.shottimer.weave = true
 HK.db.shottimer.travel = 2.5
+-- These scenarios are about the ROUND-TRIP ("normal") weave, which is opt-in:
+-- by default the bar only advises a weave you can take without moving.
+HK.db.shottimer.travelWeave = true
 ST.RescanSettings()
 
 HKTest.state.target = "target"
@@ -1218,6 +1224,61 @@ check("a dead target does not count as melee range",
   ST.InMeleeOfTarget() == false)
 HKTest.state.dead = {}
 
+HKTest.state.targetTooClose = false
+HKTest.state.playerCombat = false
+ST.RescanSettings()
+
+
+-- ---------------------------------------------------------------------------
+-- 33) TRAVEL WEAVING IS OPT-IN
+--
+-- Running out to a distant target and back ("normal" weaving) is a real Era
+-- technique, but it is the advanced, movement-heavy case. By default the bar
+-- must only ever advise a melee hit you can take WITHOUT MOVING -- so with a
+-- target at range it stays quiet no matter how roomy the shot cycle is.
+-- ---------------------------------------------------------------------------
+check("travel weaving is off by default",
+  HK.defaults.shottimer.travelWeave == false)
+
+HKTest.state.playerCombat = true
+HKTest.state.rangedSpeed = 3.5           -- deliberately roomy: 3.0s of free time
+HKTest.state.meleeSpeed = 2.4
+HK.db.shottimer.weave = true
+HK.db.shottimer.travel = 2.5
+HK.db.shottimer.travelWeave = false      -- the default
+ST.RescanSettings()
+
+HKTest.state.target = "target"
+HKTest.state.targetTooClose = false      -- target is at RANGE
+SpecialsOnCD(16000)
+Shooting(3.5, 16000)
+ST._OnMeleeSwing(16000 - 1.2)
+
+local best, _, why = ST.WeaveWindow(16000)
+check("by default it never tells you to run in", best == nil,
+  "a target at range must not produce weave advice")
+check("...and says that is why", why == "notinmelee", tostring(why))
+check("...and CanWeave agrees", ST.CanWeave(16000) == false)
+
+At(16000); ST.OnUpdate()
+check("the bar shows a plain countdown, no weave cue",
+  (ST.LabelText() or ""):find("weave") == nil
+    and (ST.LabelText() or ""):find("GO") == nil, tostring(ST.LabelText()))
+
+-- Static weaving still works with travel weaving off -- that is the point.
+HKTest.state.targetTooClose = true
+local sBest = ST.WeaveWindow(16000)
+check("a target already in melee is still advised", sBest ~= nil,
+  "static weaving must not need the travel option")
+
+-- Switch travel weaving ON and the range case comes back.
+HKTest.state.targetTooClose = false
+HK.db.shottimer.travelWeave = true
+ST.RescanSettings()
+check("turning it on restores the round-trip advice",
+  ST.WeaveWindow(16000) ~= nil)
+
+HK.db.shottimer.travelWeave = false
 HKTest.state.targetTooClose = false
 HKTest.state.playerCombat = false
 ST.RescanSettings()

@@ -6,7 +6,7 @@
 
 local ADDON_NAME, HK = ...
 
-HK.version = "0.9.58"
+HK.version = "0.9.59"
 
 -- ---------------------------------------------------------------------------
 -- Defaults (schema). This is the source of truth for the options window and
@@ -112,6 +112,13 @@ HK.defaults = {
     weave     = true,    -- melee weave marker + melee swing strip
     showSpecials = false, -- Aimed/Multi cooldown pips: opt-in, extra clutter
     specials  = true,    -- do not suggest a weave while a special is ready
+    -- "Normal"/travel weaving: running out to melee and back between shots.
+    -- A real Era technique (Bouk's guide calls it normal weaving, ~2.5s round
+    -- trip), but OFF by default -- it is the advanced, movement-heavy case, and
+    -- most players weaving at all are doing the static version. With this off
+    -- the bar only advises a weave when the target is ALREADY in melee, so it
+    -- never tells you to go running anywhere.
+    travelWeave = false,
     travel    = 2.5,     -- round-trip seconds out to melee and back
     noHaste   = true,    -- never suggest a weave while ranged haste is up
   },

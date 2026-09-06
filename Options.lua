@@ -491,7 +491,7 @@ local function AddShotBarLegend(content, y)
   local lines = {
     { "|cff33e64dGreen|r", "free time -- move, weave, cast" },
     { "|cffd93333Red|r",   "0.5s lockout: acting here clips the shot" },
-    { "|cff66bfffBlue line|r", "last moment you can leave for melee" },
+    { "|cff66bfffBlue line|r", "last moment to leave (running weaves only)" },
     { "|cff33e64dLower bar|r", "your melee swing -- same colours, same meaning" },
     { "|cff8cff8cPale green|r", "that weapon is ready to swing or fire now" },
     { "|cff66ccffWEAVE|r", "shown when the round trip actually fits" },
@@ -828,6 +828,11 @@ function BuildWindow()
     function(v) db.shottimer.weave = v; RefreshShotTimer() end,
     "Adds a bar tracking your melee swing, plus a blue line on the shot bar marking the last moment you could run to melee, swing, and get back in time. In Classic Era the melee and ranged timers are independent, which is what makes weaving possible.")
   y = y - CHK
+  MakeCheckbox(content, y, "Also weave by running in and out",
+    function() return db.shottimer.travelWeave end,
+    function(v) db.shottimer.travelWeave = v; RefreshShotTimer() end,
+    "Off by default. Leave it off and the bar only suggests a melee hit when your target is ALREADY in melee range, so it never tells you to go running anywhere. Turn it on for \"normal\" weaving -- running out to a distant target between shots and back before the lockout -- which is a real technique but needs the round trip below to match how fast you actually move.")
+  y = y - CHK
   -- Stored in tenths on the bar (the widget formats with %d, so a fractional
   -- step would crash it) but DISPLAYED in seconds via the formatter -- the
   -- setting is a duration, so making the player convert tenths in their head
@@ -835,7 +840,7 @@ function BuildWindow()
   MakeSlider(content, y, "Weave round trip (seconds)", 10, 50, 5,
     function() return (db.shottimer.travel or 2.5) * 10 end,
     function(v) db.shottimer.travel = v / 10; RefreshShotTimer() end,
-    "Time for the full trip out to melee and back. 2.5s is a good hunter with a movement buff. Ignored entirely when your target is already in melee range -- there is no trip to pay for then.",
+    "Only used when \"weave by running in and out\" is on: the full trip out to melee and back. 2.5s is a good hunter with a movement buff. Ignored when the target is already in melee.",
     true, function(v) return string.format("%.1fs", v / 10) end)
   y = y - CHK
   MakeCheckbox(content, y, "Show Aimed / Multi-Shot cooldowns",

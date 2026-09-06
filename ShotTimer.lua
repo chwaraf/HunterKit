@@ -349,10 +349,14 @@ end
 function ShotTimer.CanWeave(now)
   now = tonumber(now) or (tonumber(Call(GetTime)) or 0)
   local free = ShotTimer.SafeWindow(now)
-  -- No travel cost when the target is already in melee (static weaving).
-  local travel = ShotTimer.InMeleeOfTarget() and 0
-    or (tonumber(db and db.travel) or DEFAULT_TRAVEL)
+  local static = ShotTimer.InMeleeOfTarget()
+  -- No travel cost when the target is already in melee (static weaving), and
+  -- no weave at all at range unless travel weaving is switched on.
+  local travel = static and 0 or (tonumber(db and db.travel) or DEFAULT_TRAVEL)
   if not free then return false, nil, travel end
+  if not static and not (db and db.travelWeave == true) then
+    return false, free, travel
+  end
 
   -- The melee swing must be READY by the time you arrive, or the trip buys
   -- nothing -- you would stand in melee waiting for a swing that is not up.
@@ -429,6 +433,12 @@ function ShotTimer.WeaveWindow(now)
   -- the advice entirely during static weaving. With no travel, a swing only has
   -- to land before the shot locks out.
   local static = ShotTimer.InMeleeOfTarget()
+  -- Travel weaving is opt-in. With it off we only ever advise a weave you can
+  -- take without moving, so the bar never suggests running out to a target at
+  -- range -- the round-trip logic below simply never gets a chance to run.
+  if not static and db.travelWeave ~= true then
+    return nil, nil, "notinmelee"
+  end
   local travel = static and 0 or (tonumber(db.travel) or DEFAULT_TRAVEL)
   -- Report WHY there is no window, so the caller can say something useful
   -- instead of falling silent: "tooslow" = this weapon's cycle is too short for
