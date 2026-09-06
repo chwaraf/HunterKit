@@ -3,6 +3,22 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.62] - 2026-09-05
+
+### Fixed
+- **The pet-target Auto Shot macro was wrong on two counts** and is replaced.
+  - `!Auto Shot` never stops by design: the `!` prefix exists precisely to make
+    a spell non-toggling, so pressing the key again could not switch it off.
+  - More seriously, `[@pettarget] !Auto Shot` does not do what it looks like.
+    Auto Shot always fires at your REAL target; the `[@unit]` clause cannot
+    redirect it. Every reference macro in the community guides uses a bare
+    `/cast !Auto Shot` and redirects by briefly SWITCHING target instead.
+  The replacement follows that established pattern: swing at the melee mob,
+  `/stopattack`, flick to the pet's mob to restart Auto Shot, then
+  `/targetlasttarget` back, so your target ends where it began.
+- The mouseover macro's description was corrected for the same reason: its
+  `[@mouseover]` steers the PET, not Auto Shot.
+
 ## [0.9.61] - 2026-09-05
 
 ### Fixed

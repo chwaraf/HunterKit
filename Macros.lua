@@ -63,22 +63,25 @@ local LIBRARY = {
     title = "Mouseover attack + pet send",
     body = "#showtooltip 18\n/cast [@mouseover,harm,nodead][] !Auto Shot\n"
         .. "/petattack [@mouseover,harm,nodead][]",
-    note = "Starts shooting whatever you are hovering and sends the pet to the "
-        .. "same target, without changing your current target. Hover nothing and "
-        .. "it falls back to your target. The 18 shows your ranged weapon's icon "
-        .. "and ammo count on the button.",
+    note = "Sends the pet to whatever you are hovering and starts Auto Shot. "
+        .. "Note that Auto Shot always fires at your REAL target -- [@mouseover] "
+        .. "cannot redirect it, that part only steers the pet -- so hover the mob "
+        .. "you want the pet on, and target the one you want to shoot. The 18 "
+        .. "shows your ranged weapon's icon and ammo count on the button.",
   },
   {
-    title = "Auto Shot the pet's target while you melee",
-    body = "#showtooltip 18\n/cast [@pettarget,harm,nodead] !Auto Shot\n"
-        .. "/startattack",
-    note = "Built for the two-mob weave: your pet holds one mob at range while "
-        .. "you stand toe to toe with another. Keep the melee mob targeted -- "
-        .. "/startattack keeps swinging at it -- and this fires Auto Shot at "
-        .. "whatever the pet is tanking, without ever changing your target. The "
-        .. "18 puts your ranged weapon's icon and ammo count on the button. "
-        .. "HunterKit's weave advice works in this setup whatever you have "
-        .. "selected.",
+    title = "Two-mob weave: melee here, shoot the pet's mob",
+    body = "#showtooltip\n/targetlasttarget [@pettarget,noexists]\n"
+        .. "/cast Raptor Strike\n/startattack\n/stopattack [@pettarget,harm,nodead]\n"
+        .. "/target [@pettarget,harm,nodead]\n/cast !Auto Shot\n"
+        .. "/targetlasttarget",
+    note = "For the two-mob weave: pet holds one mob at range, you stand in "
+        .. "melee with another. Target the MELEE mob. Each press swings at it, "
+        .. "then flicks to the pet's mob to restart Auto Shot and flicks back, "
+        .. "so your target ends up where it started. Auto Shot cannot be aimed "
+        .. "with [@unit] -- it always shoots your actual target -- which is why "
+        .. "this briefly switches instead. /stopattack before the switch is what "
+        .. "stops melee following you to the ranged mob.",
   },
   {
     title = "One-button pet keeper",
