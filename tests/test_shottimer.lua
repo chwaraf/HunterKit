@@ -1348,6 +1348,93 @@ HKTest.state.targetTooClose = false
 HKTest.state.playerCombat = false
 ST.RescanSettings()
 
+
+-- ---------------------------------------------------------------------------
+-- 35) STATIC WEAVING MUST NOT DEPEND ON WHAT YOU HAVE TARGETED
+--
+-- The two-mob case: pet tanks a distant mob you shoot, a second mob melees you.
+-- InMeleeOfTarget asked only about "target", so the advice appeared ONLY when
+-- you happened to target the melee mob. Target the distant one -- or nothing at
+-- all, which a mouseover auto-shot macro encourages -- and it went silent,
+-- exactly when static weaving is what you are doing.
+-- ---------------------------------------------------------------------------
+HKTest.state.playerCombat = true
+HKTest.state.rangedSpeed = 3.3
+HKTest.state.meleeSpeed = 2.4
+HK.db.shottimer.weave = true
+HK.db.shottimer.travelWeave = false
+ST.RescanSettings()
+
+local function TwoMobScene(t)
+  SpecialsOnCD(t)
+  Shooting(3.3, t)
+  ST._OnMeleeSwing(t - 1.0)          -- swing due in 1.4s
+  At(t); ST.OnUpdate()
+end
+
+-- (a) targeting the melee mob -- the only case that used to work
+HKTest.state.target = "target"
+HKTest.state.units = {}
+HKTest.state.inMelee = { target = true }
+TwoMobScene(18000)
+local a = ST.WeaveWindow(18000)
+check("targeting the melee mob: advice shown", a ~= nil, tostring(a))
+
+-- (b) targeting the DISTANT mob the pet is tanking; the melee mob is the one
+--     attacking me, i.e. targettarget
+HKTest.state.target = "target"
+HKTest.state.units = { targettarget = true }
+HKTest.state.inMelee = { target = false, targettarget = true }
+TwoMobScene(18100)
+local b = ST.WeaveWindow(18100)
+check("targeting the DISTANT mob: advice still shown", b ~= nil,
+  "a mob is in melee of you regardless of what you have selected")
+
+-- (c) pure mouseover macro: no target at all, melee mob under the cursor
+HKTest.state.target = nil
+HKTest.state.units = { mouseover = true }
+HKTest.state.inMelee = { mouseover = true }
+TwoMobScene(18200)
+local c = ST.WeaveWindow(18200)
+check("shooting via mouseover with no target: advice still shown", c ~= nil,
+  "a mouseover macro must not blind the weave advice")
+
+-- (d) the pet's target is the one at your feet
+HKTest.state.target = nil
+HKTest.state.units = { pettarget = true }
+HKTest.state.inMelee = { pettarget = true }
+TwoMobScene(18300)
+check("the pet's target in melee also counts",
+  ST.WeaveWindow(18300) ~= nil)
+
+-- All four situations describe the same fight, so they must agree.
+check("...and every route gives the same advice",
+  a ~= nil and b ~= nil and c ~= nil
+    and math.abs(a - b) < 0.01 and math.abs(a - c) < 0.01,
+  string.format("%s / %s / %s", tostring(a), tostring(b), tostring(c)))
+
+-- Nothing actually in melee: no static weave, whatever exists at range.
+HKTest.state.target = "target"
+HKTest.state.units = { pettarget = true, targettarget = true }
+HKTest.state.inMelee = { target = false, pettarget = false,
+                         targettarget = false, mouseover = false }
+TwoMobScene(18400)
+check("with everything at range there is no static weave",
+  ST.WeaveWindow(18400) == nil)
+check("...and InMeleeOfTarget says so", ST.InMeleeOfTarget() == false)
+
+-- A dead mob at your feet is not a weave target.
+HKTest.state.inMelee = { target = true }
+HKTest.state.dead = { target = true }
+check("a dead mob in melee does not count", ST.InMeleeOfTarget() == false)
+HKTest.state.dead = {}
+
+HKTest.state.units = {}
+HKTest.state.inMelee = {}
+HKTest.state.targetTooClose = false
+HKTest.state.playerCombat = false
+ST.RescanSettings()
+
 say(string.format("\n%d passed, %d failed", passes, #failures))
 if #failures > 0 then
   for _, f in ipairs(failures) do say("  - " .. f) end

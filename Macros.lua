@@ -69,6 +69,18 @@ local LIBRARY = {
         .. "and ammo count on the button.",
   },
   {
+    title = "Auto Shot the pet's target while you melee",
+    body = "#showtooltip 18\n/cast [@pettarget,harm,nodead] !Auto Shot\n"
+        .. "/startattack",
+    note = "Built for the two-mob weave: your pet holds one mob at range while "
+        .. "you stand toe to toe with another. Keep the melee mob targeted -- "
+        .. "/startattack keeps swinging at it -- and this fires Auto Shot at "
+        .. "whatever the pet is tanking, without ever changing your target. The "
+        .. "18 puts your ranged weapon's icon and ammo count on the button. "
+        .. "HunterKit's weave advice works in this setup whatever you have "
+        .. "selected.",
+  },
+  {
     title = "One-button pet keeper",
     body = "#showtooltip\n/cast [@pet, dead] Revive Pet; [nopet] Call Pet; [pet] Mend Pet",
     note = "One key for the whole pet: revives it if it is dead, calls it if it "

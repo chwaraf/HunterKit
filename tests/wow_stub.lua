@@ -336,7 +336,12 @@ HKTest.state = {
 }
 
 function PetHasActionBar() return true end
+-- Per-unit melee proximity. HKTest.state.inMelee maps a unit token to true when
+-- that unit is standing next to the player; `targetTooClose` remains as the
+-- shorthand for "target", which older tests use.
 function CheckInteractDistance(unit, dist)
+  local m = HKTest.state.inMelee or {}
+  if m[unit] ~= nil then return m[unit] and true or false end
   if unit == "target" then return HKTest.state.targetTooClose and true or false end
   return false
 end
@@ -351,6 +356,10 @@ function UnitCanAttack(a, b)
   if b == "target" then return HKTest.state.targetAttackable ~= false end
   -- Any unit the test put on a threat table is by definition an attackable mob.
   if (HKTest.state.threat or {})[b] then return true end
+  -- A unit the test explicitly declared (units / inMelee) is a hostile mob too:
+  -- tests use these to model a second mob that is not the current target.
+  if (HKTest.state.units or {})[b] then return true end
+  if (HKTest.state.inMelee or {})[b] then return true end
   return false
 end
 function GetInventorySlotInfo(n)

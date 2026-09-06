@@ -413,13 +413,45 @@ end
 -- Uses the same 11 yd "Trade" interaction probe Range.lua settled on. Raptor
 -- Strike's IsSpellInRange is unreliable on this client (it reports in-range at
 -- 28+ yd), so it is deliberately not used here either.
-function ShotTimer.InMeleeOfTarget()
-  if not UnitExists or not Call(UnitExists, "target") then return false end
-  if UnitCanAttack and not Call(UnitCanAttack, "player", "target") then return false end
-  if UnitIsDead and Call(UnitIsDead, "target") then return false end
+-- Every unit the client will answer distance questions about. Order is cheapest
+-- and likeliest first; the scan stops at the first hit.
+--
+--   target      -- the obvious one, and the only one the old code looked at
+--   mouseover   -- you are shooting through a mouseover macro, so the melee mob
+--                  may be under your cursor rather than targeted
+--   pettarget   -- the pet is tanking one mob; if THAT is the one at your feet
+--                  it still counts, and if it is the distant one this simply
+--                  reports false, which is correct
+--   targettarget -- the mob attacking whatever you are targeting; catches the
+--                  case where you target the distant mob and the melee one is
+--                  hitting you
+local MELEE_UNITS = { "target", "mouseover", "pettarget", "targettarget" }
+
+local function UnitIsMeleeable(unit)
+  if not UnitExists or not Call(UnitExists, unit) then return false end
+  if UnitCanAttack and not Call(UnitCanAttack, "player", unit) then return false end
+  if UnitIsDead and Call(UnitIsDead, unit) then return false end
   if not CheckInteractDistance then return false end
-  local v = Call(CheckInteractDistance, "target", 2)   -- 2 = Trade, ~11 yd
+  local v = Call(CheckInteractDistance, unit, 2)   -- 2 = Trade, ~11 yd
   return v == 1 or v == true
+end
+
+-- Is ANY attackable mob standing in melee of you?
+--
+-- This used to ask only about "target", which broke the standard two-mob setup:
+-- pet tanks a distant mob you shoot with a mouseover macro, while a second mob
+-- melees you. If you targeted the distant mob -- or nothing at all, which a
+-- mouseover macro encourages -- the addon concluded you were not in melee and
+-- went silent, exactly when static weaving is what you are doing.
+--
+-- The client gives no "is anything in melee of me" API, so we scan the handful
+-- of units it will answer for. Four CheckInteractDistance calls at most, only
+-- while a weave is being evaluated, and it stops at the first hit.
+function ShotTimer.InMeleeOfTarget()
+  for _, unit in ipairs(MELEE_UNITS) do
+    if UnitIsMeleeable(unit) then return true, unit end
+  end
+  return false
 end
 
 function ShotTimer.WeaveWindow(now)

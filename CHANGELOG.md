@@ -3,6 +3,25 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.61] - 2026-09-05
+
+### Fixed
+- **Weave advice only appeared if you happened to target the melee mob.** The
+  "am I in melee" check asked about `target` and nothing else, which broke the
+  standard two-mob setup: pet holds a distant mob you shoot, a second mob melees
+  you. Target the distant one -- or nothing at all, which a mouseover auto-shot
+  macro actively encourages -- and the addon decided you were not in melee and
+  went silent, precisely when static weaving is what you are doing.
+  It now scans `target`, `mouseover`, `pettarget` and `targettarget` and stops
+  at the first hit, so the advice is identical however you have things selected.
+  At most four distance checks, only while a weave is being evaluated.
+
+### Added
+- Macro: **"Auto Shot the pet's target while you melee"** --
+  `/cast [@pettarget,harm,nodead] !Auto Shot` plus `/startattack`. Keep the
+  melee mob targeted and swinging, and shoot whatever the pet is tanking,
+  without ever changing target.
+
 ## [0.9.60] - 2026-09-05
 
 ### Fixed
