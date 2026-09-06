@@ -307,7 +307,18 @@ end
 -- live cooldowns rather than modelling them: ranks, talents and Quick Shots all
 -- change the numbers, and the client already knows the truth.
 -- ---------------------------------------------------------------------------
+-- Seconds until a special shot is usable again, or nil if you do not have it.
+--
+-- The nil matters: an UNKNOWN spell must not read as "ready". A hunter who has
+-- not trained Aimed Shot (or does not keep it on their bars) would otherwise
+-- look permanently ready to spend it, and the weave gate below would veto every
+-- single weave for the whole session.
 local function SpellReadyIn(id, now)
+  if IsSpellKnown then
+    local ok, known = pcall(IsSpellKnown, id)
+    if ok and known == false then return nil end
+  end
+  if GetSpellInfo and not Call(GetSpellInfo, id) then return nil end
   local start, duration = Call(GetSpellCooldown, id)
   start = tonumber(start) or 0
   duration = tonumber(duration) or 0
@@ -321,11 +332,17 @@ end
 
 -- ready, aimedIn, multiIn -- `ready` is true when BOTH specials are down, which
 -- is the moment weaving is the right call.
+-- down, aimedIn, multiIn -- `down` is true when every special you actually HAVE
+-- is on cooldown. A spell you have not learned is skipped rather than counted as
+-- ready: it cannot be spent, so it has no business vetoing a weave.
 function ShotTimer.SpecialsDown(now)
   now = now or (tonumber(Call(GetTime)) or 0)
   local a = SpellReadyIn(SPELL_AIMED, now)
   local m = SpellReadyIn(SPELL_MULTI, now)
-  return (a > 0 and m > 0), a, m
+  local down = true
+  if a ~= nil and a <= 0 then down = false end
+  if m ~= nil and m <= 0 then down = false end
+  return down, a, m
 end
 
 -- ---------------------------------------------------------------------------
@@ -384,21 +401,27 @@ function ShotTimer.WeaveWindow(now)
   local free = ShotTimer.SafeWindow(now)
   if not free then return nil end
   local travel = tonumber(db.travel) or DEFAULT_TRAVEL
-  if free < travel then return nil end          -- no room in this cycle at all
+  -- Report WHY there is no window, so the caller can say something useful
+  -- instead of falling silent: "tooslow" = this weapon's cycle is too short for
+  -- the round trip at all, "specials" = you have a better button to press.
+  if free < travel then return nil, nil, "tooslow" end
+  if db.specials ~= false and not ShotTimer.SpecialsDown(now) then
+    return nil, nil, "specials"
+  end
 
   -- Latest departure that still gets you home before the lockout.
   local latest = free - travel
   local meleeIn = ShotTimer.MeleeReady(now)
   if not meleeIn then
-    return 0, latest                            -- no melee clock yet: go now
+    return 0, latest, nil                       -- no melee clock yet: go now
   end
 
   -- Earliest departure whose ARRIVAL coincides with the swing being ready.
   -- Leaving before this just means standing in melee doing nothing.
   local best = meleeIn - (travel / 2)
   if best < 0 then best = 0 end                 -- swing already up: go now
-  if best > latest then return nil end          -- swing lands too late to use
-  return best, latest
+  if best > latest then return nil, nil, "swing" end  -- swing lands too late
+  return best, latest, nil
 end
 
 function ShotTimer.LastDelay() return lastDelay end
@@ -636,22 +659,31 @@ local function DrawSpecialPips(now)
   local lefts = { aimedIn, multiIn }
   for i = 1, 2 do
     local pip, fs = specialRow[i], specialRow[i .. "text"]
-    local left = lefts[i] or 0
+    local left = lefts[i]
+    if left == nil then
+      -- Not trained: hide the pip rather than implying it is ready to press.
+      ShownIf(pip, false); ShownIf(fs, false)
+      left = nil
+    end
     -- The countdown is whole seconds, so this text changes once a second while
     -- OnUpdate runs every frame. Cache both it and the colour.
     local txt, col
-    if left > 0 then
+    if left == nil then
+      txt = nil
+    elseif left > 0 then
       col = COL_PIP_DOWN
       txt = string.format("|cff9a9a9a%s %.0fs|r", names[i], left)
     else
       col = COL_PIP_READY
       txt = string.format("|cff55dd55%s|r", names[i])
     end
-    specialRow[i .. "col"] = PaintIf(pip, col, specialRow[i .. "col"])
-    if txt ~= specialRow[i .. "txt"] then
-      fs:SetText(txt); specialRow[i .. "txt"] = txt
+    if txt then
+      specialRow[i .. "col"] = PaintIf(pip, col, specialRow[i .. "col"])
+      if txt ~= specialRow[i .. "txt"] then
+        fs:SetText(txt); specialRow[i .. "txt"] = txt
+      end
+      ShownIf(pip, true); ShownIf(fs, true)
     end
-    ShownIf(pip, true); ShownIf(fs, true)
   end
 end
 
@@ -687,7 +719,7 @@ local function Redraw(now)
         -- The two weapons run at different speeds and drift apart, so "GO" and
         -- a countdown to the ideal departure is far more use than a flat yes:
         -- it tells you WHEN the shot cycle and the swing actually line up.
-        local best = ShotTimer.WeaveWindow(now)
+        local best, _, why = ShotTimer.WeaveWindow(now)
         if db.weave ~= false and best then
           if best <= 0.05 and ShotTimer.CanWeave(now) then
             txt = string.format("|cff66ccffGO|r %.1fs", free)
@@ -696,6 +728,10 @@ local function Redraw(now)
           else
             txt = string.format("|cff9fd8ffweave in %.1fs|r", best)
           end
+        elseif db.weave ~= false and why == "specials" then
+          -- Say WHY rather than going quiet: a silent bar looks broken, and
+          -- "spend your shot first" is actionable.
+          txt = string.format("|cffd9b333shoot|r %.1fs", free)
         else
           txt = string.format("%.1fs", free)
         end

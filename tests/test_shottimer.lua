@@ -1079,6 +1079,73 @@ HK.db.shottimer.specials = true
 ST.RescanSettings()
 HKTest.state.playerCombat = false
 
+
+-- ---------------------------------------------------------------------------
+-- 30) AN UNTRAINED SPECIAL MUST NOT VETO EVERY WEAVE
+--
+-- Regression: SpecialsDown required BOTH Aimed and Multi to be on cooldown. A
+-- spell you have not trained reports no cooldown, so it read as permanently
+-- "ready to spend" and the weave gate vetoed every weave for the whole session.
+-- A spell you cannot cast has no business blocking anything.
+-- ---------------------------------------------------------------------------
+HKTest.state.playerCombat = true
+HK.db.shottimer.weave = true
+HK.db.shottimer.specials = true
+ST.RescanSettings()
+
+-- No Aimed Shot trained; Multi is on cooldown.
+HKTest.state.spellKnown = { [19434] = false }
+HKTest.state.cooldowns = { [2643] = { 14000, 10 } }
+local down, aimedIn = ST.SpecialsDown(14000)
+check("an untrained Aimed Shot is not counted as ready", down == true,
+  "only the specials you actually have may gate a weave")
+check("...and reports no cooldown at all", aimedIn == nil, tostring(aimedIn))
+
+-- Both untrained: nothing to spend, so nothing to wait for.
+HKTest.state.spellKnown = { [19434] = false, [2643] = false }
+HKTest.state.cooldowns = {}
+check("with neither special trained, weaving is never gated",
+  (ST.SpecialsDown(14000)) == true)
+
+-- Trained and ready again: the gate works as before.
+HKTest.state.spellKnown = {}
+check("a trained, ready special still blocks the weave",
+  (ST.SpecialsDown(14000)) == false)
+
+-- ---------------------------------------------------------------------------
+-- 31) THE BAR SAYS WHY IT IS NOT SUGGESTING A WEAVE
+--
+-- Falling silent looks like the feature is broken. "shoot" tells you the
+-- actionable thing: spend the special you are holding first.
+-- ---------------------------------------------------------------------------
+HKTest.state.rangedSpeed = 3.3
+HKTest.state.cooldowns = {}            -- both specials READY
+ST.RescanSettings()
+Shooting(3.3, 14100)
+ST._OnMeleeSwing(14100 - 1.0)
+local _, _, why = ST.WeaveWindow(14100)
+check("it reports that a special is why there is no weave",
+  why == "specials", tostring(why))
+At(14100); ST.OnUpdate()
+check("the bar tells you to shoot instead of going silent",
+  (ST.LabelText() or ""):find("shoot") ~= nil, tostring(ST.LabelText()))
+
+-- A weapon too fast for the round trip reports a different reason.
+HKTest.state.rangedSpeed = 2.6
+ST.RescanSettings()
+SpecialsOnCD(14200)
+Shooting(2.6, 14200)
+ST._OnMeleeSwing(14200)
+local _, _, why2 = ST.WeaveWindow(14200)
+check("a weapon too fast to weave with says so", why2 == "tooslow",
+  tostring(why2))
+
+HKTest.state.rangedSpeed = 3.3
+HKTest.state.cooldowns = {}
+HKTest.state.spellKnown = {}
+ST.RescanSettings()
+HKTest.state.playerCombat = false
+
 say(string.format("\n%d passed, %d failed", passes, #failures))
 if #failures > 0 then
   for _, f in ipairs(failures) do say("  - " .. f) end

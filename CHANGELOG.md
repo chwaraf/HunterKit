@@ -3,6 +3,26 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.57] - 2026-09-05
+
+### Fixed
+- **The weave advice almost never appeared.** Two things were silencing it:
+  - An **untrained special shot vetoed every weave.** `SpecialsDown` required
+    both Aimed Shot *and* Multi-Shot to be on cooldown, but a spell you have not
+    trained reports no cooldown -- so it read as permanently "ready to spend"
+    and blocked weaving for the entire session. A spell you cannot cast is now
+    skipped rather than counted as ready, and its pip is hidden.
+  - When a special *was* genuinely ready, the bar just fell silent, which looks
+    like a broken feature. It now says **"shoot"** -- spend the special first,
+    which is the actionable advice.
+
+### Notes
+- With a 2.5s round trip, weaving needs a ranged weapon slower than ~3.0s: a
+  3.0s bow leaves exactly 0.00s of spare room. That is correct and matches the
+  community guidance the model is built on ("you won't delay your Auto Shot
+  weaving correctly" applies to slow weapons), but the bar now explains a
+  too-fast weapon rather than staying quiet about it.
+
 ## [0.9.56] - 2026-09-05
 
 ### Added

@@ -600,6 +600,14 @@ function GetSpellTexture(id)
 end
 -- Cooldown lookup for the weave-ability row. HKTest.state.cooldowns maps a
 -- spell id to { start, duration }; anything absent is ready.
+-- Which spells the character has trained. Absent from the table = known, so
+-- existing tests keep working; set false to model an untrained spell.
+function IsSpellKnown(id)
+  local k = (HKTest.state.spellKnown or {})[id]
+  if k == nil then return true end
+  return k and true or false
+end
+
 function GetSpellCooldown(id)
   local cd = (HKTest.state.cooldowns or {})[id]
   if not cd then return 0, 0, 1 end
