@@ -3,6 +3,29 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.63] - 2026-09-05
+
+### Fixed
+- **The two-mob weave macro left you targeting a corpse.** It ended with a bare
+  `/targetlasttarget`, so when the melee mob died the macro correctly flicked to
+  the pet's live mob to shoot it -- and then that last unconditional line flicked
+  straight back onto the dead one, where `/startattack` kept swinging. Every
+  targeting line is now guarded: it drops a dead target instead of standing
+  there hitting it, and only flicks back if the return trip is to something
+  alive.
+- **The mouseover macro still had the fake `[@mouseover]` on Auto Shot.** Last
+  release only corrected its description; the misleading clause was still in the
+  text being copied. Auto Shot always fires at your real target, so the clause
+  is now gone and only `/petattack` is steered by the mouseover.
+
+### Added
+- `tests/test_macros.lua` -- the macro library is now tested like code, because
+  a wrong macro looks authoritative and misbehaves in combat. It checks that no
+  macro targets or attacks without accounting for dead units, that none pretends
+  to aim Auto Shot with `[@unit]`, that each fits the client's 255-character
+  limit, and that every copy box holds its macro verbatim. This suite is what
+  caught the second bug above.
+
 ## [0.9.62] - 2026-09-05
 
 ### Fixed

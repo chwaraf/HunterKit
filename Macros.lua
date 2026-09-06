@@ -61,7 +61,7 @@ local LIBRARY = {
   },
   {
     title = "Mouseover attack + pet send",
-    body = "#showtooltip 18\n/cast [@mouseover,harm,nodead][] !Auto Shot\n"
+    body = "#showtooltip 18\n/cast !Auto Shot\n"
         .. "/petattack [@mouseover,harm,nodead][]",
     note = "Sends the pet to whatever you are hovering and starts Auto Shot. "
         .. "Note that Auto Shot always fires at your REAL target -- [@mouseover] "
@@ -71,17 +71,19 @@ local LIBRARY = {
   },
   {
     title = "Two-mob weave: melee here, shoot the pet's mob",
-    body = "#showtooltip\n/targetlasttarget [@pettarget,noexists]\n"
-        .. "/cast Raptor Strike\n/startattack\n/stopattack [@pettarget,harm,nodead]\n"
+    body = "#showtooltip\n/cleartarget [dead]\n/cast [harm,nodead] Raptor Strike\n"
+        .. "/startattack [harm,nodead]\n/stopattack [@pettarget,harm,nodead]\n"
         .. "/target [@pettarget,harm,nodead]\n/cast !Auto Shot\n"
-        .. "/targetlasttarget",
+        .. "/targetlasttarget [@pettarget,harm,nodead]\n"
+        .. "/cleartarget [dead]",
     note = "For the two-mob weave: pet holds one mob at range, you stand in "
         .. "melee with another. Target the MELEE mob. Each press swings at it, "
-        .. "then flicks to the pet's mob to restart Auto Shot and flicks back, "
-        .. "so your target ends up where it started. Auto Shot cannot be aimed "
-        .. "with [@unit] -- it always shoots your actual target -- which is why "
-        .. "this briefly switches instead. /stopattack before the switch is what "
-        .. "stops melee following you to the ranged mob.",
+        .. "flicks to the pet's mob to restart Auto Shot, then flicks back. "
+        .. "Auto Shot cannot be aimed with [@unit] -- it always shoots your "
+        .. "actual target -- which is why this switches instead. Every line is "
+        .. "guarded against corpses: it drops a dead target rather than standing "
+        .. "there swinging at it, and only flicks back if the return trip is to "
+        .. "something alive.",
   },
   {
     title = "One-button pet keeper",
