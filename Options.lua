@@ -491,7 +491,8 @@ local function AddShotBarLegend(content, y)
   local lines = {
     { "|cff33e64dGreen|r", "free time -- move, weave, cast" },
     { "|cffd93333Red|r",   "0.5s lockout: acting here clips the shot" },
-    { "|cff66bfffBlue line|r", "last moment to leave (running weaves only)" },
+    { "|cff66bfffBlue line|r", "where your melee hit belongs in the cycle" },
+    { "|cff8cff8cLine turns green|r", "swing now" },
     { "|cff33e64dLower bar|r", "your melee swing -- same colours, same meaning" },
     { "|cff8cff8cPale green|r", "that weapon is ready to swing or fire now" },
     { "|cff66ccffWEAVE|r", "shown when the round trip actually fits" },

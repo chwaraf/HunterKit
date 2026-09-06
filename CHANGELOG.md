@@ -3,6 +3,21 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.60] - 2026-09-05
+
+### Fixed
+- **Static weaving had no usable visual cue.** The blue marker was computed once
+  from the TRAVEL model -- "the last moment you could leave for a 2.5s round
+  trip" -- which is meaningless when you never move. Standing in melee it sat at
+  ~9% of the bar while the swing you were actually waiting for landed at ~42%,
+  so the only real cue was the text label.
+  The marker is now drawn live from whichever model applies: running in, it
+  still marks the last safe departure; standing in melee, it marks the moment
+  your swing comes up. It holds its place as the bar fills toward it, and turns
+  the same "ready" green the bars use at the instant you should swing -- so the
+  cue is a line the fill visibly reaches, not a number to read.
+- The options legend now describes the marker and its green state.
+
 ## [0.9.59] - 2026-09-05
 
 ### Changed

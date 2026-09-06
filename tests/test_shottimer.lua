@@ -383,10 +383,14 @@ check("...and stops saying it once it does not",
   (ST.LabelText() or ""):find("WEAVE") == nil, tostring(ST.LabelText()))
 
 -- The marker cannot be drawn honestly on a weapon too fast to weave with.
+-- (It is positioned during the redraw now, because in static mode its place on
+-- the bar tracks the live swing clock -- so drive a frame before reading it.)
 SpecialsOnCD(2900)
 Shooting(3.3, 2900)
+At(2900); ST.OnUpdate()
 check("a slow weapon gets a weave marker", ST.WeaveMarkShown() == true)
 Shooting(2.0, 2950)          -- 1.5s free, 2.5s trip: impossible
+At(2950); ST.OnUpdate()
 check("a weapon too fast to weave shows no marker", ST.WeaveMarkShown() == false)
 
 -- Switching the feature off removes all of it.
@@ -1279,6 +1283,67 @@ check("turning it on restores the round-trip advice",
   ST.WeaveWindow(16000) ~= nil)
 
 HK.db.shottimer.travelWeave = false
+HKTest.state.targetTooClose = false
+HKTest.state.playerCombat = false
+ST.RescanSettings()
+
+
+-- ---------------------------------------------------------------------------
+-- 34) THE STATIC WEAVE NEEDS A VISIBLE MARKER, NOT JUST TEXT
+--
+-- The blue marker was computed once in ApplySize from the TRAVEL model: "the
+-- last moment you could leave for a 2.5s round trip". For a static weaver that
+-- number is meaningless -- it sat at ~9% of the bar while the actual swing
+-- landed at 42% -- so the only real cue was the label. The marker is now drawn
+-- live from whichever model applies, and marks the moment your hit belongs.
+-- ---------------------------------------------------------------------------
+HKTest.state.playerCombat = true
+HKTest.state.rangedSpeed = 3.3
+HKTest.state.meleeSpeed = 2.4
+HK.db.shottimer.weave = true
+HK.db.shottimer.travelWeave = false      -- default: static weaving only
+ST.RescanSettings()
+
+HKTest.state.target = "target"
+HKTest.state.targetTooClose = true       -- standing in melee
+SpecialsOnCD(17000)
+Shooting(3.3, 17000)
+ST._OnMeleeSwing(17000 - 1.0)            -- swing due in 1.4s of a 3.3s cycle
+
+At(17000); ST.OnUpdate()
+check("static weaving shows the marker", ST.WeaveMarkShown() == true)
+
+-- 1.4s into a 3.3s cycle is ~42% along a 220px bar, NOT the ~9% the old
+-- travel-derived marker used.
+local x = ST.WeaveMarkX()
+local w = HK.db.shottimer.width or 220
+check("...positioned at the swing, not at a travel departure point",
+  x ~= nil and math.abs((x / w) - 0.42) < 0.06,
+  string.format("%.0f%% along the bar", (x or 0) / w * 100))
+
+-- It must hold still while the bar fills toward it: the swing lands at a fixed
+-- point in this cycle, so a marker that drifted would be lying.
+At(17000.7); ST.OnUpdate()
+check("...and holds its place as the bar fills",
+  math.abs((ST.WeaveMarkX() or -1) - x) < 1,
+  string.format("%.1f -> %.1f", x or -1, ST.WeaveMarkX() or -1))
+
+-- On arrival it turns the same "ready" green the bars use.
+local rBefore = { ST.WeaveMarkColor() }
+At(17001.4); ST.OnUpdate()
+local rAfter = { ST.WeaveMarkColor() }
+check("the marker goes green when it is time to swing",
+  rAfter[1] ~= nil and rAfter[2] > 0.9 and rAfter[1] > 0.4,
+  string.format("%.2f,%.2f,%.2f", rAfter[1] or -1, rAfter[2] or -1, rAfter[3] or -1))
+check("...having been blue while it was still ahead",
+  rBefore[3] ~= nil and rBefore[3] > 0.9 and rBefore[1] < 0.5,
+  string.format("%.2f,%.2f,%.2f", rBefore[1] or -1, rBefore[2] or -1, rBefore[3] or -1))
+
+-- With no weave available at all there must be no marker to mislead you.
+HKTest.state.targetTooClose = false      -- at range, travel weaving off
+At(17000); ST.OnUpdate()
+check("no marker when no weave is advised", ST.WeaveMarkShown() == false)
+
 HKTest.state.targetTooClose = false
 HKTest.state.playerCombat = false
 ST.RescanSettings()

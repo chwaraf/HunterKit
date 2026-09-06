@@ -123,6 +123,7 @@ local COL_LOCKED   = { 1.00, 0.30, 0.10, 0.95 }   -- acting now clips the shot
 local COL_ZONE     = { 0.75, 0.12, 0.12, 0.55 }   -- the lockout region
 local COL_PIP_DOWN = { 0.35, 0.35, 0.38, 0.90 }   -- special on cooldown
 local COL_PIP_READY= { 0.30, 0.90, 0.30, 0.95 }   -- special ready to spend
+local COL_WEAVE    = { 0.40, 0.75, 1.00, 0.95 }   -- weave marker, still ahead
 
 -- Last-drawn cache for the per-frame redraw. OnUpdate runs on EVERY rendered
 -- frame (60-150+ Hz), but almost nothing it draws changes that fast: the label
@@ -524,22 +525,11 @@ local function ApplySize()
     end
   end
 
-  -- The weave marker's position: the round trip measured back from the shot.
-  -- Anything left of this line is a safe departure.
+  -- The weave marker is positioned in Redraw, not here: in static mode its
+  -- place on the bar depends on the live melee swing clock, which moves every
+  -- frame. Only its size is fixed.
   if weaveMark then
-    local travel = tonumber(db and db.travel) or DEFAULT_TRAVEL
-    local latest = speed - CAST_TIME - travel      -- seconds into the cycle
-    weaveMark:ClearAllPoints()
-    weaveMark:SetSize(2, h)
-    if latest > 0 then
-      weaveMark:SetPoint("TOPLEFT", frame, "TOPLEFT",
-        w * (latest / math.max(speed, MIN_SPEED)), 0)
-      weaveMark:Show()
-    else
-      -- The trip does not fit in this weapon's cycle at all: no honest place to
-      -- put the line, so do not draw one.
-      weaveMark:Hide()
-    end
+    weaveMark:SetSize(3, h)
   end
 end
 
@@ -820,6 +810,52 @@ local function Redraw(now)
     else
       meleeFill:Hide(); meleeTrack:Hide()
       if weaveMark then weaveMark:Hide() end
+    end
+  end
+
+  -- ---------------------------------------------------------------------
+  -- The weave marker: WHERE on the shot cycle your melee hit belongs.
+  --
+  -- Two different meanings depending on how you weave, and it used to only
+  -- ever draw the first:
+  --   * running in ("normal" weave) -- the LAST moment you can leave and still
+  --     get home before the lockout.
+  --   * standing in melee (static)  -- the moment your SWING comes up, which
+  --     is the only thing you are waiting for. The old marker drew the travel
+  --     departure point here, which is meaningless when you never move, so
+  --     static weavers had a line sitting at a nonsense place on the bar.
+  -- ---------------------------------------------------------------------
+  if weaveMark then
+    if db.weave == false then
+      ShownIf(weaveMark, false)
+    else
+      local cycle = math.max(total or MIN_SPEED, MIN_SPEED)
+      local best = ShotTimer.WeaveWindow(now)
+      local at
+      if best and remaining then
+        -- Seconds from the START of this cycle to the advised moment. `remaining`
+        -- can read a hair above the nominal cycle length right after a shot
+        -- (the server's timing is not perfectly aligned with ours), which would
+        -- push this slightly negative -- clamp rather than lose the marker.
+        at = (cycle - remaining) + best
+        if at < 0 then at = 0 end
+      end
+      -- at == 0 is legitimate ("go now, right at the start of the cycle"), so
+      -- only reject a marker that would fall off the end of the bar.
+      if at and at >= 0 and at < cycle then
+        weaveMark:ClearAllPoints()
+        -- Clamp to the bar so a marker at 0 is still visible rather than
+        -- clipped against the left edge.
+        local x = w * (at / cycle)
+        if x < 1 then x = 1 elseif x > w - 3 then x = w - 3 end
+        weaveMark:SetPoint("TOPLEFT", frame, "TOPLEFT", x, 0)
+        -- Green once you should go, blue while it is still ahead of you: the
+        -- same ready/charging language the bars themselves use.
+        Paint(weaveMark, (best <= 0.05) and COL_READY or COL_WEAVE)
+        ShownIf(weaveMark, true)
+      else
+        ShownIf(weaveMark, false)
+      end
     end
   end
 
@@ -1206,6 +1242,16 @@ end
 function ShotTimer.SpecialPipsShown()
   return specialRow ~= nil and specialRow[1] ~= nil
     and specialRow[1]:IsShown() == true
+end
+-- Test seams: where the weave marker sits, and what colour it is.
+function ShotTimer.WeaveMarkX()
+  if not weaveMark or not weaveMark:IsShown() then return nil end
+  local p = weaveMark.points and weaveMark.points[#weaveMark.points]
+  return p and tonumber(p[4]) or nil
+end
+function ShotTimer.WeaveMarkColor()
+  if not weaveMark or not weaveMark:IsShown() then return nil end
+  return weaveMark:GetVertexColor()
 end
 function ShotTimer.WeaveMarkShown() return weaveMark ~= nil and weaveMark:IsShown() == true end
 
