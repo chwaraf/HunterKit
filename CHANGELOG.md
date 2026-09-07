@@ -3,6 +3,19 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.64] - 2026-09-05
+
+### Changed
+- **The two-mob weave macro no longer casts Raptor Strike**, and degrades to
+  plain melee when there is nothing to shoot. A `/stopmacro` guard sits between
+  the melee line and the first target switch, so with no pet target -- or a dead
+  or friendly one -- the macro starts your auto attack and stops there: no
+  target flicking, no Auto Shot fired at whatever happened to be selected. When
+  the pet IS holding a live mob it behaves as before, flicking over to restart
+  Auto Shot and flicking straight back.
+- `/stopattack` is now unconditional, since by the time it runs the macro has
+  already proven the pet has a live target.
+
 ## [0.9.63] - 2026-09-05
 
 ### Fixed

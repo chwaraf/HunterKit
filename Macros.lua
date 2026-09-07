@@ -71,19 +71,19 @@ local LIBRARY = {
   },
   {
     title = "Two-mob weave: melee here, shoot the pet's mob",
-    body = "#showtooltip\n/cleartarget [dead]\n/cast [harm,nodead] Raptor Strike\n"
-        .. "/startattack [harm,nodead]\n/stopattack [@pettarget,harm,nodead]\n"
-        .. "/target [@pettarget,harm,nodead]\n/cast !Auto Shot\n"
+    body = "#showtooltip\n/cleartarget [dead]\n/startattack [harm,nodead]\n"
+        .. "/stopmacro [@pettarget,noharm][@pettarget,dead][@pettarget,noexists]\n"
+        .. "/stopattack\n/target [@pettarget,harm,nodead]\n/cast !Auto Shot\n"
         .. "/targetlasttarget [@pettarget,harm,nodead]\n"
         .. "/cleartarget [dead]",
-    note = "For the two-mob weave: pet holds one mob at range, you stand in "
-        .. "melee with another. Target the MELEE mob. Each press swings at it, "
-        .. "flicks to the pet's mob to restart Auto Shot, then flicks back. "
-        .. "Auto Shot cannot be aimed with [@unit] -- it always shoots your "
-        .. "actual target -- which is why this switches instead. Every line is "
-        .. "guarded against corpses: it drops a dead target rather than standing "
-        .. "there swinging at it, and only flicks back if the return trip is to "
-        .. "something alive.",
+    note = "For the two-mob weave: pet holds one mob at range while you stand "
+        .. "in melee with another. Target the MELEE mob and hold the key. It "
+        .. "starts your melee swing, and ONLY if the pet has a live target does "
+        .. "it flick over, restart Auto Shot and flick back -- no pet target "
+        .. "means it just melees and stops there. Plain auto attack, no Raptor "
+        .. "Strike. Auto Shot cannot be aimed with [@unit] (it always shoots "
+        .. "your real target), which is why this switches instead. Corpses are "
+        .. "dropped rather than swung at.",
   },
   {
     title = "One-button pet keeper",
