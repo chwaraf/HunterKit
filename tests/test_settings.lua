@@ -404,7 +404,7 @@ check("empty tier speaks", (HKTest.soundsPlayed[#HKTest.soundsPlayed] or "")
 local v1 = #HKTest.soundsPlayed
 HKTest.state.now = 4011
 ammoTicker:Tick()
-check("voice does not nag: silent re-warn inside the 30 s cooldown",
+check("voice does not nag: silent re-warn inside the 45 s cooldown",
   HK.AmmoWarn.IsShown() and #HKTest.soundsPlayed == v1,
   tostring(HK.AmmoWarn.IsShown()) .. "/" .. tostring(#HKTest.soundsPlayed))
 HKTest.state.now = 4046
@@ -897,6 +897,10 @@ check("a genuinely empty ammo slot still warns", HK.AmmoWarn.IsShown())
 HKTest.state.ammoID = 2515
 HKTest.state.items = { [2515] = 1438 }
 HKTest.state.ammoEquipped = 1438
+
+-- Report this file's tally so tests/test_docs.lua can check the README's
+-- advertised check counts against what the suite really runs.
+HKTest.report("test_settings.lua", passes, #failures)
 
 say(string.format("\n%d passed, %d failed", passes, #failures))
 if #failures > 0 then

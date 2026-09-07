@@ -6,8 +6,13 @@
  * the .toc version must match HK.version
  * every /htk subcommand Core.lua defines must appear in the README
  * the newest CHANGELOG entry must match the current version
+ * the shipped mark art must exist as PNG (and no .tga/.blp may ship)
+ * the README's Development section must describe THIS suite: its stated version,
+   a row and a current check count for every test file, and a correct total
 
- Run with tests/run_tests.py (HKTest.addonFiles is injected by the runner).
+ Run with tests/run_tests.py (HKTest.addonFiles and HKTest.testFiles are
+ injected by the runner). This file runs LAST: the README count checks read the
+ tallies the other files reported via HKTest.report.
 ==============================================================================]]
 
 local say = HKTest.say
@@ -128,6 +133,61 @@ do
   check("no stray .blp files ship",
     io.open("../Media/mark-ok-plus.blp", "rb") == nil)
 end
+
+-- ---------------------------------------------------------------------------
+-- 6) The README's Development section must describe THIS suite
+-- ---------------------------------------------------------------------------
+-- The repo's rule is "every change updates the docs in the same commit", and the
+-- README's Development section is part of those docs. It drifted badly once --
+-- it advertised "465 checks, in five files" while the suite really ran 944
+-- checks across eight, with three test files missing from the table entirely --
+-- so the numbers are now checked like any other documented claim.
+
+local readmeVersion = readme:match("Current version: %*%*(%d+%.%d+%.%d+)%*%*")
+check("README states the current version", readmeVersion == HK.version,
+  tostring(readmeVersion) .. " vs " .. tostring(HK.version))
+
+-- The mark art moved TGA -> PNG in 0.9.28 and the README kept saying .tga for
+-- 39 releases. Both halves are checked: PNG is stated, and the old wording is gone.
+check("README describes the mark art as PNG, not TGA",
+  readme:find("`%.png`", 1, false) ~= nil
+    and readme:find("ship as white%-on%-alpha `%.tga`", 1, false) == nil)
+
+local testFiles = HKTest.testFiles or {}
+check("the harness named its test files", #testFiles > 0)
+local documentedFiles = 0
+for _, name in ipairs(testFiles) do
+  local esc = name:gsub("%.", "%%.")
+  local n = tonumber(readme:match("`" .. esc .. "`%s*%((%d+)%)"))
+  check("README documents " .. name, n ~= nil)
+  if n then documentedFiles = documentedFiles + 1 end
+  -- test_docs.lua IS this file: its own tally is not final until the last check
+  -- below has run, so its number is verified by the total check instead.
+  local ran = HKTest.counts[name]
+  if n and ran and name ~= "test_docs.lua" then
+    check("README's count for " .. name .. " is current", n == ran.passes,
+      "README says " .. n .. ", the suite ran " .. ran.passes)
+  end
+end
+check("every test file is in the README's table", documentedFiles == #testFiles,
+  documentedFiles .. "/" .. #testFiles)
+
+-- MUST stay the last check in this file: it accounts for itself, so the expected
+-- total is "everything recorded so far, plus this one".
+local ranTotal = 0
+for _, name in ipairs(testFiles) do
+  local c = HKTest.counts[name]
+  if c then ranTotal = ranTotal + c.passes end
+end
+local expectTotal = ranTotal + passes + 1
+local readmeTotal, readmeFileCount =
+  readme:match("%*%*(%d+) checks%*%*, in %*%*(%d+)%*%* files")
+check("README's total check count is current",
+  tonumber(readmeTotal) == expectTotal and tonumber(readmeFileCount) == #testFiles,
+  string.format("README says %s checks in %s files; the suite ran %d in %d",
+    tostring(readmeTotal), tostring(readmeFileCount), expectTotal, #testFiles))
+
+HKTest.report("test_docs.lua", passes, #failures)
 
 say(string.format("\n%d passed, %d failed", passes, #failures))
 if #failures > 0 then

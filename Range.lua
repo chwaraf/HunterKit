@@ -64,8 +64,8 @@ function BuildFrame()
   frame:EnableMouse(false) -- never intercept clicks
   Range.ApplyPosition()
 
-  -- The mark itself is drawn procedurally (see "Shapes" below): one style per
-  -- range state, six styles to choose from per state, no art files.
+  -- The mark is drawn by ApplyState from the STYLES table below: six bundled
+  -- art styles per range state, each drawn into a pooled texture.
 
   label = frame:CreateFontString(nil, "OVERLAY")
   label:SetPoint("CENTER", frame, "BOTTOM", 0, -6)
@@ -80,7 +80,7 @@ function BuildFrame()
     clickable = true,
     restore = function() Range.Update() end,
     -- Edit mode: paint a sample mark so there is something to grab even with no
-    -- target (the mark is drawn procedurally and is otherwise blank).
+    -- target (nothing is drawn until ApplyState has a state to draw).
     preview = function() Range.Update() end,
     -- Store the mark's on-screen centre as an offset from UIParent's CENTRE
     -- (HK.SaveDragged works entirely in UIParent space, so it round-trips exactly
@@ -201,14 +201,17 @@ end
 -- ---------------------------------------------------------------------------
 -- Rendering
 -- ---------------------------------------------------------------------------
--- Every mark is drawn from one 1x1 Blizzard texture instead of an art file: 18
--- distinct silhouettes with nothing to ship in Media/, and the three states
--- differ by SHAPE, not only by colour.
+-- Every shipped mark is a bundled white-on-alpha PNG (see STYLES below), drawn
+-- with an ADDitive blend so the per-state SetVertexColor tints it: 18 distinct
+-- silhouettes, and the three states differ by SHAPE, not only by colour.
 --
--- A style is a list of primitives in a unit box (x,y from -1..1, 0,0 = centre):
+-- The primitive vocabulary below is the engine's fallback -- a style CAN be
+-- described as vector primitives instead of an art file, and the pool that
+-- draws them is what `art` styles are rendered into as well:
 --   {"seg",  x1, y1, x2, y2, w}   a line; w = thickness as a fraction of the size
 --   {"ring", cx, cy, r, w}        a circle outline, drawn from short segments
 --   {"dot",  cx, cy, s}           a filled square; s = side as a fraction
+--   {"art",  path}                a bundled texture, stretched over the frame
 local LINE_TEX = "Interface\\Buttons\\WHITE8x8"
 local RING_SEGMENTS = 24
 -- WoW is Lua 5.1 (math.atan2); the fallback is only for the test harness, where
@@ -381,8 +384,9 @@ ApplyState = function(state)
   lastDrawnSig = sig
   lastStyle = style
   frame:SetAlpha(1)
-  -- Per-state brightness slider (10..100%): with the ADDitive blend, scaling the
-  -- vertex colour scales the glow exactly.
+  -- Per-state brightness slider (0..200%): with the ADDitive blend, scaling the
+  -- vertex colour scales the glow exactly up to 100%, and the remainder is
+  -- stacked as a second additive pass below.
   local key = state == "OK" and "brightOK" or state == "DEAD" and "brightDead" or "brightFar"
   local br = (db[key] or 100) / 100
   local base = math.min(br, 1)
@@ -415,7 +419,7 @@ function Range.Update()
   -- While editing, don't re-evaluate range (that would hide an
   -- out-of-combat/no-target mark and fight the drag) -- but DO draw something.
   --
-  -- The mark is drawn procedurally by ApplyState; nothing is painted until a
+  -- The mark is drawn by ApplyState; nothing is painted until a
   -- real range state exists. Edit mode shows the frame, but with no target
   -- there was no state, so the frame was empty and the sniper mark appeared to
   -- be missing from unlock entirely. Paint a representative preview instead, so

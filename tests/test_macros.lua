@@ -10,7 +10,10 @@ HKTest.state.isHunter = true
 HK:Load()
 
 local passes, failures = 0, {}
-local function say(s) print(s) end
+-- HKTest.say, not print: the harness wraps `print` to capture the ADDON's chat
+-- output, so a test reporting through it is silently swallowed unless the suite
+-- is run with --verbose. This file's checks were invisible for that reason.
+local function say(s) HKTest.say(s) end
 local function check(name, ok, detail)
   if ok then
     passes = passes + 1
@@ -143,6 +146,10 @@ check("a box repairs itself if edited",
 
 M.Hide()
 check("the macro window closes", M.IsShown() == false)
+
+-- Report this file's tally so tests/test_docs.lua can check the README's
+-- advertised check counts against what the suite really runs.
+HKTest.report("test_macros.lua", passes, #failures)
 
 say(string.format("\n%d passed, %d failed", passes, #failures))
 if #failures > 0 then

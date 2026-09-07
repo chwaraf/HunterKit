@@ -267,9 +267,10 @@ end
 --
 -- Only bags whose FAMILY matches the ammo kind count: an ammo pouch cannot hold
 -- arrows, so filling "the quiver" with bullets in it is not a thing. Capacity is
--- slots x 200 (an ammo bag slot always stacks to 200), and `have` is the real
--- summed stack counts -- which makes partial stacks fall out of the arithmetic
--- for free.
+-- slots x the ammo's own stack size (200 for every basic projectile -- see the
+-- note on `perSlot` below, which is why it is NOT hardcoded), and `have` is the
+-- real summed stack counts -- which makes partial stacks fall out of the
+-- arithmetic for free.
 --
 -- Returns: capacity, have, slots, bags (list of bag indices)
 -- ---------------------------------------------------------------------------

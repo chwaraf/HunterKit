@@ -860,6 +860,10 @@ check("the two alert icons never overlap",
 check("...with a real gap between them, not just touching",
   (pb.l - tb.r) >= 8, string.format("%.0f px", pb.l - tb.r))
 
+-- Report this file's tally so tests/test_docs.lua can check the README's
+-- advertised check counts against what the suite really runs.
+HKTest.report("test_threatwatch.lua", passes, #failures)
+
 say(string.format("\n%d passed, %d failed", passes, #failures))
 if #failures > 0 then
   for _, f in ipairs(failures) do say("  - " .. f) end

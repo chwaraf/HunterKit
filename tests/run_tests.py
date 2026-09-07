@@ -46,6 +46,10 @@ def lua_prelude(files, verbose):
         'dofile("wow_stub.lua")',
         "HKTest.echo = %s" % ("true" if verbose else "false"),
         "HKTest.addonFiles = { %s }" % ", ".join('"%s"' % f for f in files),
+        # Basenames, in run order. test_docs.lua uses this to assert that the
+        # README documents every test file -- so it cannot be a hardcoded list.
+        "HKTest.testFiles = { %s }"
+        % ", ".join('"%s"' % os.path.basename(t) for t in TESTS),
     ]
     return "\n".join(lines)
 

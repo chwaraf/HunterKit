@@ -1435,6 +1435,10 @@ HKTest.state.targetTooClose = false
 HKTest.state.playerCombat = false
 ST.RescanSettings()
 
+-- Report this file's tally so tests/test_docs.lua can check the README's
+-- advertised check counts against what the suite really runs.
+HKTest.report("test_shottimer.lua", passes, #failures)
+
 say(string.format("\n%d passed, %d failed", passes, #failures))
 if #failures > 0 then
   for _, f in ipairs(failures) do say("  - " .. f) end

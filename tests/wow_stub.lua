@@ -763,6 +763,16 @@ local realPrint = print
 -- tests can assert on what the user would see; HKTest.say bypasses the capture
 -- and is what the test's own reporting uses.
 HKTest.say = realPrint
+
+-- Per-file check tally. Every test file reports its own result here, which lets
+-- the LAST file (tests/test_docs.lua) assert that the check counts the README
+-- advertises are the counts this suite actually runs. Without that, the README's
+-- "N checks, in M files" table drifts silently the first time a test is added --
+-- which is exactly what happened before this existed.
+HKTest.counts = {}
+function HKTest.report(name, passes, failures)
+  HKTest.counts[name] = { passes = passes or 0, failures = failures or 0 }
+end
 function print(...)
   local parts = {}
   for i = 1, select("#", ...) do parts[#parts + 1] = tostring(select(i, ...)) end

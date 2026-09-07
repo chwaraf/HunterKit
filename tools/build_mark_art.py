@@ -1,14 +1,27 @@
 #!/usr/bin/env python3
-"""Convert generated reticle PNGs (white glow on black) into white-on-alpha .tga
-mark textures for HunterKit.
+"""Convert generated reticle PNGs (white glow on black) into mark textures.
 
 The source images are luminance-keyed: black becomes fully transparent and the
 bright mark becomes opaque white, so the in-game `SetVertexColor` can tint them
 per range state. Content is cropped to the mark, padded to a square and resized
 to 256px so every style frames identically.
 
-Usage: python3 tools/build_mark_art.py
-Re-run after dropping new PNGs into art/ and extending MAP.
+THIS TOOL WRITES .tga, AND .tga IS NOT THE SHIPPED FORMAT. Since 0.9.28 the
+addon ships PNG, so the pipeline is two steps:
+
+    tools/build_mark_art.py   art/*.png  -> Media/*.tga
+    tools/tga_to_png.py       Media/*.tga -> Media/*.png  (lossless, deletes
+                              the TGAs; tests/test_docs.lua fails the suite if
+                              a .tga or .blp is left in Media/)
+
+MAP below is also stale relative to what ships: it still lists mark-far-hollow
+(never shipped -- the style is `dashed`, from far-dashring.png) and omits the
+three restored classics (crosshair, crosshair-x, crosshair-outline), which are
+512px and came from an earlier art pass. Regenerating from MAP alone would
+therefore LOSE three shipped styles; treat the existing Media/*.png as the
+source of truth and re-run both tools only for art you are adding.
+
+Usage: python3 tools/build_mark_art.py && python3 tools/tga_to_png.py
 """
 import os
 

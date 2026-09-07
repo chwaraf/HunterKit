@@ -3,6 +3,100 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.68] - 2026-09-07
+
+### Changed
+- **Docs audit: the README was describing a different addon in five places.** No
+  behaviour changes -- every fix below is documentation catching up with code
+  that had already shipped.
+  - **The mark art is PNG, and has been since 0.9.28.** The README still said
+    "all marks ship as white-on-alpha `.tga`" -- 39 releases stale, and
+    contradicted by `tests/test_docs.lua`, which fails the suite if a single
+    `.tga` ships. The art pipeline is now documented end to end
+    (`build_mark_art.py` writes TGA, `tga_to_png.py` converts losslessly and
+    deletes it), along with the fact that the three restored classics are 512 px
+    while the generated set is 256 px.
+  - **The sniper-mark brightness slider is 0-200%, not 10-100%.** The README's
+    Sniper Mark section still quoted the pre-overdrive range; its own Options
+    row in the same file already had it right.
+  - **The aggro readout swells to 1.18x, not 1.5x.** `PCT_HOT_SCALE` has been
+    1.18 since the frame-scale rewrite that stopped the number jumping across
+    the screen; the comment above it in `ThreatWatch.lua` was corrected in the
+    same change, the README was not.
+  - **The Gun Sound FAQ pointed at controls that no longer exist.** There has
+    been one toggle (`Replace gun shot sound`) since 0.2.15, and the
+    "Restore stock gunshot now" button was removed in 0.2.23 -- the FAQ still
+    told players to uncheck "Mute stock gunshot" and press it. It now describes
+    the single toggle, `/htk sound`, `/htk gunlist`, and why a mute survives
+    `/reload`.
+  - **The melee-weave row described the opt-in case as the default.** Travel
+    ("run in and out") weaving has been opt-in and off since 0.9.59; out of the
+    box the bar only advises static weaving. The Aimed/Multi-Shot pips row is
+    likewise opt-in (`showSpecials`), while the *gate* it illustrates is on --
+    the README conflated the two.
+- **`CREDITS.md` now credits everything that actually ships.** It covered the
+  four `pew-N.ogg` files and nothing else. Added: the four `voice_*.ogg`
+  low-ammo clips (TTS-rendered for this addon, off by default), the 18 mark
+  PNGs and the tool that produces them, and the provenance of `FoodDB.lua`'s
+  item-to-diet table (adapted from Fizzwidget Feed-O-Matic's vanilla food DB,
+  data only, no code copied) -- an uncredited third-party data source in a
+  distributed addon. Also listed the addons whose *techniques* informed this one,
+  so it is clear nothing else was copied.
+- **The README's Development section described a suite that no longer exists.**
+  It advertised "465 checks, in five files"; the suite runs **964 checks across
+  eight**. `test_threatwatch.lua`, `test_shottimer.lua` and `test_macros.lua`
+  were missing from the table entirely, and the four files that were listed had
+  counts from several months ago (mendmark 139 -> 119, options_ui 54 -> 90,
+  settings 28 -> 133, ammobuy 103 -> 125, docs 40 -> 117). It also told you to
+  `pip install lupa`, which fails on an externally-managed Python -- the venv
+  route is documented instead.
+- The `/htk mend` sample output in the README now matches what the command
+  really prints: the `anchor now:` suffix on the `plates visible:` line, and the
+  CVar line's real prefix and probe list (`nameplateShowOnlyNames` is probed,
+  `nameplateShowFriendlyMinions` is not).
+- The Options feature row lists the window's 13 sections, and the Macros row
+  names the button (`Open macro library`) and the six macros it opens.
+
+### Added
+- **`tests/test_docs.lua` now keeps that table honest** (+20 checks). Every test
+  file reports its tally through the new `HKTest.report`, and the docs file --
+  which runs last -- asserts the README's stated version, a row and a *current*
+  check count for every test file (taken from `HKTest.testFiles`, which the
+  runner injects, so a new test file cannot be quietly undocumented), and a
+  correct total. It also fails if the README ever describes the mark art as TGA
+  again. Adding a test now requires updating the README in the same commit.
+
+### Fixed
+- **`tests/test_macros.lua`'s 40 checks were invisible.** It reported through
+  `print`, which the harness wraps to capture the *addon's* chat output, so its
+  whole result block was swallowed unless the suite was run with `--verbose` --
+  a file that can silently report nothing is worse than no test. It now uses
+  `HKTest.say` like the other seven.
+
+### Notes (found while auditing, deliberately not changed here)
+- **`HK.defaults.shottimer.noHaste` is a dead setting.** It is declared in
+  `Core.lua` and read by nothing: `ShotTimer.lua` has no haste test at all, and
+  there is no UI for it. The behaviour it describes does happen -- haste
+  shortens the free window, so `free < travel` already vetoes the weave -- but
+  not through this key.
+- **Two migrations in `Core.lua` are unreachable.** `dbVersion < 19` and
+  `dbVersion < 18` sit *after* the `dbVersion < 33` block, which sets the
+  version to 33 unconditionally, so both are dead code: an old profile never
+  gets `ammo.sound = false` or the 100 -> 200 ammo threshold move. Reordering
+  them would silently rewrite settings on existing profiles -- precisely the
+  "settings reset when I update" behaviour 0.9.53 removed -- so this is left
+  alone pending a decision, and recorded here instead.
+- Stale code comments corrected in passing (comments only, no behaviour):
+  `Range.lua` claimed the marks are drawn procedurally "with nothing to ship in
+  Media/" and quoted the 10-100% brightness range; `AmmoWarn.lua` said the voice
+  repeats "at most once per 30 s" where the code uses 45 s / 60 s; `Core.lua`
+  documented the force-plate CVar option removed in 0.9.1 as if it still
+  existed; `ShotTimer.lua` said the weave model "refuses while hasted";
+  `tools/build_mark_art.py` called its TGA output the shipped format and its
+  `MAP` still listed `mark-far-hollow` (never shipped) while omitting the three
+  classics; `AmmoBuy.lua` said quiver capacity is "slots x 200" in the comment
+  directly above the note explaining why 200 is deliberately not hardcoded.
+
 ## [0.9.67] - 2026-09-05
 
 ### Fixed

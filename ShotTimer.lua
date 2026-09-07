@@ -299,8 +299,11 @@ end
 --
 -- Deliberately conservative on two counts. It requires the melee weapon to be
 -- READY -- weaving into a swing that is still on cooldown spends the trip and
--- lands nothing -- and it refuses while hasted, because every guide is emphatic
--- that a hasted cycle is too short to weave and doing so loses damage.
+-- lands nothing -- and it compares the trip against the free window computed
+-- from the CURRENT (haste-adjusted) weapon speed, so a haste proc shrinks the
+-- window and vetoes the weave by itself. There is no separate haste test (and
+-- `db.shottimer.noHaste` is not read anywhere); every guide's "never weave
+-- while hasted" falls out of the arithmetic instead.
 -- ---------------------------------------------------------------------------
 -- Special-shot cooldowns
 --

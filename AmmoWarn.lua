@@ -8,7 +8,9 @@
  Audible half (user: DISTINCT and RARE): short bundled voice clips speak the
  situation -- "Low arrows!"/"Low ammo!" when the count gets WORSE (first
  entry or tier escalation), "No arrows!"/"No ammo!" when the slot is empty,
- at most once per 30 s, matching the equipped projectile. VOICE ONLY: no
+ at most once per 60 s while low and 45 s when empty (both divided by the
+ Warn frequency option; 45 s is the floor for ANY voice), matching the
+ equipped projectile. VOICE ONLY: no
  game sound is ever played (user), and it is OFF BY DEFAULT. Periodic
  re-warns are visual only. No TTS API on the client, so the clips ship in
  Media\ as .ogg (the engine's mp3 decoder cut words off).

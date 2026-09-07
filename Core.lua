@@ -6,7 +6,7 @@
 
 local ADDON_NAME, HK = ...
 
-HK.version = "0.9.67"
+HK.version = "0.9.68"
 
 -- ---------------------------------------------------------------------------
 -- Defaults (schema). This is the source of truth for the options window and
@@ -196,11 +196,14 @@ HK.defaults = {
     anchor      = "auto",  -- auto | plate (world only) | petframe (always UI)
     plateStyle  = true,    -- nameplate-style name + HP bar under the icon when
                            -- we're NOT anchored to a real pet plate
-    -- Opt-in: turn on the minimum nameplate CVars so the client publishes a pet
-    -- plate and the marker can anchor over the pet's head with the player's own
-    -- nameplate settings left alone. Previous values are stored here and restored
-    -- on disable/logout, so nothing is written to the config permanently.
-    plateCVars  = {},      -- leftover CVar values older builds changed; restored
+    -- Leftover nameplate CVar values written by builds older than 0.9.1, which
+    -- shipped an opt-in "Force pet name plate" ladder. That option is GONE (it
+    -- could not deliver a pet plate on the clients that needed it, and it held
+    -- the player's own nameplate settings hostage), but anything an old build
+    -- wrote is still restored on load and on logout, so upgrading puts your
+    -- CVars back. Nothing writes to this table any more; `/htk mend` marks any
+    -- entry it finds with a `*`.
+    plateCVars  = {},
   },
 }
 HK.DBNAME = "HunterKitDB"

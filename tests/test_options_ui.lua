@@ -766,6 +766,10 @@ check("...and is faded to show it is in edit mode",
 
 pcall(HK.Positions.ToggleLock)          -- relock
 
+-- Report this file's tally so tests/test_docs.lua can check the README's
+-- advertised check counts against what the suite really runs.
+HKTest.report("test_options_ui.lua", passes, #failures)
+
 say(string.format("\n%d passed, %d failed", passes, #failures))
 if #failures > 0 then
   for _, f in ipairs(failures) do say("  - " .. f) end
