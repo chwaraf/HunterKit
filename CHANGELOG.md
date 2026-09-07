@@ -3,6 +3,15 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.65] - 2026-09-05
+
+### Changed
+- **Reverted the two-mob weave macro to its 0.9.63 form** (Raptor Strike in,
+  no `/stopmacro` bail-out), at the user's request: it does the one job it is
+  for -- weaving without changing targets -- and the death cases are handled by
+  swapping keybinds rather than by the macro. Its description now states plainly
+  that when a mob dies you end up with no target rather than a wrong one.
+
 ## [0.9.64] - 2026-09-05
 
 ### Changed
