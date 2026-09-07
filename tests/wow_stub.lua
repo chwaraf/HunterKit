@@ -339,7 +339,13 @@ function PetHasActionBar() return true end
 -- Per-unit melee proximity. HKTest.state.inMelee maps a unit token to true when
 -- that unit is standing next to the player; `targetTooClose` remains as the
 -- shorthand for "target", which older tests use.
+-- distIndex matters: 2 = Trade (11.11 yd), 4 = Follow (~28 yd). Tests that care
+-- about the difference set HKTest.state.interact = { [2] = false, [4] = true },
+-- which is how the deadzone/hitbox mismatch is modelled. Everything else keeps
+-- using the simpler flags.
 function CheckInteractDistance(unit, dist)
+  local per = HKTest.state.interact
+  if per and per[dist] ~= nil then return per[dist] and true or false end
   local m = HKTest.state.inMelee or {}
   if m[unit] ~= nil then return m[unit] and true or false end
   if unit == "target" then return HKTest.state.targetTooClose and true or false end

@@ -3,6 +3,23 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.67] - 2026-09-05
+
+### Fixed
+- **The sniper mark flashed OUT OF RANGE a few yards inside the deadzone.**
+  When Auto Shot cannot fire, the mark has to decide between "too close" and
+  "too far", and it asked a single 11.11 yd interaction probe. But the two APIs
+  do not measure the same thing: `CheckInteractDistance` is centre-to-centre
+  while `IsSpellInRange` measures to the target's hitbox edge. On a large mob
+  the hitbox radius pushes those boundaries apart, so there is a sliver where
+  you are still inside the 8 yd shooting deadzone yet already past 11.11 yd of
+  centre distance -- both probes read false and the code fell through to "far
+  away", showing the grey mark while you were practically on top of the mob.
+  A second, wider ~28 yd probe now closes that gap: if Auto Shot will not fire
+  but you are within 28 yd, you cannot possibly be too far (that needs ~34 yd),
+  so the only explanation is too close. This works at every hitbox size without
+  inventing a distance the client will not give us.
+
 ## [0.9.66] - 2026-09-05
 
 ### Changed

@@ -112,6 +112,54 @@ HK.Range.RescanSettings()
 local wide = HK.Range.VisibleShapes()
 check("a resized mark still draws", wide > 0, tostring(wide))
 
+-- ---------------------------------------------------------------------------
+-- THE DEADZONE MUST NOT READ AS "OUT OF RANGE"
+--
+-- Regression: stepping a few yards into the deadzone showed the grey OUT OF
+-- RANGE mark. The two probes do not measure the same thing --
+-- CheckInteractDistance is CENTRE to centre, IsSpellInRange goes to the target's
+-- HITBOX EDGE -- so on a large mob you can be past 11.11 yd of centre distance
+-- while still inside the 8 yd shooting deadzone. Both probes read false and the
+-- code fell through to "far away".
+--
+-- The ~28 yd Follow probe closes it: if Auto Shot will not fire but you are
+-- within 28 yd, you cannot be too far (that needs ~34 yd+), so you are close.
+-- ---------------------------------------------------------------------------
+HK.db.range.markDead = "burst"
+HK.db.range.markFar = "ban"
+HK.Range.RescanSettings()
+
+-- Big mob: past the 11 yd trade radius, still inside the shooting deadzone.
+HKTest.state.targetSpellInRange = 0
+HKTest.state.interact = { [2] = false, [4] = true }
+HK.Range.Update()
+HK.Range.Update()          -- entering FAR needs two agreeing ticks; give it the chance
+check("just inside the deadzone on a big mob reads TOO CLOSE, not OUT OF RANGE",
+  HK.Range.CurrentStyle() == "burst", tostring(HK.Range.CurrentStyle()))
+
+-- Small mob: inside both probes. Still too close.
+HKTest.state.interact = { [2] = true, [4] = true }
+HK.Range.Update()
+check("well inside the deadzone still reads TOO CLOSE",
+  HK.Range.CurrentStyle() == "burst", tostring(HK.Range.CurrentStyle()))
+
+-- Genuinely far: beyond every probe.
+HKTest.state.interact = { [2] = false, [4] = false }
+HK.Range.Update()
+HK.Range.Update()          -- debounce
+check("genuinely far away still reads OUT OF RANGE",
+  HK.Range.CurrentStyle() == "ban", tostring(HK.Range.CurrentStyle()))
+
+-- And being able to shoot always wins, whatever the interaction probes say.
+HKTest.state.targetSpellInRange = 1
+HKTest.state.interact = { [2] = false, [4] = false }
+HK.Range.Update()
+check("if Auto Shot can fire, it is IN RANGE regardless of the probes",
+  HK.Range.CurrentStyle() ~= "ban" and HK.Range.CurrentStyle() ~= "burst",
+  tostring(HK.Range.CurrentStyle()))
+
+HKTest.state.interact = nil
+
 -- Regression: a one-tick OUT OF RANGE misread must never flash on screen while
 -- crossing between TOO CLOSE and IN RANGE (the probes can lag the server's
 -- position for a single tick).

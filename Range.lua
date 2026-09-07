@@ -158,9 +158,29 @@ local function ComputeState()
   if ranged == 1 then
     return "OK"
   end
+
+  -- Auto Shot is unavailable. That means EITHER too close (inside the 8 yd
+  -- deadzone) or too far (past ~34 yd) -- and the two need telling apart.
+  --
+  -- The 11.11 yd "Trade" probe answers most of it, but the two APIs do not
+  -- measure the same thing: CheckInteractDistance is CENTRE to centre, while
+  -- IsSpellInRange goes to the target's HITBOX EDGE. On a big mob the hitbox
+  -- radius pushes those boundaries apart, opening a sliver where you are still
+  -- inside the deadzone yet already past 11.11 yd of centre distance. Both
+  -- probes read false there and the old code fell through to "far away" --
+  -- which is why stepping a few yards into the deadzone flashed OUT OF RANGE.
   if Interact("target", 2) then
     return "DEAD"
   end
+
+  -- Widen the net with the ~28 yd "Follow" probe. If you are within 28 yd and
+  -- Auto Shot still will not fire, you cannot possibly be too FAR (that needs
+  -- ~34 yd+), so the only remaining explanation is too close. This closes the
+  -- gap on every hitbox size without inventing a distance we cannot measure.
+  if Interact("target", 4) then
+    return "DEAD"
+  end
+
   return "FAR"
 end
 
