@@ -491,28 +491,47 @@ end
 function FeedPet:PickFood()
   local petLevel = UnitLevel("pet") or UnitLevel("player")
   local best
-  local totals = {}   -- per-item stack totals, for the icon's count readout
+  local totals = {}   -- how much of EVERY itemID the bags hold
   for bag = 0, 4 do
     for slot = 1, HK.GetBagNumSlots(bag) do
       local itemID = HK.GetBagItemID(bag, slot)
-      if itemID and not self:IsExcluded(itemID) and self:MatchesDiet(bag, slot, itemID) then
-        local count = HK.GetBagItemCount(bag, slot)
-        local name, _, _, iLevel, _, _, _, _, _, icon = HK.GetItemInfo(itemID)
-        if name and iLevel then
-          local tier = TierFor(petLevel, iLevel)
-          local ft = self:FoodType(itemID)
-          count = count or 1
-          totals[itemID] = (totals[itemID] or 0) + count
-          if not best or tier > best.tier
-             or (tier == best.tier and count < best.count) then
-            best = { bag = bag, slot = slot, itemID = itemID, name = name,
-                     icon = icon, tier = tier, count = count, foodType = ft }
+      if itemID then
+        -- Count the inventory FIRST, and unconditionally.
+        --
+        -- How much of an item you own is an inventory fact. Whether this addon
+        -- is willing to feed it is a *different* question, and it depends on
+        -- three things that can each fail transiently: the pet's diet list,
+        -- the exclusion list, and GetItemInfo (nil for any item the client has
+        -- not cached yet -- routine right after a login or a zone).
+        --
+        -- The count used to be accumulated INSIDE those checks, so whenever
+        -- they rejected an item the totals table had no entry for it and the
+        -- button fell back to the single stack that happened to get picked:
+        -- "1" when you were carrying a stack of 1 and a stack of 20 of the same
+        -- food. The pin path made it worse -- FindBestStackByID skips the diet
+        -- check entirely, so a pinned food the curated DB does not list hit
+        -- this on every single refresh.
+        local count = HK.GetBagItemCount(bag, slot) or 1
+        totals[itemID] = (totals[itemID] or 0) + count
+
+        if not self:IsExcluded(itemID) and self:MatchesDiet(bag, slot, itemID) then
+          local name, _, _, iLevel, _, _, _, _, _, icon = HK.GetItemInfo(itemID)
+          if name and iLevel then
+            local tier = TierFor(petLevel, iLevel)
+            local ft = self:FoodType(itemID)
+            if not best or tier > best.tier
+               or (tier == best.tier and count < best.count) then
+              best = { bag = bag, slot = slot, itemID = itemID, name = name,
+                       icon = icon, tier = tier, count = count, foodType = ft }
+            end
           end
         end
       end
     end
   end
-  self.foodTotals = totals   -- every stack per food, for the icon count
+  -- Every stack of every item, keyed by itemID. The button's number reads this
+  -- and nothing else, so it is right no matter which path picked the food.
+  self.foodTotals = totals
   -- pinned food override
   for _, pin in ipairs(db.preferredFoods) do
     local hit = self:FindBestStackByID(pin.id, petLevel)
@@ -525,6 +544,7 @@ end
 -- (all its stacks, not just the one the click will feed).
 function FeedPet.SetCount(n)
   if not countText then return end
+  FeedPet.shownCount = n
   countText:SetText(tostring(n))
   if n > 0 then
     countText:SetTextColor(1, 0.82, 0, 1)
@@ -532,6 +552,12 @@ function FeedPet.SetCount(n)
     countText:SetTextColor(1, 0.2, 0.2, 1)
   end
 end
+
+-- The number the button is displaying right now. Exposed so the tests (and
+-- /htk feed) can assert on what the PLAYER sees rather than on the internals
+-- that produced it -- the count has been wrong twice now, and both times the
+-- internals looked plausible.
+function FeedPet.ShownCount() return FeedPet.shownCount end
 
 -- ---------------------------------------------------------------------------
 -- Macro + visuals
@@ -558,7 +584,12 @@ function FeedPet:RefreshMacro()
     local icon = (db.useSpellIcon and FeedPetSpellTexture()) or food.icon or QUESTION_ICON
     iconTex:SetTexture(icon)
     iconTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-    FeedPet.SetCount((self.foodTotals and self.foodTotals[food.itemID]) or food.count or 0)
+    -- The number is the INVENTORY total for the picked food (every stack of it
+    -- in your bags), never the size of the one stack the click will feed. The
+    -- `food.count` fallback is only reachable if the food came from somewhere
+    -- the bag scan never saw, which should not happen.
+    local total = (self.foodTotals and self.foodTotals[food.itemID]) or food.count or 0
+    FeedPet.SetCount(total)
   else
     -- no food in bags: fall back to the game's own Feed Pet (picks a food itself)
     button:ClearAttribute("target-item")

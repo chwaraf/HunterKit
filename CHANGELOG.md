@@ -3,6 +3,59 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.69] - 2026-09-07
+
+### Fixed
+- **The feed button could show `1` while you were carrying far more of that exact
+  food.** Reported as "shows 1 food even if I have more (it's even the same
+  kind)", and that detail is what pinned it down: the number was the size of ONE
+  stack, not the total.
+
+  The count was being accumulated *inside* the food pick, so it inherited three
+  conditions that have nothing to do with how much food you own:
+  - `MatchesDiet` -- a food the curated `FoodDB.lua` does not list falls back to
+    scanning its tooltip, and when the client has not cached that item yet the
+    tooltip comes back empty, so the stack was skipped and never counted;
+  - `IsExcluded`;
+  - `GetItemInfo` returning `nil` for an uncached item, which skipped the stack
+    entirely -- routine for a few seconds after a login or a zone.
+
+  The pin path made it deterministic rather than occasional: `FindBestStackByID`
+  (used for a right-click **pinned** food) never runs the diet check at all, so
+  `foodTotals` had no entry for a pinned food the DB does not list and the button
+  fell through to `food.count` -- the *smallest* single stack. Carrying a stack of
+  1 plus a stack of 20 showed `1`, on every refresh.
+
+  `PickFood` now counts the inventory **first and unconditionally** -- one pass,
+  one count read per slot, `totals[itemID]` for every item in bags 0-4 -- and the
+  diet/exclusion/item-cache checks decide only which stack to *feed*. The count
+  is an inventory fact; the pick is a policy question. They no longer share a
+  code path.
+
+  0.9.13 fixed the other way this number broke (reading `itemCount` instead of
+  the live struct's `stackCount`). This is the second, unrelated cause, and the
+  README's "count of that food (**all its stacks**)" was accurate for the
+  unpinned curated-food case only until now.
+
+### Added
+- **`tests/test_feedpet.lua` (15 checks)** -- the button's number is tested as
+  the player sees it: a curated-DB food across two stacks and across three, a
+  single stack, a **pinned** food the DB does not list and whose tooltip the
+  client cannot describe (the exact reported case, which fails at `1` against
+  0.9.68 and passes at `21` here), and back to `0` on empty bags. The stub
+  defines no `GetPetFoodTypes`, which would have silently let every item through
+  the diet filter, so the test installs a real one first.
+- `FeedPet.ShownCount()` -- the number currently on the button, exposed so the
+  tests and `/htk feed` assert on what the *player* sees rather than on the
+  internals that produced it. This number has now been wrong twice, and both
+  times the internals looked plausible.
+
+### Tests
+- 119 + 90 + 133 + 125 + 147 + 193 + 40 + 15 + 119 = **981 green** in nine files.
+  The docs guard added in 0.9.68 caught the new test file immediately
+  ("README documents test_feedpet.lua -- FAIL", "8/9"), which is the first time
+  it has had to.
+
 ## [0.9.68] - 2026-09-07
 
 ### Changed

@@ -23,6 +23,7 @@ TESTS = [
     os.path.join(HERE, "test_threatwatch.lua"),
     os.path.join(HERE, "test_shottimer.lua"),
     os.path.join(HERE, "test_macros.lua"),
+    os.path.join(HERE, "test_feedpet.lua"),
     os.path.join(HERE, "test_docs.lua"),
 ]
 
