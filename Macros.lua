@@ -71,7 +71,7 @@ local LIBRARY = {
   },
   {
     title = "Two-mob weave: melee here, shoot the pet's mob",
-    body = "#showtooltip\n/cleartarget [dead]\n/cast [harm,nodead] Raptor Strike\n"
+    body = "#showtooltip\n/cleartarget [dead]\n#/cast [harm,nodead] Raptor Strike\n"
         .. "/startattack [harm,nodead]\n/stopattack [@pettarget,harm,nodead]\n"
         .. "/target [@pettarget,harm,nodead]\n/cast !Auto Shot\n"
         .. "/targetlasttarget [@pettarget,harm,nodead]\n"
@@ -84,7 +84,9 @@ local LIBRARY = {
         .. "guarded against corpses: it drops a dead target rather than standing "
         .. "there swinging at it, and only flicks back if the return trip is to "
         .. "something alive. When one mob dies you end up with no target rather "
-        .. "than a wrong one -- pick the next mob yourself.",
+        .. "than a wrong one -- pick the next mob yourself. The Raptor Strike "
+        .. "line is commented out with #; delete that # to fire it on cooldown "
+        .. "as well, at the cost of some mana.",
   },
   {
     title = "One-button pet keeper",

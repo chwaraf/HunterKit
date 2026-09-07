@@ -3,6 +3,13 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.66] - 2026-09-05
+
+### Changed
+- The two-mob weave macro's Raptor Strike line is now commented out with `#`,
+  so the macro is plain auto-attack weaving by default. Deleting the `#` turns
+  it back on -- kept in the text rather than removed so the option is visible.
+
 ## [0.9.65] - 2026-09-05
 
 ### Changed
