@@ -853,6 +853,21 @@ function BuildWindow()
     function() return db.shottimer.specials end,
     function(v) db.shottimer.specials = v; RefreshShotTimer() end,
     "Hides the WEAVE cue while Aimed or Multi-Shot is ready, since either is worth more than a Raptor Strike. Turn off if you weave around your specials rather than only between them.")
+  y = y - CHK
+  MakeCheckbox(content, y, "Show the two-mob weave state strip",
+    function() return db.shottimer.rangeStrip end,
+    function(v) db.shottimer.rangeStrip = v; RefreshShotTimer() end,
+    "One line under the bar saying which situation you are in. |cff4dff73PRESS 2-MOB|r = your pet is holding a second mob and your melee swing is up: press the two-mob macro now. |cff66ccff2-MOB - SWING 1.2s|r = the setup is live, waiting on the swing. |cffe6b333MELEE ONLY|r = something is in melee but there is no second mob to shoot. |cff909098RANGE|r = nothing in melee. |cffff4d4dOUT OF RANGE|r = your target is past Auto Shot range. This is the indicator for standing in melee of one mob while your pet holds another -- the setup the two-mob macro exists for, which the bar used to say nothing about.")
+  y = y - CHK
+  MakeCheckbox(content, y, "Show the two-mob press icon",
+    function() return db.shottimer.twoMobIcon end,
+    function(v) db.shottimer.twoMobIcon = v; RefreshShotTimer() end,
+    "A separate icon that lights up bright green with NOW on it at the exact moment pressing the two-mob macro is correct: your target is in melee, your pet has a DIFFERENT live target, your melee swing is up, and Auto Shot is not in its 0.5s lockout. Dimmed with a countdown while the setup is live but the swing is still coming, and nearly invisible otherwise -- so a flash means press. Drag it into your peripheral vision with /htk unlock; it parks beside the bar until you do.")
+  y = y - CHK
+  MakeCheckbox(content, y, "Show a 'what to press next' row",
+    function() return db.shottimer.recoRow end,
+    function(v) db.shottimer.recoRow = v; RefreshShotTimer() end,
+    "Instead of only showing clocks, says which button is worth pressing: the two-mob macro first, then Aimed Shot, Multi-Shot, Raptor Strike when you are in melee, or weave/hold. The approach Fluffy Hunter Bars takes -- worth having while you are learning the rotation, easy to switch off once it is automatic.")
   y = y - CHK - 4
   y = AddShotBarLegend(content, y)
   MakeSlider(content, y, "Bar width", 120, 400, 10,
@@ -860,10 +875,10 @@ function BuildWindow()
     function(v) db.shottimer.width = v; RefreshShotTimer() end,
     "Width of the shot bar in pixels. Unlock the frames (/htk unlock) to drag it.", true)
   y = y - CHK
-  MakeSlider(content, y, "Bar height", 8, 40, 2,
-    function() return db.shottimer.height or 18 end,
+  MakeSlider(content, y, "Bar height", 8, 60, 3,
+    function() return db.shottimer.height or 27 end,
     function(v) db.shottimer.height = v; RefreshShotTimer() end,
-    "Height of the shot bar in pixels.", true)
+    "Height of the shot bar in pixels. The melee and state strips scale with it, so taller makes the whole stack easier to read mid-fight. Default 27, was 18 before 0.9.71.", true)
   y = y - CHK
 
   -- Sound

@@ -6,7 +6,7 @@
 
 local ADDON_NAME, HK = ...
 
-HK.version = "0.9.70"
+HK.version = "0.9.71"
 
 -- ---------------------------------------------------------------------------
 -- Defaults (schema). This is the source of truth for the options window and
@@ -14,7 +14,7 @@ HK.version = "0.9.70"
 -- ---------------------------------------------------------------------------
 HK.defaults = {
   enabled   = true,
-  dbVersion = 33,
+  dbVersion = 34,
   firstRun  = true,
 
   ui = {
@@ -93,7 +93,11 @@ HK.defaults = {
   shottimer = {
     enabled   = false,   -- opt-in: a persistent combat bar is a big UI change
     width     = 220,
-    height    = 18,
+    -- 1.5x the old 18px default (0.9.71): at 18 the two stacked bars plus the
+    -- state strip were hard to read mid-fight, which is the whole point of
+    -- them. Existing profiles keep whatever they had unless they were still on
+    -- the untouched default -- see the dbVersion 34 migration.
+    height    = 27,
     -- Default position: BELOW the player/target frames and clear of HunterKit's
     -- own icons. The alert stack sits above centre (threat +120, pulse +150),
     -- so anything positive collides with it; the unit frames and their
@@ -111,6 +115,21 @@ HK.defaults = {
     showDelay = true,    -- the measured "+0.34s" clip readout
     weave     = true,    -- melee weave marker + melee swing strip
     showSpecials = false, -- Aimed/Multi cooldown pips: opt-in, extra clutter
+    -- The two-mob weave: one mob standing in your melee, a second one held at
+    -- range by your pet. This is the setup the "Two-mob weave" macro exists
+    -- for, and until 0.9.71 the bar gave you nothing for it -- the only weave
+    -- marker it drew was the travel-weave departure point (run out to melee
+    -- and back), which is opt-in and rarely applies while levelling.
+    --
+    -- The strip is ON by default because it is the actual indicator people
+    -- were asking for, and it is a single text line under the bar rather than
+    -- a new frame. The icon is opt-in because it IS a new frame on screen.
+    rangeStrip  = true,   -- 4-state strip: 2-MOB GO / 2-MOB / MELEE / RANGE / OOR
+    twoMobIcon  = false,  -- separate draggable icon: lights when to press it
+    recoRow     = false,  -- "what to press next" row (Fluffy Hunter Bars style)
+    iconOffsetX = 0,
+    iconOffsetY = 0,
+    iconMoved   = false,
     specials  = true,    -- do not suggest a weave while a special is ready
     -- "Normal"/travel weaving: running out to melee and back between shots.
     -- A real Era technique (Bouk's guide calls it normal weaving, ~2.5s round
@@ -890,6 +909,28 @@ local function LoadDB()
   -- whatever it has; "/htk reset" is there for anyone who wants the new layout.
   -- Only migrate saved data when it would otherwise be broken or unreadable --
   -- never merely because a default changed.
+  -- 0.9.71: the shot bar's default height went 18 -> 27 (x1.5) so the two
+  -- stacked bars and the state strip are readable mid-fight.
+  --
+  -- This sits ABOVE the < 33 block on purpose. The blocks below are ordered
+  -- wrong -- that block sets dbVersion = 33 unconditionally, so every later
+  -- `< 19` / `< 18` check is dead code. Anything that must actually run has to
+  -- be placed first. Reordering the old ones was deliberately NOT done: it
+  -- would resurrect two dormant migrations and silently rewrite settings for
+  -- users who have been on 0.9.15..0.9.32 this whole time.
+  --
+  -- Only the UNTOUCHED default is moved, following the precedent set by the
+  -- ammo threshold migration below. A player who resized the bar deliberately
+  -- keeps their height; the policy comment further down ("never migrate merely
+  -- because a default changed") is about not yanking frames people positioned
+  -- themselves, and this cannot do that.
+  if db.dbVersion < 34 then
+    if db.shottimer and db.shottimer.height == 18 then
+      db.shottimer.height = 27
+    end
+    db.dbVersion = 34
+  end
+
   if db.dbVersion < 33 then
     db.dbVersion = 33
   end

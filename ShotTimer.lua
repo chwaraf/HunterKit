@@ -125,6 +125,17 @@ local COL_PIP_DOWN = { 0.35, 0.35, 0.38, 0.90 }   -- special on cooldown
 local COL_PIP_READY= { 0.30, 0.90, 0.30, 0.95 }   -- special ready to spend
 local COL_WEAVE    = { 0.40, 0.75, 1.00, 0.95 }   -- weave marker, still ahead
 
+-- The state strip (0.9.71). One colour per RangeState, so the strip and the
+-- icon speak the same language as the bars: green = act now, blue = set up and
+-- waiting, amber = partial, grey = nothing to do, red = something is wrong.
+local COL_TWOGO    = { 0.30, 1.00, 0.45, 1.00 }   -- press the two-mob macro NOW
+local COL_TWO      = { 0.40, 0.75, 1.00, 0.95 }   -- set up, waiting on a cycle
+local COL_INMELEE  = { 0.90, 0.70, 0.20, 0.90 }   -- melee mob, no second target
+local COL_SHOOTING = { 0.45, 0.45, 0.50, 0.85 }   -- nothing in melee
+local COL_OOR      = { 1.00, 0.30, 0.10, 0.95 }   -- target out of Auto Shot range
+-- The latency slice: the measured, honest tail of the lockout. See Redraw.
+local COL_LATENCY  = { 1.00, 0.85, 0.20, 0.70 }
+
 -- Last-drawn cache for the per-frame redraw. OnUpdate runs on EVERY rendered
 -- frame (60-150+ Hz), but almost nothing it draws changes that fast: the label
 -- shows one decimal so it changes ~10x/sec, and the colours change a handful of
@@ -135,6 +146,10 @@ local COL_WEAVE    = { 0.40, 0.75, 1.00, 0.95 }   -- weave marker, still ahead
 local lastFillW, lastMeleeW = -1, -1
 local lastFillCol, lastMeleeCol
 local lastLabel, lastDelayStr
+-- 0.9.71 widgets are cached the same way: the strip changes state a few times
+-- per cycle and the icon a couple of times a second, not every frame.
+local lastStripCol, lastStripTxt, lastLatW = nil, nil, -1
+local lastRecoTxt, lastIconCol, lastIconTxt, lastIconA
 
 local function Paint(tex, c)
   if tex and c then tex:SetVertexColor(c[1], c[2], c[3], c[4]) end
@@ -190,6 +205,14 @@ local shotCount, clipCount = 0, 0
 local meleeSpeed   = 2.4
 local meleeSwungAt = nil
 local weaveMark, meleeFill, meleeTrack
+
+-- 0.9.71 widgets. `rangeStrip` is the state line under the melee strip; `reco`
+-- is the "what to press next" row; `latencySlice` is the measured tail of the
+-- lockout. The two-mob icon is its OWN frame, because it has to be draggable
+-- independently of the bar -- the whole point is putting it somewhere in your
+-- peripheral vision, which is rarely next to a combat bar.
+local rangeStrip, rangeStripText, reco, latencySlice
+local iconFrame, iconTex, iconText, iconCd
 
 local DELAY_HOLD  = 2.5      -- seconds the "+0.34s" readout lingers
 local CLIP_EPSILON = 0.08    -- below this, a delay is latency noise, not a clip
@@ -457,6 +480,111 @@ function ShotTimer.InMeleeOfTarget()
   return false
 end
 
+-- ---------------------------------------------------------------------------
+-- THE TWO-MOB WEAVE
+--
+-- The setup: your pet holds mob B at range, and you stand in MELEE of mob A,
+-- swinging at it between shots. That is worth real damage -- a melee swing and
+-- an Auto Shot on two different mobs, off two independent cycles -- and it is
+-- the reason the "Two-mob weave" macro exists in Macros.lua: Auto Shot cannot
+-- be aimed with [@unit], it always shoots your actual target, so the macro
+-- flicks your target to the pet's mob, restarts Auto Shot, and flicks back.
+--
+-- Until now the bar gave you nothing for this. Its only weave marker was the
+-- TRAVEL weave departure point -- run out to melee and back -- which is opt-in
+-- and, as the author put it, something you "never use levelling". So the
+-- situation the addon had a macro for was the one situation it would not
+-- show. This model is that indicator.
+--
+-- What makes a press CORRECT, derived from what the macro actually does:
+--   1. `target` is a live attackable mob AND within melee, or /startattack has
+--      nothing to hit and the press achieves nothing.
+--   2. `pettarget` is a live attackable mob, or every [@pettarget] line in the
+--      macro is skipped and it degrades to a plain melee swing.
+--   3. it is a DIFFERENT mob -- if the pet is on your own target the flick is a
+--      no-op and you are just standing in melee.
+--   4. your melee swing is up, else the press only restarts /startattack.
+--   5. Auto Shot is NOT in its 0.5s lockout, or the /cast !Auto Shot inside
+--      the flick is the very thing that clips.
+--
+-- All five are read live from the client. Nothing here models or guesses.
+-- ---------------------------------------------------------------------------
+local RAPTOR_STRIKE = 2973      -- rank 1; ranks share a cooldown
+
+-- Live and attackable, without the melee-range part of UnitIsMeleeable.
+local function UnitAttackable(unit)
+  if not UnitExists or not Call(UnitExists, unit) then return false end
+  if UnitCanAttack and not Call(UnitCanAttack, "player", unit) then return false end
+  if UnitIsDead and Call(UnitIsDead, unit) then return false end
+  return true
+end
+
+-- Same unit? Used to tell "pet is on a second mob" from "pet is on my mob".
+-- A false negative here (two different mobs read as the same) would suppress a
+-- valid cue; a false positive would show one you cannot use. GUID is exact, so
+-- prefer it and fall back to comparing names only if the API is absent.
+local function SameUnit(a, b)
+  if not UnitExists or not Call(UnitExists, a) or not Call(UnitExists, b) then
+    return false
+  end
+  if UnitGUID then
+    local ga, gb = Call(UnitGUID, a), Call(UnitGUID, b)
+    if ga and gb then return ga == gb end
+  end
+  if UnitIsUnit then
+    local v = Call(UnitIsUnit, a, b)
+    if v ~= nil then return v == true or v == 1 end
+  end
+  local na, nb = Call(UnitName, a), Call(UnitName, b)
+  return na ~= nil and na == nb
+end
+
+-- The full two-mob picture, as a table so every consumer -- strip, icon, reco
+-- row, tests -- reasons from ONE evaluation instead of four drifting ones.
+function ShotTimer.TwoMob(now)
+  now = tonumber(now) or (tonumber(Call(GetTime)) or 0)
+  local s = {}
+  s.targetLive = UnitAttackable("target")
+  s.petLive    = UnitAttackable("pettarget")
+  -- The macro acts on `target`, so that specific unit must be in melee -- not
+  -- merely "some mob is", which is what InMeleeOfTarget() answers.
+  s.inMelee    = s.targetLive and (UnitIsMeleeable("target") == true)
+  s.distinct   = s.targetLive and s.petLive and (not SameUnit("target", "pettarget"))
+  s.swingIn    = ShotTimer.MeleeReady(now)      -- nil = no swing observed yet
+  s.swingUp    = (s.swingIn ~= nil) and (s.swingIn <= 0) or false
+  s.locked     = ShotTimer.IsLocked(now) == true
+  s.free       = ShotTimer.SafeWindow(now)
+  -- Raptor is commented out in the shipped macro, so it never gates the cue;
+  -- it is reported so the reco row can suggest it when the player uncomments.
+  s.raptorIn   = SpellReadyIn(RAPTOR_STRIKE, now)
+
+  -- Both mobs, and they are different mobs. This is the SETUP being available
+  -- at all, independent of any timing.
+  s.setup = (s.inMelee == true) and (s.distinct == true)
+  -- And the moment to actually press it.
+  s.press = s.setup and s.swingUp and (not s.locked)
+  return s
+end
+
+-- One word for the strip: the state you are in, so it reads at a glance
+-- instead of you having to work it out from two bars and a marker.
+--   twogo - two mobs set up AND the press is correct right now
+--   two   - two mobs set up, waiting on the melee swing or the shot window
+--   melee - something is in melee of you but there is no second mob to shoot
+--   oor   - your target is out of Auto Shot range
+--   range - nothing in melee; you are simply shooting
+function ShotTimer.RangeState(now)
+  local s = ShotTimer.TwoMob(now)
+  if s.setup then return (s.press and "twogo" or "two"), s end
+  if ShotTimer.InMeleeOfTarget() then return "melee", s end
+  -- Only call the range API when there is a target to ask about.
+  if s.targetLive and IsSpellInRange then
+    local v = Call(IsSpellInRange, "Auto Shot", "target")
+    if v == 0 or v == false then return "oor", s end
+  end
+  return "range", s
+end
+
 function ShotTimer.WeaveWindow(now)
   now = tonumber(now) or (tonumber(Call(GetTime)) or 0)
   if not db or db.weave == false then return nil end
@@ -509,6 +637,19 @@ end
 -- ---------------------------------------------------------------------------
 -- Widgets
 -- ---------------------------------------------------------------------------
+local function ApplyIconPosition()
+  if not iconFrame then return end
+  iconFrame:ClearAllPoints()
+  if db and db.iconMoved == true then
+    iconFrame:SetPoint("CENTER", UIParent, "CENTER",
+      tonumber(db.iconOffsetX) or 0, tonumber(db.iconOffsetY) or 0)
+  elseif frame then
+    iconFrame:SetPoint("LEFT", frame, "RIGHT", 6, 0)
+  else
+    iconFrame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+  end
+end
+
 local function ApplySize()
   if not frame then return end
   local w = tonumber(db and db.width) or 220
@@ -538,12 +679,32 @@ local function ApplySize()
     meleeFill:SetSize(1, mh)
   end
 
+  -- Rows below the shot bar, top to bottom: melee strip, state strip, special
+  -- pips, reco row. Each pushes the next one down, so adding or hiding a row
+  -- cannot leave a gap or an overlap.
+  local rowTop = -(mh + 4)
+
+  -- The state strip. Taller than the pips on purpose: it is the line you read
+  -- to know whether the two-mob weave is live, so it has to be legible without
+  -- squinting mid-fight.
+  local rsH = math.max(12, math.floor(h * 0.55))
+  if rangeStrip then
+    rangeStrip:ClearAllPoints()
+    rangeStrip:SetPoint("TOPLEFT", frame, "BOTTOMLEFT", 0, rowTop)
+    rangeStrip:SetSize(w, rsH)
+  end
+  if rangeStripText then
+    rangeStripText:ClearAllPoints()
+    rangeStripText:SetPoint("CENTER", rangeStrip, "CENTER", 0, 0)
+  end
+  if rangeStrip and (db and db.rangeStrip ~= false) then rowTop = rowTop - rsH - 3 end
+
   -- The two special-shot pips, on their own row under the melee strip so the
   -- shot bar, the melee swing and the specials read top-to-bottom.
   if specialRow then
     local pipH = math.max(3, math.floor(h / 3))
     local pipW = math.max(16, math.floor(w * 0.12))
-    local top = -(mh + 4)
+    local top = rowTop
     for i = 1, 2 do
       local pip = specialRow[i]
       local fs = specialRow[i .. "text"]
@@ -560,11 +721,24 @@ local function ApplySize()
     end
   end
 
+  if reco then
+    reco:ClearAllPoints()
+    reco:SetPoint("TOPLEFT", frame, "BOTTOMLEFT", 2, rowTop - 4)
+  end
+
   -- The weave marker is positioned in Redraw, not here: in static mode its
   -- place on the bar depends on the live melee swing clock, which moves every
   -- frame. Only its size is fixed.
   if weaveMark then
     weaveMark:SetSize(3, h)
+  end
+
+  -- The icon tracks the bar's height so the two always look like one kit, and
+  -- the taller default (0.9.71) gives it enough face to read the spell art.
+  if iconFrame then
+    local isz = math.max(24, h + 2)
+    iconFrame:SetSize(isz, isz)
+    ApplyIconPosition()
   end
 end
 
@@ -584,6 +758,46 @@ local function BuildSpecialPips()
     fs:SetJustifyH("LEFT")
     specialRow[i .. "text"] = fs
   end
+end
+
+-- The two-mob icon: a separate, independently draggable frame that lights when
+-- pressing the "Two-mob weave" macro is the correct move.
+--
+-- Separate on purpose. A combat bar sits where the bar wants to sit; a press
+-- cue has to go wherever YOUR eyes already are, which is almost never next to
+-- it. So it gets its own drag handle under /htk unlock, and until you move it
+-- it parks itself just right of the bar so it is at least findable.
+local function BuildTwoMobIcon()
+  if iconFrame then return end
+  iconFrame = CreateFrame("Frame", "HunterKitTwoMobIcon", UIParent)
+  iconFrame:SetFrameStrata("MEDIUM")
+  iconFrame:EnableMouse(false)
+  iconFrame:Hide()
+
+  iconTex = iconFrame:CreateTexture(nil, "ARTWORK")
+  iconTex:SetPoint("TOPLEFT", iconFrame, "TOPLEFT", 1, -1)
+  iconTex:SetPoint("BOTTOMRIGHT", iconFrame, "BOTTOMRIGHT", -1, 1)
+  -- Raptor Strike's own icon when the client can supply it: this is the melee
+  -- half of the two-mob weave, and a recognisable spell icon reads faster than
+  -- a generic sword.
+  local tex = GetSpellTexture and Call(GetSpellTexture, RAPTOR_STRIKE)
+  iconTex:SetTexture(tex or "Interface\\Icons\\Ability_MeleeDamage")
+
+  iconText = iconFrame:CreateFontString(nil, "OVERLAY")
+  iconText:SetFont(STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF", 10, "OUTLINE")
+  iconText:SetPoint("CENTER", iconFrame, "CENTER", 0, 0)
+  iconText:SetText("")
+
+  HK.CreateBorder(iconFrame)
+  ApplyIconPosition()
+
+  HK.RegisterDraggable("twomobicon", iconFrame,
+    function() ApplyIconPosition() end,
+    function(x, y) db.iconOffsetX, db.iconOffsetY, db.iconMoved = x, y, true end,
+    { -- Only take part in lock/unlock while the option is on, so an invisible
+      -- frame never shows a drag handle.
+      draggableIf = function() return db and db.twoMobIcon == true end,
+      saveFromScreen = function() HK.SaveDragged(iconFrame, db) end })
 end
 
 local function BuildBar()
@@ -648,6 +862,35 @@ local function BuildBar()
   delayText:SetPoint("BOTTOMLEFT", frame, "TOPLEFT", 2, 3)
   delayText:SetText("")
 
+  -- The lockout's measured tail. castZone is drawn from the FIXED 0.5s cast,
+  -- but the honest boundary is 0.5s plus your own latency -- which is exactly
+  -- what the "+0.34s" readout measures. Super Swing Timer calls this a latency
+  -- end-slice and it is the difference between a bar that is theoretically
+  -- right and one that matches what actually happens on your connection. Drawn
+  -- inside the red zone, extending right from its left edge by the measured
+  -- clip, so it only appears once you HAVE a measurement.
+  latencySlice = frame:CreateTexture(nil, "OVERLAY")
+  latencySlice:SetTexture("Interface\\Buttons\\WHITE8x8")
+  Paint(latencySlice, COL_LATENCY)
+
+  -- The state strip: one line that says where you are. This is the indicator
+  -- the two-mob weave never had.
+  rangeStrip = frame:CreateTexture(nil, "BACKGROUND")
+  rangeStrip:SetTexture("Interface\\Buttons\\WHITE8x8")
+  Paint(rangeStrip, COL_SHOOTING)
+  rangeStripText = frame:CreateFontString(nil, "OVERLAY")
+  rangeStripText:SetFont(STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF", 10, "OUTLINE")
+  rangeStripText:SetJustifyH("CENTER")
+  rangeStripText:SetText("")
+
+  -- "What to press next", the Fluffy Hunter Bars idea: rather than only
+  -- showing clocks, say which button is worth pressing. Opt-in, because it
+  -- restates the special pips for players who already read those.
+  reco = frame:CreateFontString(nil, "OVERLAY")
+  reco:SetFont(STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF", 11, "OUTLINE")
+  reco:SetJustifyH("LEFT")
+  reco:SetText("")
+
   HK.CreateBorder(frame)
   ApplySize()
   ShotTimer.ApplyPosition()
@@ -680,6 +923,8 @@ function ShotTimer.ApplyPosition()
   local x = tonumber(db and db.offsetX) or HK.defaults.shottimer.offsetX
   local y = tonumber(db and db.offsetY) or HK.defaults.shottimer.offsetY
   frame:SetPoint("CENTER", UIParent, "CENTER", x, y)
+  -- The icon follows the bar until the player drags it somewhere of their own.
+  ApplyIconPosition()
 end
 
 -- ---------------------------------------------------------------------------
@@ -697,6 +942,14 @@ local function HideExtras()
   if meleeFill then meleeFill:Hide() end
   if meleeTrack then meleeTrack:Hide() end
   if weaveMark then weaveMark:Hide() end
+  -- 0.9.71 widgets hide with the rest, so an idle bar leaves nothing behind.
+  if rangeStrip then rangeStrip:Hide() end
+  if rangeStripText then rangeStripText:Hide() end
+  if reco then reco:Hide() end
+  if latencySlice then latencySlice:Hide() end
+  if iconFrame then iconFrame:Hide() end
+  lastStripCol, lastStripTxt, lastLatW = nil, nil, -1
+  lastRecoTxt, lastIconCol, lastIconTxt, lastIconA = nil, nil, nil, nil
   if specialRow then
     for i = 1, 2 do
       if specialRow[i] then specialRow[i]:Hide() end
@@ -891,6 +1144,135 @@ local function Redraw(now)
       else
         ShownIf(weaveMark, false)
       end
+    end
+  end
+
+  -- ---------------------------------------------------------------------
+  -- The state strip: one legible line saying which situation you are in.
+  --
+  -- This is the indicator the two-mob weave never had. The old bar could only
+  -- ever mark the travel-weave departure point, so a hunter standing in melee
+  -- of one mob with the pet on a second one got nothing at all -- the single
+  -- most common weaving setup was the one it stayed silent about.
+  -- ---------------------------------------------------------------------
+  if rangeStrip then
+    if db.rangeStrip == false then
+      ShownIf(rangeStrip, false); ShownIf(rangeStripText, false)
+    else
+      local st, s = ShotTimer.RangeState(now)
+      local col, txt
+      if st == "twogo" then
+        col, txt = COL_TWOGO, "PRESS 2-MOB"
+      elseif st == "two" then
+        -- Set up but not yet time. Say WHAT you are waiting on: a bare "2-MOB"
+        -- that never changes teaches you nothing about when to press.
+        col = COL_TWO
+        if not s.swingUp and s.swingIn then
+          txt = string.format("2-MOB - SWING %.1fs", s.swingIn)
+        elseif s.locked then
+          txt = "2-MOB - SHOT LOCKED"
+        else
+          txt = "2-MOB READY"
+        end
+      elseif st == "melee" then
+        col, txt = COL_INMELEE, "MELEE ONLY"
+      elseif st == "oor" then
+        col, txt = COL_OOR, "OUT OF RANGE"
+      else
+        col, txt = COL_SHOOTING, "RANGE"
+      end
+      lastStripCol = PaintIf(rangeStrip, col, lastStripCol)
+      if txt ~= lastStripTxt then rangeStripText:SetText(txt); lastStripTxt = txt end
+      ShownIf(rangeStrip, true); ShownIf(rangeStripText, true)
+    end
+  end
+
+  -- ---------------------------------------------------------------------
+  -- "What to press next", the Fluffy Hunter Bars idea: do not only show
+  -- clocks, say which button is worth pressing. The two-mob macro ranks first
+  -- because it is worth a whole extra melee swing on a second mob.
+  -- ---------------------------------------------------------------------
+  if reco then
+    if db.recoRow == false then
+      ShownIf(reco, false)
+    else
+      local rtxt
+      local st, s = ShotTimer.RangeState(now)
+      if st == "twogo" then
+        rtxt = "|cff4dff73PRESS 2-MOB MACRO|r"
+      elseif st == "two" then
+        rtxt = "|cff66ccff2-mob set - wait for the swing|r"
+      else
+        local down, a, m = ShotTimer.SpecialsDown(now)
+        if a ~= nil and a <= 0 then
+          rtxt = "|cffff9d33AIMED SHOT|r"
+        elseif m ~= nil and m <= 0 then
+          rtxt = "|cff66b3ffMULTI-SHOT|r"
+        elseif s.raptorIn ~= nil and s.raptorIn <= 0 and st == "melee" then
+          rtxt = "|cff4dff73RAPTOR STRIKE|r"
+        elseif down then
+          rtxt = "|cff9fd8ffweave|r"
+        else
+          rtxt = "|cff909098hold|r"
+        end
+      end
+      if rtxt ~= lastRecoTxt then reco:SetText(rtxt); lastRecoTxt = rtxt end
+      ShownIf(reco, true)
+    end
+  end
+
+  -- ---------------------------------------------------------------------
+  -- The latency end-slice. The red lockout is drawn from the FIXED 0.5s cast,
+  -- but the boundary that actually costs you damage is 0.5s plus YOUR latency
+  -- -- precisely what the "+0.34s" readout measures. Painting that measured
+  -- tail into the bar turns a number you have to read into a region you can
+  -- see, which is what Super Swing Timer does with its latency slice.
+  -- ---------------------------------------------------------------------
+  if latencySlice and castZone then
+    local secs = (lastDelay > CLIP_EPSILON) and lastDelay or 0
+    if secs > 2 then secs = 2 end                    -- never paint more than 2s
+    local zw = w * (CAST_TIME / math.max(speed, MIN_SPEED))
+    local lw = math.floor(zw * (secs / CAST_TIME))
+    lastLatW = SetWidthIf(latencySlice, lw, lastLatW)
+    if lw >= 1 then
+      latencySlice:ClearAllPoints()
+      -- Grows leftward from the right edge, inside the red zone.
+      latencySlice:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
+      latencySlice:SetHeight(h)
+      ShownIf(latencySlice, true)
+    else
+      ShownIf(latencySlice, false)
+    end
+  end
+
+  -- ---------------------------------------------------------------------
+  -- The two-mob icon. Lit and bright only when pressing the macro is correct;
+  -- dimmed but visible while the setup exists, so you can see it coming
+  -- rather than having it pop into existence.
+  -- ---------------------------------------------------------------------
+  if iconFrame then
+    if db.twoMobIcon ~= true then
+      ShownIf(iconFrame, false)
+    else
+      local s = ShotTimer.TwoMob(now)
+      local col, txt, alpha
+      if s.press then
+        col, txt, alpha = COL_TWOGO, "NOW", 1.0
+      elseif s.setup then
+        -- Waiting on a cycle: show the countdown, dimmed.
+        col, alpha = COL_TWO, 0.55
+        if s.swingIn and not s.swingUp then
+          txt = string.format("%.1f", s.swingIn)
+        else
+          txt = ""
+        end
+      else
+        col, txt, alpha = COL_SHOOTING, "", 0.28
+      end
+      lastIconCol = PaintIf(iconTex, col, lastIconCol)
+      if txt ~= lastIconTxt then iconText:SetText(txt); lastIconTxt = txt end
+      if alpha ~= lastIconA then iconFrame:SetAlpha(alpha); lastIconA = alpha end
+      ShownIf(iconFrame, true)
     end
   end
 
@@ -1179,6 +1561,7 @@ function ShotTimer.Init()
 
   BuildBar()
   BuildSpecialPips()
+  BuildTwoMobIcon()
 
   HK.On("UNIT_SPELLCAST_SUCCEEDED", OnSpellSucceeded)
   HK.On("UNIT_SPELLCAST_START", OnSpellStarted)
@@ -1243,6 +1626,16 @@ function ShotTimer.IsShown() return frame ~= nil and frame:IsShown() == true end
 function ShotTimer.FillWidth() return fill and fill:GetWidth() or 0 end
 function ShotTimer.LabelText() return label and label.text or nil end
 function ShotTimer.DelayText() return delayText and delayText.text or nil end
+-- Test seams for the 0.9.71 widgets, so the state strip, the reco row and the
+-- two-mob icon can be asserted the same way the bar itself is. Each returns
+-- what is actually on screen rather than recomputing what ought to be.
+function ShotTimer.StripText() return rangeStripText and rangeStripText.text or nil end
+function ShotTimer.StripShown() return rangeStrip ~= nil and rangeStrip:IsShown() == true end
+function ShotTimer.RecoText() return reco and reco.text or nil end
+function ShotTimer.IconBuilt() return iconFrame ~= nil end
+function ShotTimer.IconShown() return iconFrame ~= nil and iconFrame:IsShown() == true end
+function ShotTimer.IconAlpha() return iconFrame and iconFrame.alpha or nil end
+function ShotTimer.IconText() return iconText and iconText.text or nil end
 function ShotTimer.IsAnimating() return onUpdateBound end
 function ShotTimer._OnMeleeSwing(t)
   meleeSpeed = ReadMeleeSpeed() or meleeSpeed

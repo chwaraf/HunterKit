@@ -3,6 +3,68 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.71] - 2026-09-08
+
+### Added
+- **A two-mob weave indicator** — the one weave situation the bar had nothing
+  for. The setup: your pet holds one mob at range while you stand in melee of a
+  second one, swinging at it between shots. That is exactly what the **Two-mob
+  weave** macro in Macros.lua exists for, yet the bar's only weave marker was
+  the *travel*-weave departure point — run out to melee and back — which is
+  opt-in and, as the author put it, something you "never use levelling". So the
+  addon shipped a macro for a situation it would not show.
+
+  A state strip under the bar now reads **PRESS 2-MOB** (green) at the press
+  moment, **2-MOB - SWING 1.2s** (blue) while the setup is live but the swing is
+  coming, **MELEE ONLY** (amber) when something is in melee with no second mob to
+  shoot, **RANGE** (grey) when nothing is in melee, and **OUT OF RANGE** (red).
+  On by default — it is a single text line, not a new frame.
+
+- **A separate two-mob press icon** (*Show the two-mob press icon*, opt-in).
+  Bright with **NOW** on it when pressing the macro is correct, dimmed with a
+  countdown while the swing is coming, nearly invisible otherwise — so a flash
+  means press. Its own frame with its own `/htk unlock` drag handle, because a
+  press cue has to go wherever your eyes already are, which is rarely next to a
+  combat bar. Parks beside the bar until you move it.
+- **"What to press next" row** (*Show a 'what to press next' row*, opt-in).
+  Names the button worth pressing rather than only showing clocks: the two-mob
+  macro, then Aimed Shot, Multi-Shot, Raptor Strike when in melee, then weave or
+  hold. The Fluffy Hunter Bars approach.
+- **A latency end-slice on the lockout.** The red zone is drawn from the fixed
+  0.5s cast, but the boundary that actually costs damage is 0.5s *plus your own
+  latency* — precisely what the `+0.34s` readout measures. The measured tail is
+  now painted into the bar, turning a number you have to read into a region you
+  can see. (Super Swing Timer does the same thing.)
+
+### Changed
+- **"Is the press correct" is derived from what the macro does, not guessed.**
+  Every leg is read live: your target alive *and within melee* (or `/startattack`
+  hits nothing), your pet on a *different* live target (or every `[@pettarget]`
+  line is skipped and the flick is a no-op), your melee swing up (or the press
+  only restarts `/startattack`), and Auto Shot out of its 0.5s lockout (or the
+  `/cast !Auto Shot` inside the flick is the clip). All of it in one
+  `ShotTimer.TwoMob()` evaluation, so the strip, the icon, the reco row and the
+  tests cannot drift apart.
+- **Bar height defaults to 27px, up from 18** (×1.5) — at 18 the two stacked bars
+  plus the new state strip were hard to read mid-fight, which is the whole point
+  of them. The slider now runs to 60. Profiles still sitting on the untouched 18
+  are migrated; a height you chose yourself is never rewritten.
+- The travel-weave blue line is **unchanged**. Investigating "the blue line
+  barely ever shows" found it is doing exactly what it was built to do — it marks
+  the run-in-and-out departure point, and it is opt-in by design (0.9.59). The
+  gap was never the line; it was that the two-mob case had no indicator at all.
+
+### Tests
+- **`tests/test_shottimer.lua` 193 -> 226 checks**: every leg of the press
+  condition (including that the pet being on *your* mob does not count as a
+  second target, and that a dead mob on either side voids the setup), the five
+  strip states, the icon's brightness and label, and the 18 -> 27 migration in
+  both directions. Verified by negative control: dropping the timing gates from
+  the press decision fails four of them, including "the two-mob press is vetoed
+  even with the swing up".
+
+  1025 green in nine files.
+
 ## [0.9.70] - 2026-09-08
 
 ### Fixed

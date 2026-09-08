@@ -1435,6 +1435,183 @@ HKTest.state.targetTooClose = false
 HKTest.state.playerCombat = false
 ST.RescanSettings()
 
+
+-- ---------------------------------------------------------------------------
+-- 8) THE TWO-MOB WEAVE
+--
+-- One mob standing in your melee, a second one held at range by your pet. This
+-- is the setup the "Two-mob weave" macro in Macros.lua exists for, and until
+-- now the bar said NOTHING about it: its only weave marker was the travel-weave
+-- departure point (run out to melee and back), which is opt-in and rarely
+-- applies. So the situation the addon shipped a macro for was the one it would
+-- not show.
+--
+-- What makes pressing that macro correct, derived from what it actually does:
+-- `target` alive and in melee (or /startattack hits nothing), `pettarget`
+-- alive and a DIFFERENT mob (or every [@pettarget] line is skipped), the melee
+-- swing up (or the press only restarts /startattack), and Auto Shot out of its
+-- 0.5s lockout (or the /cast !Auto Shot inside the flick is the clip).
+-- ---------------------------------------------------------------------------
+
+-- Declares that world. `target` is the mob you are meleeing, `pettarget` the
+-- one your pet is holding at range.
+local function TwoMobWorld(o)
+  o = o or {}
+  HKTest.state.target = true
+  HKTest.state.targetDead = o.targetDead or nil
+  HKTest.state.targetAttackable = o.targetAttackable
+  HKTest.state.pet = true
+  -- Say so EXPLICITLY rather than by omission. UnitExists falls through to
+  -- the threat table when a unit key is absent, and an earlier test file
+  -- leaves a pettarget entry on one -- so removing the key would still
+  -- report the unit as existing.
+  HKTest.state.units = { pettarget = not o.noPetTarget }
+  HKTest.state.dead = o.petTargetDead and { pettarget = true } or {}
+  HKTest.state.inMelee = o.noMelee and {} or { target = true }
+  HKTest.state.guids = o.sameMob
+    and { target = "mob-a", pettarget = "mob-a" }
+    or  { target = "mob-a", pettarget = "mob-b" }
+  HKTest.state.targetSpellInRange = o.oor and 0 or 1
+  HKTest.state.playerCombat = true
+end
+
+-- A 3.4s weapon with a shot away at t=1000: the shot locks out from 1002.9, so
+-- there is a real window in which a 2.4s melee swing can be up while Auto Shot
+-- is still free -- which is the only moment the two-mob press is correct.
+local db8 = Shooting(3.4, 1000)
+local mspd = ST.MeleeSpeed()
+
+TwoMobWorld()
+local s8 = ST.TwoMob(1000.5)
+check("both mobs are seen", s8.targetLive == true and s8.petLive == true,
+  tostring(s8.targetLive) .. "/" .. tostring(s8.petLive))
+check("the target really is within melee", s8.inMelee == true)
+check("...and it is a DIFFERENT mob from the one the pet holds", s8.distinct == true)
+check("so the two-mob setup is live", s8.setup == true)
+check("with no melee swing observed yet there is nothing to spend", s8.press == false)
+
+At(1000.2); ST._OnMeleeSwing(1000.2)
+s8 = ST.TwoMob(1000.3)
+check("a tenth of a second later the swing is still coming", s8.swingUp == false)
+check("...so pressing the macro would achieve nothing", s8.press == false)
+
+local swingUp = 1000.2 + mspd
+s8 = ST.TwoMob(swingUp + 0.1)
+check("the melee swing comes up", s8.swingUp == true, tostring(s8.swingIn))
+check("Auto Shot is still outside its lockout there", s8.locked == false)
+check("so THAT is the moment to press the two-mob macro", s8.press == true)
+
+-- The lockout veto: the macro flicks your target and casts !Auto Shot, so
+-- pressing it inside the 0.5s cast is the very thing that clips.
+s8 = ST.TwoMob(1003.2)
+check("inside the lockout Auto Shot is locked", s8.locked == true)
+check("...and the two-mob press is vetoed even with the swing up",
+  s8.swingUp == true and s8.press == false)
+
+-- Every leg of the setup has to hold.
+TwoMobWorld({ noPetTarget = true })
+check("no pet target means no two-mob setup", ST.TwoMob(1000.5).setup == false)
+TwoMobWorld({ petTargetDead = true })
+check("a dead pet target means no two-mob setup", ST.TwoMob(1000.5).setup == false)
+TwoMobWorld({ sameMob = true })
+check("the pet being on YOUR mob is not a second target",
+  ST.TwoMob(1000.5).setup == false, "the flick would be a no-op")
+TwoMobWorld({ noMelee = true })
+check("the melee mob must actually be in melee", ST.TwoMob(1000.5).setup == false)
+TwoMobWorld({ targetDead = true })
+check("a dead melee mob is not a target", ST.TwoMob(1000.5).setup == false)
+
+-- ---------------------------------------------------------------------------
+-- The state strip: the indicator that was missing.
+-- ---------------------------------------------------------------------------
+TwoMobWorld()
+db8.rangeStrip = true
+db8.enabled = true
+ST.RescanSettings()
+At(swingUp + 0.1); ST._OnMeleeSwing(1000.2)
+ST.Refresh(); ST.OnUpdate()
+check("the strip reports the press", ST.StripText() == "PRESS 2-MOB",
+  tostring(ST.StripText()))
+check("...and it is actually on screen", ST.StripShown() == true)
+
+TwoMobWorld({ noPetTarget = true })
+ST.OnUpdate()
+check("one mob in melee and no second target reads MELEE ONLY",
+  ST.StripText() == "MELEE ONLY", tostring(ST.StripText()))
+
+TwoMobWorld({ noMelee = true })
+ST.OnUpdate()
+check("nothing in melee reads RANGE", ST.StripText() == "RANGE",
+  tostring(ST.StripText()))
+
+TwoMobWorld({ noMelee = true, oor = true })
+ST.OnUpdate()
+check("a target past Auto Shot range reads OUT OF RANGE",
+  ST.StripText() == "OUT OF RANGE", tostring(ST.StripText()))
+
+db8.rangeStrip = false
+ST.RescanSettings(); ST.OnUpdate()
+check("unticking the strip takes it off screen", ST.StripShown() == false)
+db8.rangeStrip = true
+ST.RescanSettings()
+
+-- ---------------------------------------------------------------------------
+-- The press icon: a separate frame, because it has to go where your eyes are.
+-- ---------------------------------------------------------------------------
+check("the two-mob icon frame exists", ST.IconBuilt() == true)
+db8.twoMobIcon = false
+ST.RescanSettings(); ST.OnUpdate()
+check("the icon stays hidden while the option is off", ST.IconShown() == false)
+
+db8.twoMobIcon = true
+TwoMobWorld()
+ST.RescanSettings()
+At(swingUp + 0.1)
+ST.OnUpdate()
+check("the icon shows once the option is on", ST.IconShown() == true)
+check("at full brightness when the press is correct", ST.IconAlpha() == 1.0,
+  tostring(ST.IconAlpha()))
+check("and says NOW", ST.IconText() == "NOW", tostring(ST.IconText()))
+
+At(1000.3)
+ST.OnUpdate()
+check("dimmed with a countdown while the swing is still coming",
+  (ST.IconAlpha() or 0) < 0.8 and (ST.IconText() or "") ~= "NOW",
+  tostring(ST.IconAlpha()) .. " " .. tostring(ST.IconText()))
+
+TwoMobWorld({ noPetTarget = true })
+ST.OnUpdate()
+check("nearly invisible when there is no setup at all",
+  (ST.IconAlpha() or 1) < 0.4, tostring(ST.IconAlpha()))
+db8.twoMobIcon = false
+ST.RescanSettings(); ST.OnUpdate()
+
+-- ---------------------------------------------------------------------------
+-- Bar height: the default went 18 -> 27 (x1.5), and the migration moves only a
+-- profile that was still on the untouched default.
+-- ---------------------------------------------------------------------------
+check("the default bar height is 27", HK.defaults.shottimer.height == 27,
+  tostring(HK.defaults.shottimer.height))
+
+HunterKitDB = { dbVersion = 33, shottimer = { height = 18 } }
+local HKh = HKTest.LoadAddon(unpack(HKTest.addonFiles))
+HKh:Load()
+check("an untouched 18px bar is migrated to 27", HKh.db.shottimer.height == 27,
+  tostring(HKh.db.shottimer.height))
+
+HunterKitDB = { dbVersion = 33, shottimer = { height = 14 } }
+local HKh2 = HKTest.LoadAddon(unpack(HKTest.addonFiles))
+HKh2:Load()
+check("a height the player chose is never rewritten", HKh2.db.shottimer.height == 14,
+  tostring(HKh2.db.shottimer.height))
+
+-- Put the shared state back for the teardown below.
+HKTest.state.units = {}
+HKTest.state.inMelee = {}
+HKTest.state.guids = {}
+HKTest.state.dead = {}
+HKTest.state.targetSpellInRange = nil
+
 -- Report this file's tally so tests/test_docs.lua can check the README's
 -- advertised check counts against what the suite really runs.
 HKTest.report("test_shottimer.lua", passes, #failures)
