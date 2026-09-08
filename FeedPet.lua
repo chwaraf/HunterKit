@@ -412,15 +412,60 @@ function FeedPet:FoodType(itemID)
   return nil
 end
 
+-- Is this a QUEST ITEM? Feeding one destroys it, and it is the one mistake
+-- this button can make that the player cannot buy their way out of -- so this
+-- is checked on every path that can arm the button, and it errs toward
+-- excluding.
+--
+-- Two signals, cheapest first:
+--   1. the item's TYPE (6th return of GetItemInfo). Localised, so it is
+--      compared against Blizzard's own ITEM_CLASS_QUEST constant when the
+--      client provides one, with the English spelling as a fallback.
+--   2. the "Quest Item" line in the tooltip, for the items whose type the
+--      cache does not answer for. Only reached when (1) is inconclusive, so
+--      the common case costs no tooltip scan.
+function FeedPet:IsQuestItem(bag, slot, itemID)
+  local questWord = "quest"
+  if type(ITEM_CLASS_QUEST) == "string" then questWord = ITEM_CLASS_QUEST:lower() end
+
+  local ok, class = pcall(function() return (select(6, HK.GetItemInfo(itemID))) end)
+  if ok and type(class) == "string" and class ~= "" then
+    local c = class:lower()
+    -- Trust the cache when it answers: a known non-quest type is a definite no,
+    -- which keeps the tooltip scan off the hot path.
+    return c == questWord or c == "quest" or c:find("quest", 1, true) ~= nil
+  end
+
+  if not scanTip then return false end
+  scanTip:ClearLines()
+  scanTip:SetBagItem(bag, slot)
+  for i = 2, scanTip:NumLines() do
+    local line = _G["HunterKitScanTipTextLeft" .. i]
+    local text = line and line:GetText()
+    if text then
+      local t = text:lower():gsub("^%s+", ""):gsub("%s+$", "")
+      if t == questWord or t == "quest" or t == "quest item" then return true end
+    end
+  end
+  return false
+end
+
 function FeedPet:MatchesDiet(bag, slot, itemID)
   local ds = self:GetDiets()
-  local any = next(ds)
-  if not any then
-    -- no known diet yet (pet not ready / cold) -> allow fallthrough, don't hard-exclude
-    return true
+  local ftype = self:FoodType(itemID)
+  if not next(ds) then
+    -- Diet unknown. That is not a rare edge case: GetPetFoodTypes has nothing
+    -- to say for a moment after every login, until the pet resolves.
+    --
+    -- This used to return TRUE -- "don't hard-exclude" -- which meant every
+    -- item in your bags was a candidate and the button armed itself with the
+    -- most level-appropriate one, quest item or potion or whatever it was.
+    -- The asymmetry is what matters: feeding something the pet cannot eat
+    -- merely fizzles, while feeding a quest item destroys it. So with no diet
+    -- known, only the curated DB's known pet foods are offered.
+    return ftype ~= nil
   end
   -- Primary: is this an item in the curated FoodDB that this pet's diet allows?
-  local ftype = self:FoodType(itemID)
   if ftype then
     return ds[ftype:lower()] == true
   end
@@ -472,7 +517,12 @@ function FeedPet:FindBestStackByID(itemID, petLevel)
   local best
   for bag = 0, 4 do
     for slot = 1, HK.GetBagNumSlots(bag) do
-      if HK.GetBagItemID(bag, slot) == itemID then
+      -- A pin is a deliberate choice, but it is not a licence to destroy a
+      -- quest item: pins saved by an older build, or made before this check
+      -- existed, must not be able to eat one. The menu no longer offers quest
+      -- items either, so this only guards the upgrade path.
+      if HK.GetBagItemID(bag, slot) == itemID
+         and not self:IsQuestItem(bag, slot, itemID) then
         local count = HK.GetBagItemCount(bag, slot)
         count = count or 1
         local name, _, _, iLevel = HK.GetItemInfo(itemID)
@@ -514,7 +564,11 @@ function FeedPet:PickFood()
         local count = HK.GetBagItemCount(bag, slot) or 1
         totals[itemID] = (totals[itemID] or 0) + count
 
-        if not self:IsExcluded(itemID) and self:MatchesDiet(bag, slot, itemID) then
+        -- Last gate, and the one that costs the most: a quest item is never
+        -- feedable, whatever its diet or level says. Checked after the cheap
+        -- filters so the tooltip scan only runs for real food candidates.
+        if not self:IsExcluded(itemID) and self:MatchesDiet(bag, slot, itemID)
+           and not self:IsQuestItem(bag, slot, itemID) then
           local name, _, _, iLevel, _, _, _, _, _, icon = HK.GetItemInfo(itemID)
           if name and iLevel then
             local tier = TierFor(petLevel, iLevel)
@@ -707,7 +761,8 @@ function FeedPet:ShowMenu()
   for bag = 0, 4 do
     for slot = 1, HK.GetBagNumSlots(bag) do
       local itemID = HK.GetBagItemID(bag, slot)
-      if itemID and not self:IsExcluded(itemID) and self:MatchesDiet(bag, slot, itemID) then
+      if itemID and not self:IsExcluded(itemID) and self:MatchesDiet(bag, slot, itemID)
+         and not self:IsQuestItem(bag, slot, itemID) then
         local name = HK.GetItemInfo(itemID)
         local count = HK.GetBagItemCount(bag, slot)
         local _, _, _, iLevel = HK.GetItemInfo(itemID)

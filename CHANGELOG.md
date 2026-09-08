@@ -3,6 +3,63 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.70] - 2026-09-08
+
+### Fixed
+- **The feed button could pick a quest item and feed it to your pet — destroying
+  it.** There was no quest-item check anywhere in the addon. Two separate paths
+  led there:
+
+  - **The tooltip fallback matches anything that merely mentions a diet word.**
+    A food `FoodDB.lua` does not list falls through to a keyword scan of its
+    tooltip, and "Tough Wolf Meat" is a quest item whose tooltip says "meat".
+    Worse, `TierFor` scores by item level, so a level-58 quest item is the *best*
+    tier for a level-60 pet: the button did not merely tolerate it, it
+    **preferred it over real food**.
+  - **With the pet's diet unknown, everything matched.** `MatchesDiet` returned
+    `true` whenever `GetPetFoodTypes` had nothing to say — which is every login,
+    for the moment until the pet resolves. In that window every item in your
+    bags was a candidate and the button armed itself with the most
+    level-appropriate one: a quest item, a potion, anything.
+
+  Feeding something the pet cannot eat merely fizzles. Feeding a quest item
+  destroys it, and that is the one mistake here the player cannot buy their way
+  out of — so both paths now fail closed.
+
+- **New: `FeedPet:IsQuestItem`,** checked on all three paths that can arm the
+  button — the bag scan, the right-click menu (so a quest item can no longer be
+  pinned in the first place) and the pin resolution itself, so a pin saved by an
+  older build cannot eat one either. It reads the item's TYPE (6th return of
+  `GetItemInfo`), compared against Blizzard's localised `ITEM_CLASS_QUEST` with
+  the English spelling as a fallback, and falls back to the tooltip's
+  "Quest Item" line only when the item cache gives no type — so the common case
+  costs no tooltip scan.
+- **With no diet known, only the curated DB's known pet foods are offered**
+  instead of everything in your bags. Deliberately fail-closed: a briefly blank
+  button after login is cosmetic, a destroyed quest item is not. `UNIT_PET`
+  re-runs the scan the moment the pet resolves, so the window is short.
+
+### Tests
+- **`tests/test_feedpet.lua` 15 -> 26 checks**: a quest item is never picked
+  over real food (by item type, and by tooltip line when the cache has no type),
+  not even when pinned; a potion is never what the button arms itself with while
+  the diet is unknown; and real food is still picked and counted.
+- **The stub could not see this bug, and that is why it shipped.** Two gaps:
+  `GetItemInfo` had position 6 (the item TYPE) hardcoded to `nil`, so a quest
+  item and a snack were indistinguishable; and its `GameTooltip:SetBagItem` was
+  a no-op, so the tooltip fallback could never match anything. Both now model
+  the real client — item type from `itemInfo[].class`, tooltip lines published
+  as the `<tooltip>TextLeft<n>` globals `FeedPet` actually reads.
+- **`tests/test_ammobuy.lua` leaked a global.** It replaced the harness's
+  `GetItemInfo` with an ammo-specific version and never restored it, and every
+  test file runs in one shared Lua state — so four later files, including this
+  one, were silently reading a `GetItemInfo` that returned `"Projectile"` as the
+  item type for *every* item. That is what made the first cut of the quest check
+  return `false` against a test item explicitly typed `"Quest"`. The override is
+  now class-aware and is restored when the file finishes.
+
+  992 green in nine files.
+
 ## [0.9.69] - 2026-09-07
 
 ### Fixed

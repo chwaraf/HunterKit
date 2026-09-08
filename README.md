@@ -7,7 +7,7 @@ For **WoW Classic Era & Hardcore** (patch 1.15.x).
 A self-contained, dependency-free (no Ace3/LibDBIcon) addon built for the
 hardcore-first hunter. Every action is a deliberate click; nothing is automated.
 
-Current version: **0.9.69** — see [`CHANGELOG.md`](CHANGELOG.md).
+Current version: **0.9.70** — see [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Features
 
@@ -321,7 +321,7 @@ against a stub client (`tests/wow_stub.lua`) — no logic is re-implemented — 
 needs a Lua interpreter on `PATH` (`lua`/`lua5.1`/`luajit`) or `pip install lupa`
 (in an externally-managed Python, `python3 -m venv .venv && .venv/bin/pip install
 lupa`, then run `.venv/bin/python tests/run_tests.py`).
-Add `--verbose` to also echo the addon's chat output. **981 checks**, in **9** files:
+Add `--verbose` to also echo the addon's chat output. **992 checks**, in **9** files:
 
 | File | Covers |
 |---|---|
@@ -332,7 +332,7 @@ Add `--verbose` to also echo the addon's chat output. **981 checks**, in **9** f
 | `test_threatwatch.lua` (147) | the pet aggro warning's verdict logic against declarative threat tables: the pull-point maths and the damage-to-pull readout, direction-awareness (falling back through the threshold stays silent), alarm rate-limiting, the colour ramp and hot-state emphasis, the guarantee that the warning icon never overlaps the passive-pet alert — and, for the "as light as possible" brief, that it does **no** work when it cannot matter |
 | `test_shottimer.lua` (193) | the Auto Shot *model*: the fixed 0.5s cast plus weapon-speed cooldown, how much free time is left and when the lockout starts, the measured `+0.34s` clip readout, haste re-reads, the melee swing strip built from observed swings, static vs travel weaving, the specials gate, and the redraw-skip optimisation |
 | `test_macros.lua` (40) | the macro library as text: no macro targets or attacks without accounting for dead units, none pretends to aim Auto Shot with `[@unit]` (it cannot), each fits the client's 255-character limit, and every copy box holds its macro verbatim and repairs itself if edited |
-| `test_feedpet.lua` (15) | the number on the feed button: that it is the **inventory** total for the picked food (every stack, not the one the click feeds), for a curated-DB food, for a **pinned** food the DB does not list and whose tooltip the client cannot describe, across three stacks, and back to 0 on empty bags |
+| `test_feedpet.lua` (26) | what the feed button arms itself with, and the number on it: the count is the **inventory** total for the picked food (every stack, not the one the click feeds) across one, two and three stacks and back to 0 on empty bags; a **quest item is never picked**, by item type or by its tooltip line, not even when it is the best tier and not even when it was pinned; and with the pet's diet not yet known (every login, briefly) an item the curated DB does not list is never offered |
 | `test_docs.lua` (119) | every file parses, the `.toc` matches disk, `.toc` version == `HK.version` == newest `CHANGELOG` entry, every `/htk` subcommand documented here, the shipped mark art exists as PNG with no `.tga`/`.blp` strays — and this very section: the README's stated version, a row and a **current** check count for every test file, and a correct total |
 
 The counts in that table are not decoration: `test_docs.lua` runs last, reads the

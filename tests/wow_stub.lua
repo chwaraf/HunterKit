@@ -244,7 +244,22 @@ function CreateFrame(kind, name, parent, template)
     function f:SetOwner() end
     function f:ClearLines() self.tipLines = {} end
     function f:NumLines() return #self.tipLines end
-    function f:SetBagItem() end
+    -- A bag item's tooltip, from HKTest.state.bagItems[bag][slot].tip (an array
+    -- of strings). The client publishes each line as a global fontstring named
+    -- <tooltipname>TextLeft<n>, which is exactly what FeedPet reads to decide
+    -- whether an unlisted item is food -- and whether it says "Quest Item".
+    function f:SetBagItem(bag, slot)
+      self.tipLines = {}
+      local it = ((HKTest.state.bagItems or {})[bag] or {})[slot]
+      for i, text in ipairs((it and it.tip) or {}) do
+        self.tipLines[i] = text
+        if self.name then
+          local g = self.name .. "TextLeft" .. i
+          if not _G[g] then newFrame("FontString", g, self) end
+          _G[g]:SetText(text)
+        end
+      end
+    end
     function f:SetHyperlink() end
     function f:SetInventoryItem() end
     function f:SetSpellByID() end
@@ -399,7 +414,10 @@ function GetItemCount(id) return (HKTest.state.items or {})[id] or 0 end
 function GetItemInfo(id)
   local it = (HKTest.state.itemInfo or {})[id]
   if not it then return nil end
-  return it.name, nil, it.quality or 1, it.iLevel or 1, nil, nil,
+  -- Position 6 is the item TYPE ("Quest", "Consumable", ...), localised on the
+  -- live client. It used to be hardcoded nil here, which is why a quest item
+  -- and a snack looked identical to this suite.
+  return it.name, nil, it.quality or 1, it.iLevel or 1, nil, it.class,
          it.subclass, nil, nil, it.texture
 end
 function GetContainerNumSlots(bag) return (HKTest.state.bags or {})[bag] or 0 end

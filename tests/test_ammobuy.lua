@@ -55,15 +55,21 @@ end
 -- The stub's GetItemInfo returns the 1.15 positional shape the addon reads:
 -- name, link, quality, iLevel, reqLevel, type, subType, stack, equipLoc,
 -- texture, sellPrice, classID, subclassID.
+local stubGetItemInfo = GetItemInfo
 function GetItemInfo(id)
   -- The live API takes an id, a name OR an item link; the addon passes a link
   -- for equipped gear, so resolve one to its id the way the client does.
   if type(id) == "string" then id = tonumber(id:match("item:(%d+)")) or id end
   local it = (HKTest.state.itemInfo or {})[id]
   if not it then return nil end
+  -- Positions 6/7 are the item TYPE and SUBTYPE. Defaulting them to Projectile
+  -- was fine while only this file ran, but it is a GLOBAL override and every
+  -- later test file inherits it -- which is how a quest item came back typed
+  -- "Projectile" and FeedPet's quest check could not see it. Honour the item's
+  -- own class when the scenario gave one.
   return it.name, "link", it.quality or 1, it.iLevel or 1, it.reqLevel or 0,
-         "Projectile", "Arrow", it.stack or 200, "INVTYPE_AMMO", it.texture,
-         0, it.classID, it.subclass
+         it.class or "Projectile", it.subclass or "Arrow", it.stack or 200,
+         "INVTYPE_AMMO", it.texture, 0, it.classID, it.subclass
 end
 
 -- ---------------------------------------------------------------------------
@@ -904,6 +910,11 @@ if probe then
   local okNone = pcall(function() return tonumber(probe(function() end)) end)
   check("Call() of a value-less function is safe to pass to tonumber", okNone)
 end
+
+-- Put the harness's own GetItemInfo back. Every test file shares one Lua
+-- state, so an override left behind here silently changes what the files after
+-- this one see.
+GetItemInfo = stubGetItemInfo
 
 -- Report this file's tally so tests/test_docs.lua can check the README's
 -- advertised check counts against what the suite really runs.

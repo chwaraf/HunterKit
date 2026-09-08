@@ -134,6 +134,91 @@ HKTest.Fire("UNIT_PET", "pet")
 FP.Refresh()
 check("empty bags show 0", FP.ShownCount() == 0, tostring(FP.ShownCount()))
 
+-- ---------------------------------------------------------------------------
+-- 5) Never feed a quest item. It is the one mistake this button can make that
+--    the player cannot buy their way out of: feeding it destroys it.
+-- ---------------------------------------------------------------------------
+local QUEST = 5555
+-- Not in the curated DB, so it reaches the tooltip fallback -- and its tooltip
+-- mentions "meat", which is exactly what that fallback looks for. Its item
+-- level also makes it the BEST tier, so the old code did not merely tolerate
+-- it, it preferred it over the real food.
+HKTest.state.itemInfo[QUEST] = { name = "Tough Wolf Meat", iLevel = 58, class = "Quest" }
+HKTest.state.itemInfo[JERKY] = { name = "Tough Jerky", iLevel = 40, texture = "t" }
+HKTest.state.bags = { [0] = 16 }
+HKTest.state.bagItems = { [0] = {
+  [1] = { id = QUEST, count = 3,
+          tip = { "Tough Wolf Meat", "Quest Item", "Stringy meat, still warm." } },
+  [2] = { id = JERKY, count = 20 },
+} }
+HK.db.feed.preferredFoods = {}
+HK.db.feed.exclude = {}
+HKTest.Fire("UNIT_PET", "pet")
+
+check("IsQuestItem recognises a quest item by its item type",
+  FP:IsQuestItem(0, 1, QUEST) == true, tostring(FP:IsQuestItem(0, 1, QUEST)))
+check("...and does not flag real food",
+  FP:IsQuestItem(0, 2, JERKY) == false, tostring(FP:IsQuestItem(0, 2, JERKY)))
+
+FP.Refresh()
+local pick = FP:PickFood()
+check("a quest item is never picked over real food",
+  pick ~= nil and pick.itemID == JERKY,
+  "picked " .. tostring(pick and pick.name) .. " (id " .. tostring(pick and pick.itemID) .. ")")
+check("the count still covers the food it did pick", FP.ShownCount() == 20,
+  tostring(FP.ShownCount()))
+
+-- A quest item the item cache cannot type (GetItemInfo returns nil for its
+-- class, which happens), leaving only the tooltip line to go on.
+local QUEST2 = 5556
+HKTest.state.itemInfo[QUEST2] = { name = "Discoloured Fang", iLevel = 58 }
+HKTest.state.bagItems[0][3] = { id = QUEST2, count = 2,
+                                tip = { "Discoloured Fang", "Quest Item" } }
+HKTest.Fire("UNIT_PET", "pet")
+check("IsQuestItem falls back to the tooltip line",
+  FP:IsQuestItem(0, 3, QUEST2) == true, tostring(FP:IsQuestItem(0, 3, QUEST2)))
+FP.Refresh()
+pick = FP:PickFood()
+check("an untyped quest item is not picked either",
+  pick ~= nil and pick.itemID == JERKY,
+  "picked " .. tostring(pick and pick.name))
+
+-- Pinning must not be a way around it: an old pin, or one saved before this
+-- check existed, must not be able to destroy a quest item.
+HK.db.feed.preferredFoods = { { id = QUEST, name = "Tough Wolf Meat" } }
+HKTest.Fire("UNIT_PET", "pet")
+FP.Refresh()
+pick = FP:PickFood()
+check("a pinned quest item is refused too",
+  pick == nil or pick.itemID ~= QUEST,
+  "picked " .. tostring(pick and pick.name))
+HK.db.feed.preferredFoods = {}
+
+-- ---------------------------------------------------------------------------
+-- 6) With no diet known, do not guess. GetDiets is empty for a moment after
+--    every login (the pet has not resolved yet), and the old code treated that
+--    as "let everything through" -- so the button armed itself with the most
+--    level-appropriate item in your bags, whatever it was.
+-- ---------------------------------------------------------------------------
+local POTION = 6666
+HKTest.state.itemInfo[POTION] = { name = "Healing Potion", iLevel = 60 }
+HKTest.state.bagItems[0][4] = { id = POTION, count = 5 }
+GetPetFoodTypes = function() return nil end      -- pet not resolved yet
+HKTest.Fire("UNIT_PET", "pet")
+check("the diet really is unknown for this check", next(FP:GetDiets()) == nil,
+  tostring(FP:GetDietsString()))
+check("with no diet known, an unlisted item is not offered as food",
+  FP:MatchesDiet(0, 4, POTION) == false, tostring(FP:MatchesDiet(0, 4, POTION)))
+check("...but a known pet food still is",
+  FP:MatchesDiet(0, 2, JERKY) == true, tostring(FP:MatchesDiet(0, 2, JERKY)))
+FP.Refresh()
+pick = FP:PickFood()
+check("a potion is never what the button arms itself with",
+  pick == nil or pick.itemID ~= POTION, "picked " .. tostring(pick and pick.name))
+
+GetPetFoodTypes = function() return "Meat" end   -- restore for the next run
+HKTest.Fire("UNIT_PET", "pet")
+
 -- Report this file's tally so tests/test_docs.lua can check the README's
 -- advertised check counts against what the suite really runs.
 HKTest.report("test_feedpet.lua", passes, #failures)
