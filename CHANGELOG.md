@@ -3,6 +3,42 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.73] - 2026-09-08
+
+### Changed
+- **The auto shot and melee swing bars are now the same height.** The melee bar
+  was a third of the shot bar's, which read as a caption rather than a bar. In
+  the two-mob setup the two cycles matter equally — the whole point is that they
+  run independently and you play them against each other — so they are drawn as
+  two equal bars, both scaling with the height slider.
+- **The state line underneath is now a fixed caption and no longer grows.** This
+  was not asked for and was the visible mistake: 0.9.71's height bump took the
+  state line to **14px while the melee bar was 9px** — a text line chunkier than
+  the timing bar it was describing. It is now a fixed 11px at any bar height.
+- **The two-mob decision is two cycles and nothing else.** The melee
+  auto-attack is up, and Auto Shot is out of its 0.5s lockout. That is the whole
+  test.
+
+  Removed from that path: the **Aimed/Multi-Shot specials gate** and the **Raptor
+  Strike** cooldown check. Both were in the first cut and both were wrong here —
+  Aimed and Multi-Shot are spent on the mob you are *shooting*, which is a
+  different decision from whether to swing at the one standing next to you, and
+  gating one on the other just hid the cue while you did something unrelated.
+  Raptor is commented out in the shipped macro anyway. Both still gate the
+  separate travel/static weave advice, where the trade-off is real.
+
+### Tests
+- `tests/test_shottimer.lua` 232 -> 240: the two bars are equal height, the
+  caption stays 11px when the slider grows the bars to 54px, and the two-mob
+  press fires while a special shot is genuinely available (asserted against
+  `SpecialsDown`, not assumed).
+- Negative controls: putting the melee bar back to a third height fails three
+  checks — including *"the state line underneath is a caption, not a fourth bar —
+  strip 11 vs melee 9"*, the exact bug reported; re-adding the specials gate
+  fails *"the two-mob press fires even with specials ready"*.
+
+  1039 green in nine files.
+
 ## [0.9.72] - 2026-09-08
 
 ### Fixed

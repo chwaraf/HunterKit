@@ -1654,6 +1654,59 @@ check("a stale prediction is not recorded as a clip", ST.LastDelay() == 0,
 check("...and does not inflate the clip count", select(2, ST.Stats()) == clips,
   string.format("%s vs %s", tostring(select(2, ST.Stats())), tostring(clips)))
 
+
+-- ---------------------------------------------------------------------------
+-- Bar proportions: TWO equal timing bars, and a caption underneath.
+--
+-- The first cut of this grew everything: at height 27 the state line reached
+-- 14px while the melee bar was 9px -- a text line chunkier than the timing bar
+-- it was describing. The height request was for the two BARS.
+-- ---------------------------------------------------------------------------
+local db10 = Shooting(3.0, 1000)
+db10.height = 27
+db10.width = 220
+db10.rangeStrip = true
+ST.RescanSettings()
+check("the shot bar is the requested height", ST.BarHeight() == 27,
+  tostring(ST.BarHeight()))
+check("the melee swing bar is the SAME height as the shot bar",
+  ST.MeleeBarHeight() == ST.BarHeight(),
+  string.format("melee %s vs shot %s", tostring(ST.MeleeBarHeight()),
+    tostring(ST.BarHeight())))
+check("the state line underneath is a caption, not a fourth bar",
+  (ST.StripHeight() or 99) < (ST.MeleeBarHeight() or 0),
+  string.format("strip %s vs melee %s", tostring(ST.StripHeight()),
+    tostring(ST.MeleeBarHeight())))
+
+db10.height = 54
+ST.RescanSettings()
+check("the height slider grows the bars", ST.BarHeight() == 54
+  and ST.MeleeBarHeight() == 54,
+  string.format("%s/%s", tostring(ST.BarHeight()), tostring(ST.MeleeBarHeight())))
+check("...and does NOT grow the caption", ST.StripHeight() == 11,
+  tostring(ST.StripHeight()))
+db10.height = 27
+ST.RescanSettings()
+
+-- ---------------------------------------------------------------------------
+-- The two-mob decision is two cycles and nothing else: melee auto-attack up,
+-- Auto Shot out of its lockout. Aimed and Multi-Shot are spent on the mob you
+-- are SHOOTING -- a different decision from whether to swing at the one next to
+-- you -- so they must not hide the cue.
+-- ---------------------------------------------------------------------------
+TwoMobWorld()
+HKTest.state.cooldowns = {}            -- no cooldowns: both specials are READY
+local db11 = Shooting(3.4, 1000)
+At(1000.2); ST._OnMeleeSwing(1000.2)
+local tNow = 1000.2 + ST.MeleeSpeed()
+check("precondition: a special shot really is available",
+  ST.SpecialsDown(tNow) == false, tostring(ST.SpecialsDown(tNow)))
+local s11 = ST.TwoMob(tNow)
+check("the melee auto-attack is up and Auto Shot is free",
+  s11.swingUp == true and s11.locked == false)
+check("...so the two-mob press fires even with specials ready",
+  s11.press == true, "specials no longer gate the two-mob cue")
+
 -- Put the shared state back for the teardown below.
 HKTest.state.units = {}
 HKTest.state.inMelee = {}

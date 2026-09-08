@@ -509,6 +509,8 @@ end
 --
 -- All five are read live from the client. Nothing here models or guesses.
 -- ---------------------------------------------------------------------------
+-- Used only for the press icon's artwork (Raptor Strike is the melee half of
+-- the two-mob weave). It is NOT part of the press decision -- see TwoMob.
 local RAPTOR_STRIKE = 2973      -- rank 1; ranks share a cooldown
 
 -- Live and attackable, without the melee-range part of UnitIsMeleeable.
@@ -554,14 +556,21 @@ function ShotTimer.TwoMob(now)
   s.swingUp    = (s.swingIn ~= nil) and (s.swingIn <= 0) or false
   s.locked     = ShotTimer.IsLocked(now) == true
   s.free       = ShotTimer.SafeWindow(now)
-  -- Raptor is commented out in the shipped macro, so it never gates the cue;
-  -- it is reported so the reco row can suggest it when the player uncomments.
-  s.raptorIn   = SpellReadyIn(RAPTOR_STRIKE, now)
 
   -- Both mobs, and they are different mobs. This is the SETUP being available
   -- at all, independent of any timing.
   s.setup = (s.inMelee == true) and (s.distinct == true)
-  -- And the moment to actually press it.
+
+  -- And the moment to press it: the melee auto-attack is up AND Auto Shot is
+  -- out of its lockout. That is the whole decision -- two cycles, nothing else.
+  --
+  -- Deliberately no specials gate here and no Raptor check. Both existed in the
+  -- first cut of this and both were wrong for the two-mob case: Aimed and
+  -- Multi-Shot are spent on the mob you are SHOOTING, which is a different
+  -- decision from whether to swing at the one next to you, and gating one on
+  -- the other just hides the cue while you do something unrelated. Raptor is
+  -- commented out in the shipped macro anyway. The specials still gate the
+  -- separate travel/static weave advice, where the trade-off is real.
   s.press = s.setup and s.swingUp and (not s.locked)
   return s
 end
@@ -666,8 +675,14 @@ local function ApplySize()
     castZone:SetSize(math.max(1, w * frac), h)
   end
 
-  -- The melee strip sits just below the shot bar, a third of its height.
-  local mh = math.max(3, math.floor(h / 3))
+  -- The melee swing bar sits just below the shot bar and is the SAME height.
+  --
+  -- It used to be a third of the shot bar's height, which read as a caption
+  -- rather than a bar. In the two-mob setup the melee cycle matters exactly as
+  -- much as the shot cycle -- the whole point is that the two run independently
+  -- and you play them against each other -- so they are drawn as two equal
+  -- bars. Both scale with the height slider.
+  local mh = h
   if meleeTrack then
     meleeTrack:ClearAllPoints()
     meleeTrack:SetPoint("TOPLEFT", frame, "BOTTOMLEFT", 0, -2)
@@ -684,10 +699,11 @@ local function ApplySize()
   -- cannot leave a gap or an overlap.
   local rowTop = -(mh + 4)
 
-  -- The state strip. Taller than the pips on purpose: it is the line you read
-  -- to know whether the two-mob weave is live, so it has to be legible without
-  -- squinting mid-fight.
-  local rsH = math.max(12, math.floor(h * 0.55))
+  -- The state line is a CAPTION, not a fourth bar. Fixed height, and it does
+  -- NOT scale with the height slider -- at 0.55x the bar height it grew to 14px
+  -- while the melee bar was 9px, i.e. a text line chunkier than the timing bar
+  -- it was describing. That was never asked for.
+  local rsH = 11
   if rangeStrip then
     rangeStrip:ClearAllPoints()
     rangeStrip:SetPoint("TOPLEFT", frame, "BOTTOMLEFT", 0, rowTop)
@@ -1201,7 +1217,7 @@ local function Redraw(now)
       ShownIf(reco, false)
     else
       local rtxt
-      local st, s = ShotTimer.RangeState(now)
+      local st = ShotTimer.RangeState(now)
       if st == "twogo" then
         rtxt = "|cff4dff73PRESS 2-MOB MACRO|r"
       elseif st == "two" then
@@ -1212,8 +1228,6 @@ local function Redraw(now)
           rtxt = "|cffff9d33AIMED SHOT|r"
         elseif m ~= nil and m <= 0 then
           rtxt = "|cff66b3ffMULTI-SHOT|r"
-        elseif s.raptorIn ~= nil and s.raptorIn <= 0 and st == "melee" then
-          rtxt = "|cff4dff73RAPTOR STRIKE|r"
         elseif down then
           rtxt = "|cff9fd8ffweave|r"
         else
@@ -1668,6 +1682,11 @@ function ShotTimer.LatencyWidth() return latencySlice and latencySlice:GetWidth(
 function ShotTimer.LatencyShown()
   return latencySlice ~= nil and latencySlice:IsShown() == true
 end
+-- Geometry seams, so the bar proportions are pinned by a test rather than by
+-- eye: two equal timing bars, and a caption underneath that does not grow.
+function ShotTimer.BarHeight() return frame and frame:GetHeight() or nil end
+function ShotTimer.MeleeBarHeight() return meleeTrack and meleeTrack:GetHeight() or nil end
+function ShotTimer.StripHeight() return rangeStrip and rangeStrip:GetHeight() or nil end
 function ShotTimer.IsAnimating() return onUpdateBound end
 function ShotTimer._OnMeleeSwing(t)
   meleeSpeed = ReadMeleeSpeed() or meleeSpeed
