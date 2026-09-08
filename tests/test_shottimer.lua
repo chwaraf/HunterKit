@@ -1605,6 +1605,55 @@ HKh2:Load()
 check("a height the player chose is never rewritten", HKh2.db.shottimer.height == 14,
   tostring(HKh2.db.shottimer.height))
 
+
+-- ---------------------------------------------------------------------------
+-- The latency end-slice, and the bound on what counts as a clip.
+--
+-- Regression, shipped in 0.9.71 and reported from game: Redraw drew the slice
+-- with SetHeight(h), but `h` is a local of ApplySize -- in Redraw it resolved
+-- to the GLOBAL, i.e. nil, and the live client threw
+--   bad argument #1 to 'SetHeight' (Usage: self:SetHeight(height))
+-- on every single frame. Every check stayed green, because the slice only draws
+-- when a clip has actually been measured and NO test ever produced one.
+--
+-- Asserted here: the height, and that the slice is a small tail rather than
+-- most of the bar. (An earlier draft of this claimed the WIDTH formula was also
+-- wrong; it was not -- castZoneWidth * secs/CAST_TIME and w * secs/cycle are
+-- algebraically identical, and a negative control confirmed the two agree. The
+-- 216px-of-220px slice seen in game came entirely from lastDelay being 18.165,
+-- i.e. from the unbounded clip measurement tested further down.)
+-- ---------------------------------------------------------------------------
+local db9 = Shooting(2.035, 1000)
+db9.enabled = true
+db9.showDelay = true
+db9.width = 220
+ST.RescanSettings()
+At(1002.375)                       -- 0.34s later than predicted: a real clip
+ST._OnShotFired(1002.375)
+check("a real clip is measured", math.abs((ST.LastDelay() or 0) - 0.34) < 0.02,
+  tostring(ST.LastDelay()))
+At(1003)
+ST.Refresh(); ST.OnUpdate()
+check("the latency slice draws without error", ST.LatencyShown() == true)
+local expW = math.floor(220 * 0.34 / 2.035)
+check("...and it is the size a 0.34s tail should be",
+  math.abs((ST.LatencyWidth() or -999) - expW) <= 1,
+  string.format("got %s, want ~%d", tostring(ST.LatencyWidth()), expW))
+check("...a small tail, not most of the bar",
+  (ST.LatencyWidth() or 0) < 110, tostring(ST.LatencyWidth()))
+
+-- A gap where you simply were not shooting is NOT a clip. Without the bound
+-- this recorded the whole gap -- lastDelay 18.165, printed as "+18.17s" -- and
+-- inflated the clip count. That was pre-existing: the latency slice only made
+-- it visible by trying to draw it.
+local clips = select(2, ST.Stats())
+At(1030)
+ST._OnShotFired(1030)
+check("a stale prediction is not recorded as a clip", ST.LastDelay() == 0,
+  tostring(ST.LastDelay()))
+check("...and does not inflate the clip count", select(2, ST.Stats()) == clips,
+  string.format("%s vs %s", tostring(select(2, ST.Stats())), tostring(clips)))
+
 -- Put the shared state back for the teardown below.
 HKTest.state.units = {}
 HKTest.state.inMelee = {}

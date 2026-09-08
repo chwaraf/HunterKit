@@ -3,6 +3,59 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.72] - 2026-09-08
+
+### Fixed
+- **The shot bar threw a Lua error on every frame** as soon as the new latency
+  slice had something to draw:
+
+  ```
+  ShotTimer.lua: bad argument #1 to 'SetHeight' (Usage: self:SetHeight(height))
+  ```
+
+  `Redraw` called `latencySlice:SetHeight(h)`, but `h` is a local of
+  `ApplySize` — a different function. In `Redraw` it resolved to the **global**
+  `h`, i.e. `nil`, and the live client rejects that. `Redraw` defines `local w`
+  and never defined `local h`. Reported from game; 0.9.71 shipped it.
+- **A pause in shooting was reported as an enormous clip.** `OnShotFired`
+  recorded `now - nextAt` as the clip with no upper bound, so resuming
+  auto-repeat after any gap — swapping target, dying, walking between packs —
+  printed the entire gap: **`+18.17s`**, and counted it. A clip is bounded by
+  the cycle it belongs to; a larger delta means the prediction is simply stale.
+  Now bounded to one cycle. **This was pre-existing, not introduced in 0.9.71** —
+  the latency slice only made it visible by trying to draw an 18-second tail.
+- `ApplySize` still fell back to an **18px** bar height when `db.height` was
+  missing, after 0.9.71 raised the default to 27. Now consistent.
+
+### Tests
+- **The harness let the crash ship, and that was the real defect.** The stub's
+  `Frame:SetHeight`/`SetWidth`/`SetSize` accepted any argument, including `nil`,
+  while the live client throws. A stub more permissive than the client is worse
+  than none, because it turns a loud runtime error into a green test — all 226
+  ShotTimer checks passed over a bar that could not draw a frame. They now
+  validate the argument type and raise the client's own message.
+- **No test ever produced a measured clip**, which is the only state in which
+  the latency slice draws at all — so the buggy line was never even reached.
+  `tests/test_shottimer.lua` 226 -> 232: a real 0.34s clip, the slice's size and
+  visibility, and that a stale prediction is neither recorded as a clip nor
+  counted as one.
+- Verified by negative control on all three: reverting the `local h` line now
+  fails with the client's exact message; removing the cycle bound fails "a stale
+  prediction is not recorded as a clip — 25.59" and "does not inflate the clip
+  count — 2 vs 1".
+
+### Notes
+- A first reading of the crash blamed the slice's **width formula** as well. It
+  was not a bug: `castZoneWidth * secs/CAST_TIME` and `w * secs/cycle` are
+  algebraically identical (the cast time cancels), and a negative control
+  confirmed the two agree — reverting it fails nothing. The 216px-of-220px slice
+  seen in game came entirely from the 18.165s measurement above. The formula was
+  still rewritten in the direct form because it reads off the bar, and the
+  `> 2s` clamp became `> one cycle`, which the bounded measurement makes
+  unreachable but which a slice should never violate anyway.
+
+  1031 green in nine files.
+
 ## [0.9.71] - 2026-09-08
 
 ### Added

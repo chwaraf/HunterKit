@@ -38,9 +38,25 @@ end
 function Frame:SetPoint(a, b, c, d, e) self.points[#self.points + 1] = { a, b, c, d, e } end
 function Frame:ClearAllPoints() self.points = {} end
 function Frame:GetPoint(i) return self.points[i] and unpack(self.points[i]) end
-function Frame:SetSize(w, h) self.width, self.height = w, h end
-function Frame:SetWidth(w) self.width = w end
-function Frame:SetHeight(h) self.height = h end
+-- The live client REJECTS a non-number here:
+--   bad argument #1 to 'SetHeight' (Usage: self:SetHeight(height))
+-- Accepting anything silently let a real bug ship in 0.9.71 -- Redraw called
+-- latencySlice:SetHeight(h) where `h` was a local of a DIFFERENT function, so
+-- it resolved to the global (nil) and threw every frame in game while all 226
+-- ShotTimer checks stayed green. A stub that is more permissive than the client
+-- is worse than no stub, because it turns a loud runtime error into a pass.
+local function Num(method, slot, v)
+  if type(v) ~= "number" then
+    error(string.format("bad argument #%d to '%s' (Usage: self:%s(number), got %s)",
+      slot, method, method, type(v)), 3)
+  end
+end
+function Frame:SetSize(w, h)
+  Num("SetSize", 1, w); Num("SetSize", 2, h)
+  self.width, self.height = w, h
+end
+function Frame:SetWidth(w) Num("SetWidth", 1, w); self.width = w end
+function Frame:SetHeight(h) Num("SetHeight", 1, h); self.height = h end
 function Frame:GetWidth() return self.width end
 function Frame:GetHeight() return self.height end
 function Frame:GetCenter() return (self.width or 0) / 2, (self.height or 0) / 2 end

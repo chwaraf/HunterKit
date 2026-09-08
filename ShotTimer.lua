@@ -653,7 +653,7 @@ end
 local function ApplySize()
   if not frame then return end
   local w = tonumber(db and db.width) or 220
-  local h = tonumber(db and db.height) or 18
+  local h = tonumber(db and db.height) or 27   -- matches HK.defaults.shottimer
   frame:SetSize(w, h)
   if track then track:SetSize(w, h) end
   -- The red lockout is a FIXED 0.5s, so its share of the bar changes with the
@@ -1008,6 +1008,10 @@ local function Redraw(now)
   if not frame or not frame:IsShown() then return end
   local remaining, total, locked = ShotTimer.Progress(now)
   local w = tonumber(db.width) or 220
+  -- Needed by the latency slice below. This was missing: SetHeight(h) resolved
+  -- `h` to the GLOBAL (nil, since `h` is a local of ApplySize) and the live
+  -- client rejects that -- "bad argument #1 to 'SetHeight'" -- every frame.
+  local h = tonumber(db.height) or 27
 
   if remaining then
     -- Fill grows toward the shot, so the bar is "charging up" to fire.
@@ -1227,17 +1231,31 @@ local function Redraw(now)
   -- -- precisely what the "+0.34s" readout measures. Painting that measured
   -- tail into the bar turns a number you have to read into a region you can
   -- see, which is what Super Swing Timer does with its latency slice.
+  --
+  -- Geometry: the bar fills left-to-right toward the shot, so the danger
+  -- region hangs off the RIGHT edge and the extra latency pushes its start
+  -- further LEFT. The slice therefore sits immediately left of the red zone
+  -- and EXTENDS it, rather than overlapping it.
+  --
+  -- Width is scaled against the WHOLE cycle: the bar spans `speed` seconds
+  -- over `w` pixels. (An earlier form of this wrote it as castZoneWidth *
+  -- secs/CAST_TIME -- algebraically the same thing, CAST_TIME cancels. Kept in
+  -- the direct form because it is the one you can read off the bar.)
+  --
+  -- The clamp is `cyc`, not a fixed 2s: on a fast weapon 2s of "latency" would
+  -- draw a slice wider than the bar itself. Bounding the clip measurement to
+  -- one cycle (see OnShotFired) already makes that unreachable, so this is the
+  -- belt to those braces -- but a slice must never outgrow its bar.
   -- ---------------------------------------------------------------------
   if latencySlice and castZone then
+    local cyc = math.max(speed, MIN_SPEED)
     local secs = (lastDelay > CLIP_EPSILON) and lastDelay or 0
-    if secs > 2 then secs = 2 end                    -- never paint more than 2s
-    local zw = w * (CAST_TIME / math.max(speed, MIN_SPEED))
-    local lw = math.floor(zw * (secs / CAST_TIME))
+    if secs > cyc then secs = cyc end              -- never wider than the bar
+    local lw = math.floor(w * (secs / cyc))
     lastLatW = SetWidthIf(latencySlice, lw, lastLatW)
     if lw >= 1 then
       latencySlice:ClearAllPoints()
-      -- Grows leftward from the right edge, inside the red zone.
-      latencySlice:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
+      latencySlice:SetPoint("TOPRIGHT", castZone, "TOPLEFT", 0, 0)
       latencySlice:SetHeight(h)
       ShownIf(latencySlice, true)
     else
@@ -1412,7 +1430,17 @@ local function OnShotFired(now)
   -- did during the last cycle. This is the number the feature is really for.
   if nextAt then
     local delta = now - nextAt
-    if delta > CLIP_EPSILON then
+    -- A clip is bounded by the cycle it belongs to: the worst real case is
+    -- roughly the cast plus your latency, and even a fully missed shot cannot
+    -- be more than a cycle late. A LARGER delta is not a clip at all -- it
+    -- means auto-repeat was off (you stopped shooting, swapped target, died,
+    -- logged in) and `nextAt` is simply stale from the last cycle.
+    --
+    -- Without this bound, resuming after any pause printed the whole gap as a
+    -- clip: "+18.17s", and counted it, which is exactly what the 0.9.71
+    -- latency slice then tried to draw. `speed` here is still the PREVIOUS
+    -- cycle's, which is the one `nextAt` was derived from.
+    if delta > CLIP_EPSILON and delta <= speed then
       lastDelay = delta
       delayShownAt = now
       clipCount = clipCount + 1
@@ -1636,6 +1664,10 @@ function ShotTimer.IconBuilt() return iconFrame ~= nil end
 function ShotTimer.IconShown() return iconFrame ~= nil and iconFrame:IsShown() == true end
 function ShotTimer.IconAlpha() return iconFrame and iconFrame.alpha or nil end
 function ShotTimer.IconText() return iconText and iconText.text or nil end
+function ShotTimer.LatencyWidth() return latencySlice and latencySlice:GetWidth() or nil end
+function ShotTimer.LatencyShown()
+  return latencySlice ~= nil and latencySlice:IsShown() == true
+end
 function ShotTimer.IsAnimating() return onUpdateBound end
 function ShotTimer._OnMeleeSwing(t)
   meleeSpeed = ReadMeleeSpeed() or meleeSpeed
