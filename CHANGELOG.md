@@ -3,6 +3,46 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.75] - 2026-09-08
+
+### Fixed
+- **The auto shot bar's fill was 8px tall inside a 27px bar** — reported as "the
+  auto shot bar is twice as small as the bar behind it with the red strip part".
+  It was the fill, not the track.
+
+  A texture anchored by a single point with **no explicit size** falls back to
+  the *texture's own dimensions* on the live client, and the fill's texture is
+  `WHITE8x8`. Its width was driven every frame by `Redraw`; its height was never
+  set by anything. So it drew 8px tall against an 18px bar (roughly half — hence
+  "twice as small") and 8px against the 27px bar that replaced it in 0.9.73,
+  which is what made it noticeable. Every other layer on the widget — track,
+  lockout zone, melee bar, state strip — had a height. This one did not.
+  `ApplySize` now sets it.
+- **The safe/locked hairline has been invisible since it was added.** `safeMark`
+  was created, textured and coloured in `BuildBar` — and never positioned or
+  sized, so it was an 8x8 blob at the frame's origin. The comment above it
+  promised "a hairline at the safe/locked boundary… the eye tracks a line
+  crossing a mark far better than it judges a colour change", and that line did
+  not exist on screen. It is now 2px wide, full bar height, placed where the red
+  lockout begins — and it moves with weapon speed, so it is positioned in
+  `ApplySize` (which runs on every shot), not in `Redraw`.
+
+### Tests
+- **`tests/test_shottimer.lua` 240 -> 245.** "Did we size this texture" is not
+  readable from the code — an unsized texture is *valid* Lua and only misbehaves
+  on a real client — so every layer's height is now asserted against the bar's:
+  fill, lockout zone, hairline, melee bar, and all four together as the height
+  slider moves.
+- **The stub's `Frame:GetPoint` only ever returned one value.** It was written
+  `return self.points[i] and unpack(self.points[i])`, and an `and` expression
+  adjusts its right operand to a *single* result — so the anchor string came
+  back and every offset read as `nil`. Same class of mistake as the geometry
+  setters in 0.9.72: a stub quietly answering less than the client does.
+- Negative control: removing the fill's height fails *"the shot bar's fill is the
+  full height of the bar — fill 0 vs bar 27"*.
+
+  1048 green in nine files.
+
 ## [0.9.74] - 2026-09-08
 
 ### Fixed

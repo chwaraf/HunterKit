@@ -37,7 +37,15 @@ end
 
 function Frame:SetPoint(a, b, c, d, e) self.points[#self.points + 1] = { a, b, c, d, e } end
 function Frame:ClearAllPoints() self.points = {} end
-function Frame:GetPoint(i) return self.points[i] and unpack(self.points[i]) end
+-- `return t and unpack(t)` would TRUNCATE to one value -- an `and` expression
+-- adjusts its right operand to a single result, so GetPoint handed back only
+-- the anchor string and every offset read as nil. Same class of mistake the
+-- geometry setters had: a stub that quietly answers less than the client.
+function Frame:GetPoint(i)
+  local p = self.points[i]
+  if not p then return nil end
+  return unpack(p)
+end
 -- The live client REJECTS a non-number here:
 --   bad argument #1 to 'SetHeight' (Usage: self:SetHeight(height))
 -- Accepting anything silently let a real bug ship in 0.9.71 -- Redraw called

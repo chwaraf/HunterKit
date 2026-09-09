@@ -675,6 +675,31 @@ local function ApplySize()
     castZone:SetSize(math.max(1, w * frac), h)
   end
 
+  -- The fill's WIDTH is driven every frame by Redraw; only its height is set
+  -- here. And it never was: a texture anchored by a single point with no
+  -- explicit size falls back to the TEXTURE's own dimensions, and WHITE8x8 is
+  -- 8x8 -- so the fill drew 8px tall inside an 18px bar, and 8px inside the
+  -- 27px bar that replaced it. Every other layer on this widget had a height;
+  -- this one did not. That is the "the auto shot bar is twice as small as the
+  -- bar behind it" report: it was the fill, not the track.
+  if fill then fill:SetHeight(h) end
+
+  -- The hairline at the safe/locked boundary. It was created, textured and
+  -- coloured in BuildBar and then never positioned or sized -- an invisible
+  -- 8x8 blob sitting at the frame's origin since the day it was added. The
+  -- boundary is where the red lockout starts, and it moves with the weapon
+  -- speed, which is why it lives here (ApplySize runs on every shot) rather
+  -- than in Redraw.
+  if safeMark then
+    local frac = CAST_TIME / math.max(speed, MIN_SPEED)
+    if frac > 1 then frac = 1 end
+    local x = w * (1 - frac)
+    if x < 0 then x = 0 elseif x > w - 2 then x = w - 2 end
+    safeMark:ClearAllPoints()
+    safeMark:SetSize(2, h)
+    safeMark:SetPoint("TOPLEFT", frame, "TOPLEFT", x, 0)
+  end
+
   -- The melee swing bar sits just below the shot bar and is the SAME height.
   --
   -- It used to be a third of the shot bar's height, which read as a caption
@@ -1687,6 +1712,17 @@ end
 function ShotTimer.BarHeight() return frame and frame:GetHeight() or nil end
 function ShotTimer.MeleeBarHeight() return meleeTrack and meleeTrack:GetHeight() or nil end
 function ShotTimer.StripHeight() return rangeStrip and rangeStrip:GetHeight() or nil end
+-- Layer heights. A texture anchored by one point with no explicit size falls
+-- back to the TEXTURE's native dimensions on the live client, so "did we size
+-- it" is not visible from the code -- it has to be asserted.
+function ShotTimer.FillHeight() return fill and fill:GetHeight() or nil end
+function ShotTimer.CastZoneHeight() return castZone and castZone:GetHeight() or nil end
+function ShotTimer.SafeMarkHeight() return safeMark and safeMark:GetHeight() or nil end
+function ShotTimer.SafeMarkX()
+  if not safeMark then return nil end
+  local _, _, _, x = safeMark:GetPoint(1)
+  return x
+end
 function ShotTimer.IsAnimating() return onUpdateBound end
 function ShotTimer._OnMeleeSwing(t)
   meleeSpeed = ReadMeleeSpeed() or meleeSpeed

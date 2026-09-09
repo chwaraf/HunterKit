@@ -1707,6 +1707,52 @@ check("the melee auto-attack is up and Auto Shot is free",
 check("...so the two-mob press fires even with specials ready",
   s11.press == true, "specials no longer gate the two-mob cue")
 
+
+-- ---------------------------------------------------------------------------
+-- Every LAYER of the bar must be the height of the bar.
+--
+-- Reported as "the auto shot bar is twice as small as the bar behind it with
+-- the red strip part". It was the fill: a texture anchored by a single point
+-- with no explicit size falls back to the TEXTURE's own dimensions on the live
+-- client, and WHITE8x8 is 8x8. So the fill drew 8px tall inside an 18px bar
+-- (roughly half -- hence "twice as small"), and 8px inside the 27px bar that
+-- replaced it. Every other layer had a height; this one never did.
+--
+-- "Did we size it" is not readable from the code, so it is asserted here.
+-- ---------------------------------------------------------------------------
+local db12 = Shooting(3.0, 1000)
+db12.height = 27
+db12.width = 220
+ST.RescanSettings()
+check("the shot bar's fill is the full height of the bar",
+  ST.FillHeight() == ST.BarHeight(),
+  string.format("fill %s vs bar %s", tostring(ST.FillHeight()),
+    tostring(ST.BarHeight())))
+check("so is the red lockout zone behind it",
+  ST.CastZoneHeight() == ST.BarHeight(),
+  tostring(ST.CastZoneHeight()))
+
+-- The hairline at the safe/locked boundary was created, textured and coloured
+-- in BuildBar and then never positioned or sized -- invisible since it was
+-- added. It marks where the red zone starts, so it belongs inside the bar.
+check("the safe/locked hairline is sized, not an 8x8 blob",
+  ST.SafeMarkHeight() == ST.BarHeight(), tostring(ST.SafeMarkHeight()))
+local smx = ST.SafeMarkX()
+check("...and it sits inside the bar, at the lockout boundary",
+  type(smx) == "number" and smx > 0 and smx < 220, tostring(smx))
+
+-- And it all follows the height slider together.
+db12.height = 40
+ST.RescanSettings()
+check("every layer follows the height slider",
+  ST.FillHeight() == 40 and ST.CastZoneHeight() == 40
+  and ST.MeleeBarHeight() == 40 and ST.BarHeight() == 40,
+  string.format("%s/%s/%s/%s", tostring(ST.FillHeight()),
+    tostring(ST.CastZoneHeight()), tostring(ST.MeleeBarHeight()),
+    tostring(ST.BarHeight())))
+db12.height = 27
+ST.RescanSettings()
+
 -- Put the shared state back for the teardown below.
 HKTest.state.units = {}
 HKTest.state.inMelee = {}
