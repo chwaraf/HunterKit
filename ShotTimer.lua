@@ -1723,6 +1723,9 @@ function ShotTimer.SafeMarkX()
   local _, _, _, x = safeMark:GetPoint(1)
   return x
 end
+function ShotTimer.WeaveMarkShown()
+  return weaveMark ~= nil and weaveMark:IsShown() == true
+end
 function ShotTimer.IsAnimating() return onUpdateBound end
 function ShotTimer._OnMeleeSwing(t)
   meleeSpeed = ReadMeleeSpeed() or meleeSpeed

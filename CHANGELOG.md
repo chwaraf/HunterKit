@@ -3,6 +3,47 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.76] - 2026-09-08
+
+### Added
+- **A section index down the left edge of the options window.** One button per
+  section — thirteen of them — each scrolling the pane straight to it. Finding
+  *Ammo auto-buy* was a scroll-and-scan through a 600px pane every time the
+  window was opened; it is now one click, and the column doubles as a table of
+  contents for what the addon actually does.
+
+  The window widened 474 → 608 to make room. The scrollbar anchors to `TOPRIGHT`
+  so it followed on its own; the settings pane and its 436px content are
+  unchanged. Button labels drop a font step, because the template's size is cut
+  for a 24px button and *Pet aggro warning* clipped at 19px.
+
+### Tests
+- `tests/test_options_ui.lua` 90 -> 95: a button for every section, labelled with
+  the section names in order, and clicking one actually moves the pane — the
+  last section scrolls down, a middle one lands at the top, the first returns.
+  Negative control: making the click scroll to 0 unconditionally fails all three.
+- **The stub had no `Frame:GetFontString`**, so a button label could not be
+  restyled in tests at all — the first run of this feature died on
+  `attempt to call a nil value (method 'GetFontString')`. Added, and the Options
+  call is guarded on the *method* as well as the result, so a client without it
+  still gets a working button with a default-sized label.
+
+### Notes
+- **Not changed, deliberately:** with *Also weave by running in and out* off, the
+  blue weave marker and the "weave in X" label can still appear. That is the
+  static-weave path, not travel-weave leakage — `WeaveWindow` treats you as
+  static whenever `InMeleeOfTarget()` is true, and that scans four units
+  (`target`, `mouseover`, `pettarget`, `targettarget`). Your **pet's target**
+  drifting inside the ~11yd probe is what makes it come and go.
+
+  Narrowing that scan is the obvious fix, but four existing tests deliberately
+  lock the wide behaviour in — *"a mouseover macro must not blind the weave
+  advice"*, *"the pet's target in melee also counts"*, *"every route gives the
+  same advice"* — so reversing it is a design decision rather than a bug fix.
+  Left alone pending that decision rather than guessing.
+
+  1053 green in nine files.
+
 ## [0.9.75] - 2026-09-08
 
 ### Fixed

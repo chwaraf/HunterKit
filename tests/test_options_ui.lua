@@ -766,6 +766,52 @@ check("...and is faded to show it is in edit mode",
 
 pcall(HK.Positions.ToggleLock)          -- relock
 
+
+-- ---------------------------------------------------------------------------
+-- The section index down the left edge: one button per section, each scrolling
+-- the window straight to it. Thirteen sections in one pane otherwise means
+-- scroll-and-scan every time the window is opened.
+-- ---------------------------------------------------------------------------
+local nav = HK.Options.SectionNav()
+local SECTIONS = {
+  "Master", "Feed Pet", "Sniper Mark", "Pet Mend Marker", "Ammo",
+  "Ammo auto-buy", "Pet aggro warning", "Weapon timers", "Gun Sound",
+  "Passive pet alert", "Macros", "Positions", "Reset",
+}
+check("there is a nav button for every section",
+  #nav == #SECTIONS, string.format("%d vs %d", #nav, #SECTIONS))
+
+local namesOK, wrongAt = true, nil
+for i, want in ipairs(SECTIONS) do
+  if nav[i] and nav[i].name ~= want then namesOK = false; wrongAt = i end
+end
+check("...labelled with the section names, in order", namesOK,
+  wrongAt and string.format("#%d is %s", wrongAt, tostring(nav[wrongAt].name)) or "")
+
+-- Clicking one must actually move the pane. The content runs downward-negative
+-- and AddSection draws the header 4px below the y it was handed, so the offset
+-- that puts that header at the top is 4 - y.
+local last = nav[#nav]
+last.button:GetScript("OnClick")(last.button)
+check("clicking the last section scrolls the pane down",
+  (HK.Options.ScrollOffset() or 0) > 0, tostring(HK.Options.ScrollOffset()))
+
+local mid = nav[5]
+mid.button:GetScript("OnClick")(mid.button)
+check("clicking a middle section lands it at the top of the pane",
+  math.abs((HK.Options.ScrollOffset() or -1) - (4 - mid.y)) < 0.01,
+  string.format("got %s, want %s", tostring(HK.Options.ScrollOffset()),
+    tostring(4 - mid.y)))
+
+-- The first section is not at offset 0: AddSection draws the header 4px below
+-- the y it is handed, so even "Master" sits 4px down and scrolls to 4.
+nav[1].button:GetScript("OnClick")(nav[1].button)
+check("...and the first section scrolls back to the top",
+  math.abs((HK.Options.ScrollOffset() or -1) - (4 - nav[1].y)) < 0.01
+    and (HK.Options.ScrollOffset() or 99) <= 4,
+  string.format("got %s, want %s", tostring(HK.Options.ScrollOffset()),
+    tostring(4 - nav[1].y)))
+
 -- Report this file's tally so tests/test_docs.lua can check the README's
 -- advertised check counts against what the suite really runs.
 HKTest.report("test_options_ui.lua", passes, #failures)

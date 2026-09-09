@@ -103,7 +103,10 @@ end
 local function MakeWindow()
   -- BackdropTemplate is required for SetBackdrop on the modern ClassFrameXML.
   win = CreateFrame("Frame", "HunterKitOptions", UIParent, "BackdropTemplate")
-  win:SetSize(474, 604)
+  -- 608 wide: 474 of settings pane plus a 134px column of section buttons down
+  -- the left edge (see BuildNav). The scrollbar anchors to TOPRIGHT, so it
+  -- follows the widening on its own.
+  win:SetSize(608, 604)
   win:SetFrameStrata("DIALOG")
   win:SetPoint("CENTER")
   win:SetMovable(true)
@@ -148,7 +151,7 @@ local function MakeWindow()
   -- via SetVerticalScroll, and let SetScrollChild manage the content position
   -- (do NOT also manually SetPoint the content — that's what broke the layout).
   local scrollArea = CreateFrame("ScrollFrame", "HunterKitOptionsScroll", win)
-  scrollArea:SetPoint("TOPLEFT", win, "TOPLEFT", 14, -34)
+  scrollArea:SetPoint("TOPLEFT", win, "TOPLEFT", 140, -34)   -- 140 leaves room for the nav column
   scrollArea:SetPoint("BOTTOMRIGHT", win, "BOTTOMRIGHT", -22, 12) -- leave room for the scrollbar
   scrollArea:SetFrameStrata("DIALOG")
   scrollArea:SetClipsChildren(true)
@@ -426,7 +429,12 @@ end
 -- Each feature gets a rule above its title plus extra air below, so the modules
 -- read as separate blocks instead of one long list.
 local SECTION_RULE_GAP = 7
+-- Every section, in order, with the y it was drawn at -- so BuildNav can make
+-- a button that scrolls straight to it. Reset on each BuildWindow.
+local sectionIndex = {}
+
 local function AddSection(content, y, name)
+  sectionIndex[#sectionIndex + 1] = { name = name, y = y }
   local rule = content:CreateTexture(nil, "BACKGROUND")
   rule:SetPoint("TOPLEFT", content, "TOPLEFT", 0, y + SECTION_RULE_GAP)
   rule:SetPoint("TOPRIGHT", content, "TOPRIGHT", 0, y + SECTION_RULE_GAP)
@@ -514,8 +522,69 @@ local function AddShotBarLegend(content, y)
   return y - LEGEND_BAR_H - 12 - (#lines * 14) - 4
 end
 
+-- ---------------------------------------------------------------------------
+-- The section index: a column of buttons down the left edge, one per section,
+-- each scrolling the window straight to it.
+--
+-- Thirteen sections in one scrolling pane means finding "Ammo auto-buy" is a
+-- scroll-and-scan every time you open the window. This makes it one click, and
+-- doubles as a table of contents for what the addon actually does.
+-- ---------------------------------------------------------------------------
+local NAV_W, NAV_H, NAV_GAP, NAV_TOP = 124, 19, 21, -34
+local navButtons = {}
+
+local function BuildNav()
+  navButtons = {}
+  if not win or #sectionIndex == 0 then return end
+  local scroll = win.scroll
+  for i, e in ipairs(sectionIndex) do
+    local b = CreateFrame("Button", nil, win, "UIPanelButtonTemplate")
+    b:SetSize(NAV_W, NAV_H)
+    b:SetPoint("TOPLEFT", win, "TOPLEFT", 8, NAV_TOP - (i - 1) * NAV_GAP)
+    b:SetText(e.name)
+    -- The template's font is sized for a 24px button; at 19px with names like
+    -- "Pet aggro warning" it clips, so drop it a step.
+    -- Guarded on the METHOD, not just the result: a client without
+    -- GetFontString must still get a working button, merely with the default
+    -- label size.
+    if b.GetFontString then
+      local fs = b:GetFontString()
+      if fs and fs.SetFont then
+        fs:SetFont(STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF", 10, "")
+      end
+    end
+    -- Content coordinates run DOWNWARD-NEGATIVE and AddSection draws the header
+    -- 4px below the y it was handed, so the scroll offset that puts that header
+    -- at the top of the pane is (4 - y). UpdateScroll clamps it to the real
+    -- range, so the last few sections land as far down as they can go rather
+    -- than overscrolling into blank space.
+    b:SetScript("OnClick", function()
+      if not scroll then return end
+      scroll:SetVerticalScroll(math.max(0, 4 - e.y))
+      if win.UpdateScroll then win.UpdateScroll() end
+    end)
+    AttachTooltip(b, e.name, "Jump to the " .. e.name .. " settings.")
+    navButtons[#navButtons + 1] = b
+  end
+end
+
+-- The section buttons, in the order the sections appear. Exposed so the tests
+-- can assert the index matches the window's real contents and that clicking one
+-- actually scrolls -- neither is visible from the outside otherwise.
+function Options.SectionNav()
+  local out = {}
+  for i, b in ipairs(navButtons) do
+    out[i] = { name = b.text, button = b, y = sectionIndex[i] and sectionIndex[i].y }
+  end
+  return out
+end
+function Options.ScrollOffset()
+  return win and win.scroll and win.scroll:GetVerticalScroll() or nil
+end
+
 function BuildWindow()
   controlRefresh = {}
+  sectionIndex = {}
   MakeWindow()
 
   local content = win.content
@@ -976,6 +1045,7 @@ function BuildWindow()
     "Restores every HunterKit setting — sizes, shapes, toggles and saved positions — to its default. Your key bindings and the game's own options are untouched.")
   y = y - ROW
 
+  BuildNav()
   content:SetHeight(math.max(1, -y))
   if win.UpdateScroll then win.UpdateScroll() end
   return win

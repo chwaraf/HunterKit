@@ -84,6 +84,14 @@ function Frame:IsShown() return self.shown end
 function Frame:IsVisible() return self.shown end
 function Frame:SetAlpha(a) self.alpha = a end
 function Frame:SetRotation(r) self.rotation = r end
+-- Buttons have one on the live client; code that restyles a button's label
+-- (Options' section nav does) calls it, so the stub must answer too.
+function Frame:GetFontString()
+  if not self.fontString then
+    self.fontString = newFrame("FontString", nil, self)
+  end
+  return self.fontString
+end
 function Frame:GetNormalTexture()
   self.normalTex = self.normalTex or newFrame("Texture", nil, self)
   return self.normalTex
