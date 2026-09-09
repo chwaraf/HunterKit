@@ -3,6 +3,54 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.78] - 2026-09-08
+
+### Fixed
+- **The yellow bar on the shot timer was not explained anywhere in the UI.** It
+  shipped in 0.9.71 and the options legend had nine rows, none of them about it —
+  nor about the white hairline that became visible in 0.9.75, nor the state
+  strip, nor the press icon, nor the reco row. Five elements the bar draws had
+  no name a player could find. The legend now covers all of them, and the drawn
+  picture shows the clip slice, the hairline and the state strip too.
+- **It was also misnamed.** `latencySlice` / `COL_LATENCY` / "latency end-slice",
+  borrowed from Super Swing Timer, described the wrong thing. Nothing in the
+  addon reads the network — the width is `lastDelay`, measured as *(when the shot
+  really fired) minus (when the bar predicted it)*. Latency can move that number,
+  but so can spell batching, the server's re-shot timer, and above all the player
+  acting inside the lockout; the module header already said as much, and the
+  comment on the measurement itself calls it *"the honest cost of whatever the
+  player did"*. Renamed `clipSlice` / `COL_CLIP` throughout, and the README,
+  CHANGELOG and tooltips that repeated "plus your own latency" are corrected.
+  It is a clip indicator, and it lags one cycle, because a shot cannot be known
+  to have been late until it arrives.
+- **Three stale tooltips.** *Show how much you clipped* claimed the number "accounts
+  for your latency". *Melee swing timer* described the blue line purely by its
+  travel-weave meaning — the last moment you could run out and back — while
+  travel weaving is **off by default**, so for most players it marks the moment
+  the swing comes up at a mob already in melee. *Show the free-time countdown*
+  did not mention that the label changes wording (`GO`, `weave in 1.2s`, `shoot`,
+  `hold`).
+- **The README still advertised RAPTOR STRIKE in the "what to press next" row**,
+  which 0.9.73 removed.
+
+### Changed
+- The legend's red swatch was `0.85/0.20/0.20` while `COL_ZONE` is
+  `0.75/0.12/0.12`. Colours are copied by hand between the two files — there is
+  no shared palette — so it had simply drifted. Now matched, and the comment says
+  which file to check when one changes.
+- The legend's melee bar was drawn a third of the shot bar's height, which stopped
+  being a to-scale picture when the two became equal in 0.9.73. Now equal.
+
+### Tests
+- **`tests/test_options_ui.lua` 95 -> 106**: the legend must have a row for each
+  of ten things the bar draws — free region, lockout, hairline, clip slice, weave
+  marker, melee bar, `+0.34s`, specials pips, state strip, press icon — plus one
+  asserting the clip slice is described as a clip and not a latency reading.
+  This pins *coverage* rather than wording, so the next element ShotTimer grows
+  is the test that says the legend is behind.
+
+  1068 green in nine files.
+
 ## [0.9.77] - 2026-09-08
 
 ### Changed

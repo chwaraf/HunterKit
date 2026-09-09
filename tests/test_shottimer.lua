@@ -1634,13 +1634,13 @@ check("a real clip is measured", math.abs((ST.LastDelay() or 0) - 0.34) < 0.02,
   tostring(ST.LastDelay()))
 At(1003)
 ST.Refresh(); ST.OnUpdate()
-check("the latency slice draws without error", ST.LatencyShown() == true)
+check("the latency slice draws without error", ST.ClipShown() == true)
 local expW = math.floor(220 * 0.34 / 2.035)
 check("...and it is the size a 0.34s tail should be",
-  math.abs((ST.LatencyWidth() or -999) - expW) <= 1,
-  string.format("got %s, want ~%d", tostring(ST.LatencyWidth()), expW))
+  math.abs((ST.ClipWidth() or -999) - expW) <= 1,
+  string.format("got %s, want ~%d", tostring(ST.ClipWidth()), expW))
 check("...a small tail, not most of the bar",
-  (ST.LatencyWidth() or 0) < 110, tostring(ST.LatencyWidth()))
+  (ST.ClipWidth() or 0) < 110, tostring(ST.ClipWidth()))
 
 -- A gap where you simply were not shooting is NOT a clip. Without the bound
 -- this recorded the whole gap -- lastDelay 18.165, printed as "+18.17s" -- and

@@ -812,6 +812,44 @@ check("...and the first section scrolls back to the top",
   string.format("got %s, want %s", tostring(HK.Options.ScrollOffset()),
     tostring(4 - nav[1].y)))
 
+
+-- ---------------------------------------------------------------------------
+-- The legend must explain every part the bar actually draws.
+--
+-- The yellow clip slice shipped in 0.9.71 with NO legend row, and the white
+-- hairline that became visible in 0.9.75 likewise -- so the bar grew two
+-- elements nobody could identify, and the only name either had was in a comment.
+-- This pins the COVERAGE rather than the wording: when ShotTimer grows another
+-- element, this is the test that says the legend is behind.
+-- ---------------------------------------------------------------------------
+local legendTexts = {}
+for _, fs in ipairs(content.fontstrings or {}) do
+  if fs.text and fs.text ~= "" then legendTexts[#legendTexts + 1] = fs.text end
+end
+local allLegend = table.concat(legendTexts, "\n")
+
+local COVERED = {
+  { "the free (green) region",       "free time" },
+  { "the red lockout zone",          "lockout" },
+  { "the white boundary hairline",   "hairline" },
+  { "the yellow clip slice",         "Yellow" },
+  { "the blue weave marker",         "Blue line" },
+  { "the melee swing bar",           "melee swing" },
+  { "the +0.34s clip readout",       "+0.34s" },
+  { "the Aimed/Multi pips",          "Aimed / Multi" },
+  { "the state strip",               "State strip" },
+  { "the two-mob press icon",        "Press icon" },
+}
+for _, c in ipairs(COVERED) do
+  check("the legend explains " .. c[1],
+    allLegend:find(c[2], 1, true) ~= nil, "no row mentions " .. c[2])
+end
+
+-- The yellow slice was misnamed "latency" for six releases. It measures how
+-- late the shot landed; nothing in the addon reads the network.
+check("...and it says the yellow slice is a clip, not a latency reading",
+  allLegend:find("Not a latency reading", 1, true) ~= nil)
+
 -- Report this file's tally so tests/test_docs.lua can check the README's
 -- advertised check counts against what the suite really runs.
 HKTest.report("test_options_ui.lua", passes, #failures)

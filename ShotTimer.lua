@@ -133,8 +133,9 @@ local COL_TWO      = { 0.40, 0.75, 1.00, 0.95 }   -- set up, waiting on a cycle
 local COL_INMELEE  = { 0.90, 0.70, 0.20, 0.90 }   -- melee mob, no second target
 local COL_SHOOTING = { 0.45, 0.45, 0.50, 0.85 }   -- nothing in melee
 local COL_OOR      = { 1.00, 0.30, 0.10, 0.95 }   -- target out of Auto Shot range
--- The latency slice: the measured, honest tail of the lockout. See Redraw.
-local COL_LATENCY  = { 1.00, 0.85, 0.20, 0.70 }
+-- The clip slice: how late your last shot actually landed, drawn on the bar.
+-- NOT a latency reading -- nothing here reads the network. See Redraw.
+local COL_CLIP  = { 1.00, 0.85, 0.20, 0.70 }
 
 -- Last-drawn cache for the per-frame redraw. OnUpdate runs on EVERY rendered
 -- frame (60-150+ Hz), but almost nothing it draws changes that fast: the label
@@ -148,7 +149,7 @@ local lastFillCol, lastMeleeCol
 local lastLabel, lastDelayStr
 -- 0.9.71 widgets are cached the same way: the strip changes state a few times
 -- per cycle and the icon a couple of times a second, not every frame.
-local lastStripCol, lastStripTxt, lastLatW = nil, nil, -1
+local lastStripCol, lastStripTxt, lastClipW = nil, nil, -1
 local lastRecoTxt, lastIconCol, lastIconTxt, lastIconA
 
 local function Paint(tex, c)
@@ -207,11 +208,11 @@ local meleeSwungAt = nil
 local weaveMark, meleeFill, meleeTrack
 
 -- 0.9.71 widgets. `rangeStrip` is the state line under the melee strip; `reco`
--- is the "what to press next" row; `latencySlice` is the measured tail of the
+-- is the "what to press next" row; `clipSlice` is the measured tail of the
 -- lockout. The two-mob icon is its OWN frame, because it has to be draggable
 -- independently of the bar -- the whole point is putting it somewhere in your
 -- peripheral vision, which is rarely next to a combat bar.
-local rangeStrip, rangeStripText, reco, latencySlice
+local rangeStrip, rangeStripText, reco, clipSlice
 local iconFrame, iconTex, iconText, iconCd
 
 local DELAY_HOLD  = 2.5      -- seconds the "+0.34s" readout lingers
@@ -904,15 +905,17 @@ local function BuildBar()
   delayText:SetText("")
 
   -- The lockout's measured tail. castZone is drawn from the FIXED 0.5s cast,
-  -- but the honest boundary is 0.5s plus your own latency -- which is exactly
-  -- what the "+0.34s" readout measures. Super Swing Timer calls this a latency
-  -- end-slice and it is the difference between a bar that is theoretically
-  -- right and one that matches what actually happens on your connection. Drawn
-  -- inside the red zone, extending right from its left edge by the measured
-  -- clip, so it only appears once you HAVE a measurement.
-  latencySlice = frame:CreateTexture(nil, "OVERLAY")
-  latencySlice:SetTexture("Interface\\Buttons\\WHITE8x8")
-  Paint(latencySlice, COL_LATENCY)
+  -- but the honest boundary is later than that on a real connection, and how
+  -- much later is exactly what the "+0.34s" readout measures -- so the measured
+  -- tail is painted into the bar too. Super Swing Timer draws the same thing
+  -- and calls it a latency slice; here it is a CLIP slice, because the number is
+  -- "how late did the shot land", which latency only sometimes causes. It is
+  -- the difference between a bar that is theoretically right and one that
+  -- matches what actually happens on your connection. Drawn left of the red
+  -- zone, so it only appears once you HAVE a measurement.
+  clipSlice = frame:CreateTexture(nil, "OVERLAY")
+  clipSlice:SetTexture("Interface\\Buttons\\WHITE8x8")
+  Paint(clipSlice, COL_CLIP)
 
   -- The state strip: one line that says where you are. This is the indicator
   -- the two-mob weave never had.
@@ -987,9 +990,9 @@ local function HideExtras()
   if rangeStrip then rangeStrip:Hide() end
   if rangeStripText then rangeStripText:Hide() end
   if reco then reco:Hide() end
-  if latencySlice then latencySlice:Hide() end
+  if clipSlice then clipSlice:Hide() end
   if iconFrame then iconFrame:Hide() end
-  lastStripCol, lastStripTxt, lastLatW = nil, nil, -1
+  lastStripCol, lastStripTxt, lastClipW = nil, nil, -1
   lastRecoTxt, lastIconCol, lastIconTxt, lastIconA = nil, nil, nil, nil
   if specialRow then
     for i = 1, 2 do
@@ -1049,7 +1052,7 @@ local function Redraw(now)
   if not frame or not frame:IsShown() then return end
   local remaining, total, locked = ShotTimer.Progress(now)
   local w = tonumber(db.width) or 220
-  -- Needed by the latency slice below. This was missing: SetHeight(h) resolved
+  -- Needed by the clip slice below. This was missing: SetHeight(h) resolved
   -- `h` to the GLOBAL (nil, since `h` is a local of ApplySize) and the live
   -- client rejects that -- "bad argument #1 to 'SetHeight'" -- every frame.
   local h = tonumber(db.height) or 27
@@ -1265,16 +1268,23 @@ local function Redraw(now)
   end
 
   -- ---------------------------------------------------------------------
-  -- The latency end-slice. The red lockout is drawn from the FIXED 0.5s cast,
-  -- but the boundary that actually costs you damage is 0.5s plus YOUR latency
-  -- -- precisely what the "+0.34s" readout measures. Painting that measured
-  -- tail into the bar turns a number you have to read into a region you can
-  -- see, which is what Super Swing Timer does with its latency slice.
+  -- The clip slice: how late your LAST shot actually landed, drawn as a region
+  -- instead of a number you have to read.
   --
-  -- Geometry: the bar fills left-to-right toward the shot, so the danger
-  -- region hangs off the RIGHT edge and the extra latency pushes its start
-  -- further LEFT. The slice therefore sits immediately left of the red zone
-  -- and EXTENDS it, rather than overlapping it.
+  -- This is not a latency bar, and the earlier name ("latency slice", borrowed
+  -- from Super Swing Timer) said so wrongly. Nothing here reads the network.
+  -- The width is `lastDelay`, measured as (when the shot really fired) minus
+  -- (when the bar predicted it), and the module header is explicit about what
+  -- can move that: latency, spell batching, the server's own re-shot timer, and
+  -- above all the player acting inside the lockout. Read it as "how much you
+  -- clipped last time" -- the same figure as the +0.34s text.
+  --
+  -- Geometry: the bar fills left-to-right toward the shot, so the lockout hangs
+  -- off the RIGHT edge and a late shot pushes the real boundary further LEFT.
+  -- The slice therefore sits immediately left of the red zone and EXTENDS it,
+  -- rather than overlapping it. Informational only: it does not move the
+  -- lockout, and it lags by one cycle, because a shot cannot be known to have
+  -- been late until it arrives.
   --
   -- Width is scaled against the WHOLE cycle: the bar spans `speed` seconds
   -- over `w` pixels. (An earlier form of this wrote it as castZoneWidth *
@@ -1286,19 +1296,19 @@ local function Redraw(now)
   -- one cycle (see OnShotFired) already makes that unreachable, so this is the
   -- belt to those braces -- but a slice must never outgrow its bar.
   -- ---------------------------------------------------------------------
-  if latencySlice and castZone then
+  if clipSlice and castZone then
     local cyc = math.max(speed, MIN_SPEED)
     local secs = (lastDelay > CLIP_EPSILON) and lastDelay or 0
     if secs > cyc then secs = cyc end              -- never wider than the bar
     local lw = math.floor(w * (secs / cyc))
-    lastLatW = SetWidthIf(latencySlice, lw, lastLatW)
+    lastClipW = SetWidthIf(clipSlice, lw, lastClipW)
     if lw >= 1 then
-      latencySlice:ClearAllPoints()
-      latencySlice:SetPoint("TOPRIGHT", castZone, "TOPLEFT", 0, 0)
-      latencySlice:SetHeight(h)
-      ShownIf(latencySlice, true)
+      clipSlice:ClearAllPoints()
+      clipSlice:SetPoint("TOPRIGHT", castZone, "TOPLEFT", 0, 0)
+      clipSlice:SetHeight(h)
+      ShownIf(clipSlice, true)
     else
-      ShownIf(latencySlice, false)
+      ShownIf(clipSlice, false)
     end
   end
 
@@ -1477,7 +1487,7 @@ local function OnShotFired(now)
     --
     -- Without this bound, resuming after any pause printed the whole gap as a
     -- clip: "+18.17s", and counted it, which is exactly what the 0.9.71
-    -- latency slice then tried to draw. `speed` here is still the PREVIOUS
+    -- clip slice then tried to draw. `speed` here is still the PREVIOUS
     -- cycle's, which is the one `nextAt` was derived from.
     if delta > CLIP_EPSILON and delta <= speed then
       lastDelay = delta
@@ -1703,9 +1713,9 @@ function ShotTimer.IconBuilt() return iconFrame ~= nil end
 function ShotTimer.IconShown() return iconFrame ~= nil and iconFrame:IsShown() == true end
 function ShotTimer.IconAlpha() return iconFrame and iconFrame.alpha or nil end
 function ShotTimer.IconText() return iconText and iconText.text or nil end
-function ShotTimer.LatencyWidth() return latencySlice and latencySlice:GetWidth() or nil end
-function ShotTimer.LatencyShown()
-  return latencySlice ~= nil and latencySlice:IsShown() == true
+function ShotTimer.ClipWidth() return clipSlice and clipSlice:GetWidth() or nil end
+function ShotTimer.ClipShown()
+  return clipSlice ~= nil and clipSlice:IsShown() == true
 end
 -- Geometry seams, so the bar proportions are pinned by a test rather than by
 -- eye: two equal timing bars, and a caption underneath that does not grow.

@@ -462,52 +462,68 @@ local function AddShotBarLegend(content, y)
   local w = (content:GetWidth() or 436)
   local barW = w - 8
 
-  local bar = content:CreateTexture(nil, "ARTWORK")
-  bar:SetPoint("TOPLEFT", content, "TOPLEFT", 4, y)
-  bar:SetSize(barW, LEGEND_BAR_H)
-  bar:SetTexture("Interface\\Buttons\\WHITE8x8")
-  bar:SetVertexColor(0.10, 0.10, 0.12, 0.85)     -- the shared track colour
+  -- Colours copied from ShotTimer.lua's palette BY HAND. There is no shared
+  -- table, and inventing one for a dozen values would be more indirection than
+  -- it is worth -- but that makes this the file to check whenever a colour
+  -- changes there. (The red swatch here had already drifted from COL_ZONE.)
+  local C_TRACK    = { 0.10, 0.10, 0.12, 0.85 }
+  local C_CHARGING = { 0.20, 0.90, 0.30, 0.90 }
+  local C_ZONE     = { 0.75, 0.12, 0.12, 0.55 }
+  local C_WEAVE    = { 0.40, 0.75, 1.00, 0.95 }
+  local C_CLIP     = { 1.00, 0.85, 0.20, 0.70 }
+  local C_TWOGO    = { 0.30, 1.00, 0.45, 1.00 }
 
-  -- Free (green) portion: everything before the 0.5s cast lock.
-  local free = content:CreateTexture(nil, "OVERLAY")
-  free:SetPoint("TOPLEFT", bar, "TOPLEFT", 0, 0)
-  free:SetSize(barW * 0.72, LEGEND_BAR_H)
-  free:SetTexture("Interface\\Buttons\\WHITE8x8")
-  free:SetVertexColor(0.20, 0.90, 0.30, 0.90)
+  local function tex(layer, parent, point, ax, ay, ww, hh, c)
+    local t = content:CreateTexture(nil, layer)
+    t:SetPoint("TOP" .. point, parent, "TOP" .. point, ax, ay)
+    t:SetSize(ww, hh)
+    t:SetTexture("Interface\\Buttons\\WHITE8x8")
+    t:SetVertexColor(c[1], c[2], c[3], c[4])
+    return t
+  end
 
-  -- The lockout zone, drawn on the same scale the real bar uses.
-  local lock = content:CreateTexture(nil, "OVERLAY")
-  lock:SetPoint("TOPRIGHT", bar, "TOPRIGHT", 0, 0)
-  lock:SetSize(barW * 0.16, LEGEND_BAR_H)
-  lock:SetTexture("Interface\\Buttons\\WHITE8x8")
-  lock:SetVertexColor(0.85, 0.20, 0.20, 0.55)
+  -- The shot bar, and every layer drawn on it, in the order they stack.
+  local bar = tex("ARTWORK", content, "LEFT", 4, y, barW, LEGEND_BAR_H, C_TRACK)
+  tex("OVERLAY", bar, "LEFT", 0, 0, barW * 0.62, LEGEND_BAR_H, C_CHARGING)
+  -- The clip slice sits immediately LEFT of the red zone and extends it.
+  tex("OVERLAY", bar, "RIGHT", -(barW * 0.16), 0, barW * 0.10, LEGEND_BAR_H, C_CLIP)
+  tex("OVERLAY", bar, "RIGHT", -(barW * 0.16), 0, 2, LEGEND_BAR_H, { 1, 1, 1, 0.85 })
+  tex("OVERLAY", bar, "RIGHT", 0, 0, barW * 0.16, LEGEND_BAR_H, C_ZONE)
+  tex("OVERLAY", bar, "LEFT", barW * 0.50, 0, 2, LEGEND_BAR_H, C_WEAVE)
 
-  -- The weave marker.
-  local mark = content:CreateTexture(nil, "OVERLAY")
-  mark:SetPoint("TOPLEFT", bar, "TOPLEFT", barW * 0.55, 0)
-  mark:SetSize(2, LEGEND_BAR_H)
-  mark:SetTexture("Interface\\Buttons\\WHITE8x8")
-  mark:SetVertexColor(0.40, 0.75, 1.00, 1)
+  -- The melee swing bar: the SAME height as the shot bar, which is how the real
+  -- one draws since 0.9.73. This picture used to show it a third as tall, which
+  -- stopped being a to-scale picture the moment that changed.
+  local melee = tex("OVERLAY", bar, "LEFT", 0, -LEGEND_BAR_H - 2, barW, LEGEND_BAR_H, C_TRACK)
+  tex("OVERLAY", melee, "LEFT", 0, 0, barW * 0.45, LEGEND_BAR_H, C_CHARGING)
 
-  -- The melee swing strip that sits under the bar.
-  local melee = content:CreateTexture(nil, "OVERLAY")
-  melee:SetPoint("TOPLEFT", bar, "BOTTOMLEFT", 0, -2)
-  melee:SetSize(barW * 0.45, 5)
-  melee:SetTexture("Interface\\Buttons\\WHITE8x8")
-  melee:SetVertexColor(0.20, 0.90, 0.30, 0.90)   -- same green as the shot bar
+  -- The state strip under the two bars.
+  local strip = tex("OVERLAY", melee, "LEFT", 0, -LEGEND_BAR_H - 2, barW, 11, C_TWOGO)
+
+  local pictureH = LEGEND_BAR_H * 2 + 11 + 4
 
   local lines = {
     { "|cff33e64dGreen|r", "free time -- move, weave, cast" },
-    { "|cffd93333Red|r",   "0.5s lockout: acting here clips the shot" },
+    { "|cffbf1f1fRed|r", "the 0.5s lockout: acting here clips the shot" },
+    { "|cffffffffWhite hairline|r", "where the lockout begins" },
+    { "|cffffd933Yellow, left of the red|r", "how late your LAST shot landed. Not a latency reading -- nothing reads your connection. It is the measured clip, the same figure as +0.34s, shown for the one cycle after a late shot." },
     { "|cff66bfffBlue line|r", "where your melee hit belongs in the cycle" },
     { "|cff8cff8cLine turns green|r", "swing now" },
-    { "|cff33e64dLower bar|r", "your melee swing -- same colours, same meaning" },
+    { "|cff33e64dSecond bar, same height|r", "your melee swing -- same colours, same meaning" },
     { "|cff8cff8cPale green|r", "that weapon is ready to swing or fire now" },
-    { "|cff66ccffWEAVE|r", "shown when the round trip actually fits" },
+    { "|cff66ccffWEAVE / GO / weave in 1.2s|r", "the countdown: when to act, or that you should" },
+    { "|cffd9b333shoot|r", "a special shot is up -- spend it instead of weaving" },
     { "|cffff4040+0.34s|r", "how late the last shot really landed" },
-    { "|cff55dd55Aimed / Multi|r", "green = ready to spend, dark = on cooldown" },
+    { "|cff55dd55Aimed / Multi pips|r", "green = ready to spend, dark = on cooldown" },
+    { "|cff4dff73State strip: PRESS 2-MOB|r", "pet holds a second mob, melee swing up, Auto Shot free -- press the two-mob macro" },
+    { "|cff66ccff2-MOB - SWING 1.2s|r", "the setup is live, waiting on the swing" },
+    { "|cffe6b333MELEE ONLY|r", "something is in melee, no second mob to shoot" },
+    { "|cff737380RANGE|r", "nothing in melee -- you are simply shooting" },
+    { "|cfff04d4dOUT OF RANGE|r", "your target is past Auto Shot range" },
+    { "|cff4dff73Press icon: NOW|r", "bright = press the two-mob macro; dimmed with a countdown = set up, swing coming" },
+    { "|cff9fd8ffWhat to press next|r", "opt-in row naming the button worth pressing" },
   }
-  local ly = y - LEGEND_BAR_H - 12
+  local ly = y - pictureH - 12
   for _, row in ipairs(lines) do
     local fs = content:CreateFontString(nil, "OVERLAY")
     fs:SetPoint("TOPLEFT", content, "TOPLEFT", 8, ly)
@@ -517,9 +533,12 @@ local function AddShotBarLegend(content, y)
     fs:SetWordWrap(true)
     fs:SetText(row[1] .. "  " .. row[2])
     fs:SetTextColor(0.82, 0.82, 0.82)
-    ly = ly - 14
+    -- Wrapped rows need their real height back, or a long one overwrites the
+    -- next. 14 is the single-line pitch; anything longer is measured.
+    local h = (fs.GetStringHeight and fs:GetStringHeight()) or 0
+    ly = ly - math.max(14, h + 4)
   end
-  return y - LEGEND_BAR_H - 12 - (#lines * 14) - 4
+  return ly - 4
 end
 
 -- ---------------------------------------------------------------------------
@@ -876,7 +895,7 @@ function BuildWindow()
   MakeCheckbox(content, y, "Show the weapon timers bar",
     function() return db.shottimer.enabled end,
     function(v) db.shottimer.enabled = v; RefreshShotTimer() end,
-    "A bar showing your Auto Shot cycle while you are firing. Green means you are free to move and weave in a shot; the red zone at the end is the 0.5s where doing anything clips the shot and loses the damage. Appears only while auto-shooting.")
+    "A bar showing your Auto Shot cycle while you are firing. Green means you are free to move and weave in a shot; the red zone at the end is the 0.5s where doing anything clips the shot and loses the damage; a white hairline marks where that lockout begins; and a yellow slice left of the red appears for one cycle after a late shot, sized to how late it was. A state line underneath reads your situation at a glance, and the bar can be kept on screen with the option below. Appears only while auto-shooting. The picture under these settings names every part.")
   y = y - CHK
   MakeCheckbox(content, y, "Keep the bar on screen",
     function() return db.shottimer.always end,
@@ -886,17 +905,17 @@ function BuildWindow()
   MakeCheckbox(content, y, "Show how much you clipped",
     function() return db.shottimer.showDelay end,
     function(v) db.shottimer.showDelay = v; RefreshShotTimer() end,
-    "After each shot, shows how late it actually landed, e.g. +0.34s. Measured, not predicted, so it accounts for your latency. A steady +0.00 means you are clean.")
+    "After each shot, shows how late it actually landed, e.g. +0.34s -- measured as (when the shot really fired) minus (when the bar predicted it), never predicted. Latency can move that number, but so can spell batching, the server's re-shot timer, and above all acting inside the lockout, so read it as how much you CLIPPED rather than as a latency figure. A steady +0.00 means you are clean. The same figure is drawn as the yellow slice on the bar.")
   y = y - CHK
   MakeCheckbox(content, y, "Show the free-time countdown",
     function() return db.shottimer.showText end,
     function(v) db.shottimer.showText = v; RefreshShotTimer() end,
-    "Counts down the time you still have to act before the shot locks you in place.")
+    "Counts down the time you still have to act before the shot locks you in place. It also changes wording when there is something to decide: GO when a weave fits right now, \"weave in 1.2s\" while one is coming, \"shoot\" when a special shot is up and worth spending first, and \"hold\" inside the lockout.")
   y = y - CHK
   MakeCheckbox(content, y, "Melee swing timer",
     function() return db.shottimer.weave end,
     function(v) db.shottimer.weave = v; RefreshShotTimer() end,
-    "Adds a bar tracking your melee swing, plus a blue line on the shot bar marking the last moment you could run to melee, swing, and get back in time. In Classic Era the melee and ranged timers are independent, which is what makes weaving possible.")
+    "Adds a second bar tracking your melee swing -- the same height as the shot bar, because in the two-mob setup the two cycles matter equally. Also adds a blue line on the shot bar marking where a melee hit belongs in the cycle: with running in and out switched OFF (the default) that is the moment your swing comes up while a mob is already at your feet; with it ON it is the last moment you could still leave and get back in time. In Classic Era the melee and ranged timers are independent, which is what makes weaving possible at all.")
   y = y - CHK
   MakeCheckbox(content, y, "Also weave by running in and out",
     function() return db.shottimer.travelWeave end,
