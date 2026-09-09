@@ -641,7 +641,7 @@ function BuildWindow()
   y = y - CHK
   MakeCheckbox(content, y, "Only when hungry", function() return db.feed.hungryOnly end,
     function(v) db.feed.hungryOnly = v; RefreshFeed() end,
-    "Hide the button once the pet is content.")
+    "Hide the button once the pet is Happy. A Content pet still shows it — that is the one you feed to get back to green.")
   y = y - CHK
   MakeCheckbox(content, y, "Use default Feed Pet icon", function() return db.feed.useSpellIcon end,
     function(v) db.feed.useSpellIcon = v; RefreshFeed() end,

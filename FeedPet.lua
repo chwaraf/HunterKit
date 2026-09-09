@@ -213,16 +213,32 @@ function BuildButton()
     else
       GameTooltip:AddLine("No food in bags — will cast Feed Pet.", 1, 1, 1)
     end
+    -- This used to claim a Happy pet could not be fed at all ("(full) -- the
+    -- game won't feed it now"). It can. Happy is a THRESHOLD, not the cap:
+    -- there is happiness headroom above green, the game accepts the food and
+    -- keeps granting it until the real ceiling, where a tick drops to ~1 and
+    -- the rest is simply wasted. The thing that genuinely blocks a feed is
+    -- COMBAT, which this line never mentioned -- so the tooltip warned about
+    -- the one case that still works and stayed silent about the one that does
+    -- not. The button is armed either way, so the useful advice is about food.
     local hp = (GetPetHappiness and GetPetHappiness()) or nil
-    if hp then
+    if not hp then
+      GameTooltip:AddLine("No pet summoned.", 1, 0.6, 0.6)
+    elseif InCombatLockdown() then
+      GameTooltip:AddLine("In combat — pets will not eat. Feeding is out-of-combat only.",
+        1, 0.4, 0.4)
+    else
       local htxt = ({"Unhappy", "Content", "Happy"})[hp] or "?"
       if hp >= 3 then
-        GameTooltip:AddLine("Pet is " .. htxt .. " (full) — the game won't feed it now.", 1, 0.4, 0.4)
+        GameTooltip:AddLine("Pet is " .. htxt ..
+          " — it will still eat, but there is little happiness left to gain, so feeding now mostly wastes food.",
+          1, 0.85, 0.3)
+      elseif hp == 1 then
+        GameTooltip:AddLine("Pet is " .. htxt ..
+          " — feed it now: an unhappy pet hits 25% softer and can run off.", 1, 0.4, 0.4)
       else
         GameTooltip:AddLine("Pet is " .. htxt .. " — will feed on click.", 0.4, 1, 0.4)
       end
-    else
-      GameTooltip:AddLine("No pet summoned.", 1, 0.6, 0.6)
     end
     GameTooltip:Show()
   end)
@@ -796,8 +812,10 @@ UpdateState = function()
     return
   end
   local show = HK.db.enabled ~= false and db.enabled and UnitExists("pet") and not UnitIsDead("pet")
-  -- "Show only when hungry": hide the feed button once the pet is content/full
-  -- (happiness >= 3), so it's only visible when there's actually something to feed.
+  -- "Show only when hungry": hide the feed button once the pet is HAPPY
+  -- (happiness >= 3), so it is only visible when there is something worth
+  -- feeding for. Content is 2 and is deliberately still shown -- a content pet
+  -- is exactly the one you feed to get it back to green.
   if show and db.hungryOnly then
     local h = GetPetHappiness()
     if h and h >= 3 then show = false end

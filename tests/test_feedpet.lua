@@ -395,6 +395,59 @@ HK.db.feed.preferredFoods = {}
 HKTest.Fire("UNIT_PET", "pet")
 FP.Refresh()
 
+-- ---------------------------------------------------------------------------
+-- 9) The hover tooltip's happiness line.
+--
+-- It claimed a Happy pet could not be fed at all -- "Pet is Happy (full) -- the
+-- game won't feed it now". Happy is a THRESHOLD, not the cap: there is
+-- happiness headroom above green, the game takes the food and keeps granting it
+-- until the real ceiling (where a tick drops to about 1 and the rest is
+-- wasted). The one thing that genuinely blocks a feed is COMBAT, and the
+-- tooltip never mentioned it -- so it warned about the case that still works
+-- and stayed silent about the one that does not.
+-- ---------------------------------------------------------------------------
+local function TooltipText()
+  GameTooltip.lines = {}
+  local fb = _G["HunterKitFeedButton"]
+  fb:GetScript("OnEnter")(fb)
+  local out = {}
+  for _, l in ipairs(GameTooltip.lines) do out[#out + 1] = l.text or "" end
+  return table.concat(out, " | ")
+end
+
+PutFood(JERKY, "Tough Jerky", 55, { 5 })
+
+HKTest.state.happiness = 3
+HKTest.state.combatLockdown = false
+local tip = TooltipText()
+check("a happy pet is not told it cannot be fed",
+  tip:find("won't feed", 1, true) == nil, tip)
+check("...and the tooltip no longer calls Happy \"full\"",
+  tip:find("(full)", 1, true) == nil, tip)
+check("...it warns that feeding a happy pet now wastes food",
+  tip:find("wastes food", 1, true) ~= nil, tip)
+
+HKTest.state.combatLockdown = true
+tip = TooltipText()
+check("combat is named as the thing that actually blocks a feed",
+  tip:find("In combat", 1, true) ~= nil, tip)
+check("...and the happy-pet advice gives way to it",
+  tip:find("wastes food", 1, true) == nil, tip)
+
+HKTest.state.combatLockdown = false
+HKTest.state.happiness = 1
+tip = TooltipText()
+check("an unhappy pet is told to feed it now",
+  tip:find("feed it now", 1, true) ~= nil, tip)
+
+HKTest.state.happiness = 2
+tip = TooltipText()
+check("a content pet still says it will feed on click",
+  tip:find("will feed on click", 1, true) ~= nil, tip)
+
+HKTest.state.happiness = 2
+HKTest.state.combatLockdown = false
+
 HKTest.report("test_feedpet.lua", passes, #failures)
 
 say(string.format("\n%d passed, %d failed", passes, #failures))

@@ -3,6 +3,40 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.81] - 2026-09-09
+
+### Fixed
+- **The feed button's tooltip told you the opposite of the truth.** With a Happy
+  pet it said *"Pet is Happy (full) — the game won't feed it now."* The game
+  feeds a happy pet. **Happy is a threshold, not the cap**: there is happiness
+  headroom above green, the game takes the food and keeps granting happiness
+  until the real ceiling, where a tick drops to about 1 and the rest is simply
+  wasted. Meanwhile the one thing that genuinely blocks a feed — **combat** —
+  went unmentioned. So the tooltip warned about the case that still works and
+  stayed silent about the one that does not, on a button that is armed and will
+  consume food either way.
+- It now says what is actually useful: in combat, that pets will not eat and
+  feeding is out-of-combat only; with a Happy pet out of combat, that it will
+  still eat but there is little happiness left to gain, so feeding now mostly
+  wastes food; with an Unhappy pet, to feed it now, because an unhappy pet hits
+  25% softer and can run off; Content is unchanged.
+- **The *Only when hungry* option described the wrong state.** Its tooltip said
+  "Hide the button once the pet is content", but the test is `happiness >= 3`,
+  which is **Happy** — Content is 2, and a content pet is exactly the one you
+  feed to get back to green, so hiding it there would have been the bug. The
+  code comment said "content/full" for the same `>= 3` test. Both corrected; the
+  behaviour was already right.
+
+### Tests
+- **`tests/test_feedpet.lua` 43 -> 50**, driving the button's real `OnEnter`
+  handler and reading the tooltip the stub records: a happy pet is never told it
+  cannot be fed, the word "full" is gone, a happy pet is warned about wasting
+  food, combat is named as the blocker, the happy-pet advice gives way to the
+  combat line rather than stacking on top of it, and the unhappy and content
+  wordings survive.
+
+  1097 green in nine files.
+
 ## [0.9.80] - 2026-09-09
 
 ### Changed
