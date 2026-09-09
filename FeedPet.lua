@@ -197,7 +197,19 @@ function BuildButton()
     GameTooltip:SetOwner(button, "ANCHOR_RIGHT")
     GameTooltip:SetText("HunterKit — Feed Pet", 0.2, 1, 0.2)
     if f and f.name then
-      GameTooltip:AddLine("Will feed: " .. f.name .. (f.count and (" x" .. f.count) or ""), 1, 1, 1)
+      GameTooltip:AddLine("Will feed: " .. f.name, 1, 1, 1)
+      -- The button's number is a GROUP total now, so saying "x3" next to one
+      -- food's name would read as "3 of this". Spell out what was counted.
+      local shown, kinds = FeedPet.ShownCount() or 0, FeedPet.ShownKinds() or 1
+      if shown > 0 then
+        if kinds > 1 then
+          GameTooltip:AddLine(string.format(
+            "%d feedable in your bags, across %d different foods of this level.",
+            shown, kinds), 0.8, 0.8, 0.8)
+        else
+          GameTooltip:AddLine(string.format("%d in your bags.", shown), 0.8, 0.8, 0.8)
+        end
+      end
     else
       GameTooltip:AddLine("No food in bags — will cast Feed Pet.", 1, 1, 1)
     end
@@ -322,9 +334,13 @@ function FeedPet:PrintFeed()
   end
   local f = self.lastFood
   if f then
-    print(("|cff39ff14HunterKit|r feed: %s x%d (bag %d slot %d, tier %d) | casts %s on item %s")
-      :format(f.name or "?", f.count or 1, f.bag or "?", f.slot or "?", f.tier or "?",
-        tostring(spell), tostring(ti)))
+    -- Report the SAME number the button shows. The button counts every feedable
+    -- food at this tier, not just the stack the click will feed, and a
+    -- diagnostic that disagreed with the UI would be worse than no diagnostic.
+    local total, kinds = self:CountAtTier(f.tier)
+    print(("|cff39ff14HunterKit|r feed: %s (bag %d slot %d, tier %d) | %d feedable at this tier across %d food(s) | click feeds a stack of %d | casts %s on item %s")
+      :format(f.name or "?", f.bag or "?", f.slot or "?", f.tier or "?",
+        total, kinds, f.count or 1, tostring(spell), tostring(ti)))
   else
     print("|cff39ff14HunterKit|r feed: no food found in bags | casts " .. tostring(spell))
   end
@@ -450,6 +466,18 @@ function FeedPet:IsQuestItem(bag, slot, itemID)
   return false
 end
 
+-- Does the curated DB positively place this food OUTSIDE the pet's diet?
+-- Narrower than MatchesDiet on purpose -- see FindBestStackByID. Answers true
+-- only when both sides are known: the pet has a resolved diet list, and the DB
+-- names a type for this item that is not in it. Costs no tooltip scan.
+function FeedPet:ContradictsDiet(itemID)
+  local ds = self:GetDiets()
+  if not next(ds) then return false end       -- diet unknown: no evidence
+  local ftype = self:FoodType(itemID)
+  if not ftype then return false end          -- not a listed food: no evidence
+  return ds[ftype:lower()] ~= true
+end
+
 function FeedPet:MatchesDiet(bag, slot, itemID)
   local ds = self:GetDiets()
   local ftype = self:FoodType(itemID)
@@ -521,7 +549,20 @@ function FeedPet:FindBestStackByID(itemID, petLevel)
       -- quest item: pins saved by an older build, or made before this check
       -- existed, must not be able to eat one. The menu no longer offers quest
       -- items either, so this only guards the upgrade path.
+      -- A pin is a deliberate choice, but it was made for a PET, and the pet
+      -- can change: pin mackerel for the crab, summon the bear, and the button
+      -- kept arming itself with fish the bear cannot eat -- naming it in the
+      -- tooltip and feeding it on click.
+      --
+      -- Deliberately NOT the full MatchesDiet. That answers "is there evidence
+      -- this pet can eat it", which is right for the bag scan, where an
+      -- unrecognised item should never be offered. But a pin is the PLAYER's
+      -- evidence, and it should only be overruled by something better than
+      -- silence: the curated DB naming a diet type this pet does not have. A
+      -- food the DB does not list -- most foods, it is finite -- or a moment
+      -- when the pet's diet has not resolved yet leaves the pin alone.
       if HK.GetBagItemID(bag, slot) == itemID
+         and not self:ContradictsDiet(itemID)
          and not self:IsQuestItem(bag, slot, itemID) then
         local count = HK.GetBagItemCount(bag, slot)
         count = count or 1
@@ -569,6 +610,11 @@ function FeedPet:PickFood()
   local petLevel = UnitLevel("pet") or UnitLevel("player")
   local best
   local totals = {}   -- how much of EVERY itemID the bags hold
+  -- Only the food THIS PET can eat, keyed by itemID, with the happiness tier it
+  -- scores at. Nothing reaches this table without passing the diet, exclusion
+  -- and quest checks, so it is the honest "what could I feed" set -- and it is
+  -- what the button's number is summed from.
+  local feedable = {}
   for bag = 0, 4 do
     for slot = 1, HK.GetBagNumSlots(bag) do
       local itemID = HK.GetBagItemID(bag, slot)
@@ -600,6 +646,14 @@ function FeedPet:PickFood()
           if name and iLevel then
             local tier = TierFor(petLevel, iLevel)
             local ft = self:FoodType(itemID)
+            -- Accumulate per itemID, not per slot: two stacks of the same food
+            -- are one food, and both stacks belong to its total.
+            local seen = feedable[itemID]
+            if seen then
+              seen.count = seen.count + count
+            else
+              feedable[itemID] = { tier = tier, count = count, name = name }
+            end
             if not best or tier > best.tier
                or (tier == best.tier and count < best.count) then
               best = { bag = bag, slot = slot, itemID = itemID, name = name,
@@ -617,13 +671,47 @@ function FeedPet:PickFood()
   for id, scanned in pairs(totals) do
     totals[id] = TotalOf(id, scanned)
   end
+  -- The same reconciliation for the feedable set -- and deliberately ONE call
+  -- per distinct item rather than per stack. TotalOf raises a scan up to the
+  -- client's inventory figure, so running it per stack would inflate every
+  -- stack of a food to the whole inventory total and then add them together.
+  for id, f in pairs(feedable) do
+    f.count = TotalOf(id, f.count)
+  end
   self.foodTotals = totals
+  self.feedableByItem = feedable
   -- pinned food override
   for _, pin in ipairs(db.preferredFoods) do
     local hit = self:FindBestStackByID(pin.id, petLevel)
     if hit then return hit end
   end
   return best
+end
+
+-- How many feeds the button can perform at the quality it is about to feed.
+--
+-- The button's number used to be the inventory total of the ONE item the pick
+-- happened to land on. Eight different appropriate-level meats with a single
+-- item in each therefore read "1" -- true of the stack it would feed, and no
+-- answer at all to "how much food do I have".
+--
+-- Foods are counted together by happiness TIER, which is the only grouping that
+-- means anything here: within 15 levels of the pet a bite is worth 35
+-- happiness, at 16-25 it is worth 17, beyond that 8. Foods in the same tier
+-- really are interchangeable; foods a tier down really are not, so they are
+-- left out rather than inflating the number.
+--
+-- Only food THIS PET can eat is ever in the sum, because feedableByItem only
+-- gains an entry that already passed the diet, exclusion and quest checks.
+function FeedPet:CountAtTier(tier)
+  local n, kinds = 0, 0
+  for _, f in pairs(self.feedableByItem or {}) do
+    if f.tier == tier then
+      n = n + (f.count or 0)
+      kinds = kinds + 1
+    end
+  end
+  return n, kinds
 end
 
 -- The button's item-count readout: how much of the PICKED food the bags hold
@@ -644,6 +732,10 @@ end
 -- that produced it -- the count has been wrong twice now, and both times the
 -- internals looked plausible.
 function FeedPet.ShownCount() return FeedPet.shownCount end
+
+-- How many DIFFERENT foods made up that number. The tooltip uses it to say
+-- "5 feedable, across 3 different foods" instead of implying five of one item.
+function FeedPet.ShownKinds() return FeedPet.shownKinds end
 
 -- ---------------------------------------------------------------------------
 -- Macro + visuals
@@ -670,11 +762,16 @@ function FeedPet:RefreshMacro()
     local icon = (db.useSpellIcon and FeedPetSpellTexture()) or food.icon or QUESTION_ICON
     iconTex:SetTexture(icon)
     iconTex:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-    -- The number is the INVENTORY total for the picked food (every stack of it
-    -- in your bags), never the size of the one stack the click will feed. The
-    -- `food.count` fallback is only reachable if the food came from somewhere
-    -- the bag scan never saw, which should not happen.
-    local total = (self.foodTotals and self.foodTotals[food.itemID]) or food.count or 0
+    -- The number is how much FOOD AT THIS QUALITY the bags hold: every stack of
+    -- every food this pet can eat that scores the same happiness tier, not just
+    -- the one item the pick landed on. Both fallbacks only fire if the food came
+    -- from somewhere the bag scan never saw, which should not happen.
+    local total, kinds = self:CountAtTier(food.tier)
+    if total <= 0 then
+      total = (self.foodTotals and self.foodTotals[food.itemID]) or food.count or 0
+      kinds = 1
+    end
+    FeedPet.shownKinds = kinds
     FeedPet.SetCount(total)
   else
     -- no food in bags: fall back to the game's own Feed Pet (picks a food itself)

@@ -264,6 +264,137 @@ check("when GetItemCount is cold the scan still counts every stack",
 HKTest.state.noStackCount = false
 HKTest.state.items = {}
 
+-- ---------------------------------------------------------------------------
+-- 8) Counting foods TOGETHER, and only the ones this pet eats.
+--
+-- The button's number used to be the inventory total of the ONE item the pick
+-- happened to land on. A hunter carrying eight different appropriate-level
+-- meats with a single item in each -- which is exactly what looting produces --
+-- saw "1", with no way to know they were holding eight feeds. And a pin made
+-- for one pet kept being offered to the next one, diet or no diet.
+-- ---------------------------------------------------------------------------
+local WOLF, STEAK = 769, 1015      -- both Meat in the curated DB
+local FISH = 787                   -- Slitherskin Mackerel: Meat pets refuse it
+
+-- Several DIFFERENT foods in one bag, each with its own stack sizes.
+local function PutFoods(list)
+  local slots, n = {}, 0
+  for _, f in ipairs(list) do
+    HKTest.state.itemInfo[f.id] = { name = f.name, iLevel = f.level, texture = "t" }
+    for _, c in ipairs(f.stacks) do
+      n = n + 1
+      slots[n] = { id = f.id, count = c }
+    end
+  end
+  HKTest.state.bags = { [0] = math.max(16, n) }
+  HKTest.state.bagItems = { [0] = slots }
+  HK.db.feed.preferredFoods = {}
+  HK.db.feed.exclude = {}
+  HKTest.state.noStackCount = false
+  HKTest.state.items = {}
+  HKTest.Fire("UNIT_PET", "pet")
+  FP.Refresh()
+end
+
+-- (a) The headline case: three different foods, one item each, same level.
+PutFoods({
+  { id = JERKY, name = "Tough Jerky",       level = 55, stacks = { 1 } },
+  { id = WOLF,  name = "Stringy Wolf Meat", level = 55, stacks = { 1 } },
+  { id = STEAK, name = "Lean Wolf Steak",   level = 55, stacks = { 1 } },
+})
+check("three single foods of the same level are counted together",
+  FP.ShownCount() == 3, tostring(FP.ShownCount()))
+check("...and the tooltip can say that was three different foods",
+  FP.ShownKinds() == 3, tostring(FP.ShownKinds()))
+
+-- (b) Food this pet does not eat never enters the number, however much of it
+--     you are carrying. A Meat pet with 20 mackerel has one feed, not 21.
+PutFoods({
+  { id = JERKY, name = "Tough Jerky",          level = 55, stacks = { 1 } },
+  { id = FISH,  name = "Slitherskin Mackerel", level = 55, stacks = { 20 } },
+})
+check("food the pet cannot eat is not counted",
+  FP.ShownCount() == 1, tostring(FP.ShownCount()))
+check("...and is not counted as a kind either",
+  FP.ShownKinds() == 1, tostring(FP.ShownKinds()))
+
+-- (c) "Similar level" means the happiness TIER, which is the only grouping the
+--     game itself recognises: within 15 levels a bite is 35 happiness, at
+--     16-25 it is 17, beyond that 8. Cheap grey food is not a feed you can
+--     stand in for a real one, so it stays out of the number.
+PutFoods({
+  { id = JERKY, name = "Tough Jerky",       level = 55, stacks = { 2 } },
+  { id = WOLF,  name = "Stringy Wolf Meat", level = 20, stacks = { 40 } },
+})
+check("lower-level food is not added to the best tier's number",
+  FP.ShownCount() == 2, tostring(FP.ShownCount()))
+
+-- (d) Grouping is per FOOD, not per slot: two stacks of one item are one food,
+--     and TotalOf must run once per item or every stack would be raised to the
+--     whole inventory total and then added together.
+PutFoods({
+  { id = JERKY, name = "Tough Jerky",       level = 55, stacks = { 1, 20 } },
+  { id = WOLF,  name = "Stringy Wolf Meat", level = 55, stacks = { 4 } },
+})
+check("two stacks of one food plus another food (1 + 20 + 4 = 25)",
+  FP.ShownCount() == 25, tostring(FP.ShownCount()))
+check("...counted as two foods, not three",
+  FP.ShownKinds() == 2, tostring(FP.ShownKinds()))
+
+-- (e) The pick rule is untouched: best tier, then the smallest open stack.
+local pick = FP:PickFood()
+check("the pick still takes the smallest open stack of the best tier",
+  pick ~= nil and pick.itemID == JERKY and pick.count == 1,
+  "picked " .. tostring(pick and pick.name) .. " x" .. tostring(pick and pick.count))
+
+-- (f) A pin made for a different pet. Pin mackerel for the crab, summon the
+--     bear, and the button used to keep arming itself with the mackerel --
+--     naming it in the tooltip and feeding it on click.
+PutFoods({
+  { id = JERKY, name = "Tough Jerky",          level = 55, stacks = { 5 } },
+  { id = FISH,  name = "Slitherskin Mackerel", level = 55, stacks = { 5 } },
+})
+HK.db.feed.preferredFoods = { { id = FISH, name = "Slitherskin Mackerel" } }
+FP.Refresh()
+pick = FP:PickFood()
+check("a pinned food this pet cannot eat is not picked",
+  pick ~= nil and pick.itemID ~= FISH,
+  "picked " .. tostring(pick and pick.name))
+check("...and is not what the button offers to feed",
+  FP.lastFood == nil or FP.lastFood.itemID ~= FISH,
+  tostring(FP.lastFood and FP.lastFood.name))
+check("...and the number still counts only the real food",
+  FP.ShownCount() == 5, tostring(FP.ShownCount()))
+HK.db.feed.preferredFoods = {}
+FP.Refresh()
+
+-- (g) The other side of that line. Right after every login the pet's diet has
+--     not resolved, so GetPetFoodTypes has nothing to say. There is no evidence
+--     to overrule a pin with, so the pin stands -- even for a food the DB would
+--     place outside the diet once the pet does resolve. Refusing here would make
+--     pins look broken for the first minute of every session.
+PutFoods({
+  { id = FISH, name = "Slitherskin Mackerel", level = 55, stacks = { 5 } },
+})
+HK.db.feed.preferredFoods = { { id = FISH, name = "Slitherskin Mackerel" } }
+GetPetFoodTypes = function() return nil end
+HKTest.Fire("UNIT_PET", "pet")
+FP.Refresh()
+pick = FP:PickFood()
+check("with no diet resolved, silence does not overrule a pin",
+  pick ~= nil and pick.itemID == FISH, "picked " .. tostring(pick and pick.name))
+-- ...and once the diet resolves, the same pin IS overruled.
+GetPetFoodTypes = function() return "Meat" end
+HKTest.Fire("UNIT_PET", "pet")
+FP.Refresh()
+pick = FP:PickFood()
+check("...but once the diet resolves, the same pin is refused",
+  pick == nil or pick.itemID ~= FISH, "picked " .. tostring(pick and pick.name))
+GetPetFoodTypes = function() return "Meat" end
+HK.db.feed.preferredFoods = {}
+HKTest.Fire("UNIT_PET", "pet")
+FP.Refresh()
+
 HKTest.report("test_feedpet.lua", passes, #failures)
 
 say(string.format("\n%d passed, %d failed", passes, #failures))

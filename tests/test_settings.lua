@@ -563,8 +563,11 @@ HK.db.feed.hungryOnly = false
 HK.FeedPet.Refresh()
 check("feed icon shows the picked food", fb.textures[1].texture ==
   "Interface\\Icons\\INV_Misc_Food_01", tostring(fb.textures[1].texture))
-check("count = total of the picked food across its stacks",
-  fb.fontstrings[1]:GetText() == "35", tostring(fb.fontstrings[1]:GetText()))
+-- 0.9.80: the number is no longer the total of the one item the pick landed
+-- on. Two different breads of the same level are interchangeable to the pet, so
+-- they are counted together: 20 + 15 of Tough Hunk, plus 50 of Fresh Bread.
+check("count = every feedable food at that level (20 + 15 + 50 = 85)",
+  fb.fontstrings[1]:GetText() == "85", tostring(fb.fontstrings[1]:GetText()))
 check("count font does not depend on a possibly-missing font object",
   fb.fontstrings[1].font == "Fonts\\ARIALN.TTF" and
   fb.fontstrings[1].fontOutline == "OUTLINE",
@@ -597,7 +600,7 @@ check("spell-icon option replaces the food icon (resolved via the spell API)",
   fb.textures[1].texture == "Interface\\Icons\\ability_hunter_beasttraining",
   tostring(fb.textures[1].texture))
 check("food count stays with the spell icon",
-  fb.fontstrings[1]:GetText() == "35", tostring(fb.fontstrings[1]:GetText()))
+  fb.fontstrings[1]:GetText() == "85", tostring(fb.fontstrings[1]:GetText()))
 HK.db.feed.useSpellIcon = false
 HK.FeedPet.Refresh()
 check("food icon returns when the option is off", fb.textures[1].texture ==

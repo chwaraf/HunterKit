@@ -3,6 +3,60 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.80] - 2026-09-09
+
+### Changed
+- **The feed button counts food together.** The number was the inventory total of
+  the *one* item the pick happened to land on, so eight different
+  appropriate-level meats with a single item in each — which is exactly what
+  looting produces — read **1**, with no way to know you were holding eight
+  feeds. It is now the total of every food this pet can eat that scores the same
+  **happiness tier**: 8, not 1. Tier is the only grouping the game itself
+  recognises — within 15 levels of the pet a bite is worth 35 happiness, at
+  16–25 it is 17, beyond that 8 — so foods in a tier really are interchangeable
+  and foods a tier down really are not. Grey-level food is left out rather than
+  inflating the number. Grouping is per **food**, not per slot, and `TotalOf`
+  runs once per item: run per stack it would raise every stack to the whole
+  inventory total and then add them together.
+- **Only food the pet eats is ever counted.** Nothing enters the sum without
+  already passing the diet, exclusion and quest checks, so a Meat pet carrying 20
+  mackerel reads 1, not 21.
+- **The pick rule is untouched**: highest tier, then the smallest open stack, so
+  your bags still get tidied as you feed.
+
+### Fixed
+- **A pin made for a different pet was offered and fed.** `FindBestStackByID`
+  never checked the diet, so pinning mackerel for a crab and then summoning a
+  bear left the button arming itself with fish the bear cannot eat — naming it in
+  the tooltip and feeding it on click, where it simply fizzles. A pin is now
+  overruled when the curated DB positively places it outside the current pet's
+  diet.
+- Deliberately **not** the full diet check, and the distinction matters: a pin is
+  the player's own evidence, so it should only be beaten by better evidence than
+  silence. A food the curated DB does not list — most foods, it is finite — or a
+  moment when the pet's diet has not resolved yet (the first minute of every
+  session) leaves the pin alone. Refusing on silence would have made pins look
+  broken at every login.
+- **`/htk feed` disagreed with the button.** It printed the size of the one stack
+  the click feeds, while the button now shows the tier total. It reports both.
+- The tooltip no longer reads `Will feed: Tough Jerky x3`, which after grouping
+  would have meant "three of this". It now says how many are feedable and across
+  how many different foods.
+
+### Tests
+- **`tests/test_feedpet.lua` 30 -> 43**: three single foods of the same level
+  count as 3; food the pet cannot eat is counted as neither food nor kind;
+  lower-level food stays out of the best tier's number; two stacks of one food
+  plus another read 25 across 2 kinds, not 3; the pick still takes the smallest
+  open stack of the best tier; a pinned food of the wrong diet is refused both as
+  a pick and as what the button offers; and the same pin is honoured while the
+  diet is unresolved but refused once it resolves.
+- `tests/test_settings.lua` had two checks asserting the old per-item number
+  (35). They are the new behaviour working: 20 + 15 of one bread plus 50 of
+  another, same level, same tier = 85. Renamed rather than reverted.
+
+  1090 green in nine files.
+
 ## [0.9.79] - 2026-09-09
 
 ### Fixed
