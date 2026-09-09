@@ -1857,6 +1857,90 @@ HKTest.state.targetSpellInRange = nil
 
 -- Report this file's tally so tests/test_docs.lua can check the README's
 -- advertised check counts against what the suite really runs.
+-- ---------------------------------------------------------------------------
+-- 28) LEAVING COMBAT MUST CLEAR BOTH BARS
+--
+-- Reported: "sometimes the light melee bar gets stuck as light green when
+-- combat ends, sometimes the yellow bar gets stuck in the auto shot main bar
+-- after combat ends -- shouldn't those reset after combat ends?"
+--
+-- They should, and both were the same fault. Leaving combat fires exactly ONE
+-- Refresh, and OnUpdate used to do nothing but Redraw -- so once the loop was
+-- bound, nothing ever parked it again. At that single Refresh the melee clock
+-- is still inside its idle window, so the loop gets bound and then runs
+-- forever: MeleeReady keeps returning an ever-more-negative number, which
+-- paints the melee bar full and pale green at a swing from the last pull, and
+-- lastDelay keeps the clip slice welded to the shot bar with no further shot
+-- ever to clear it.
+--
+-- `always` is on because that is the configuration where the parked bar is
+-- visible at all -- and the one the bug was reported from.
+-- ---------------------------------------------------------------------------
+HKTest.state.playerCombat = true
+HKTest.state.meleeSpeed = 2.4
+local db28 = HK.db.shottimer
+db28.weave = true
+db28.always = true
+db28.showDelay = true
+ST.RescanSettings()
+local regen = HK.bus.handlers["PLAYER_REGEN_ENABLED"]
+
+-- (a) the melee bar, stuck pale green
+Shooting(2.5, 12000)
+ST._OnMeleeSwing(12000)
+At(12002.4)                       -- 2.4s on: the swing is up
+ST.Refresh(); ST.OnUpdate()
+check("precondition: the melee bar reads ready while the fight is on",
+  ST.MeleeFillWidth() > 0 and ST.MeleeFillColor() ~= nil,
+  string.format("w=%.0f", ST.MeleeFillWidth()))
+check("precondition: the animation loop is running",
+  ST.IsAnimating() == true, tostring(ST.IsAnimating()))
+
+regen()                           -- combat ends
+At(12060)                         -- a minute later, still out of combat
+ST.OnUpdate()                     -- the animation loop, still ticking
+check("leaving combat clears the melee bar",
+  ST.MeleeFillWidth() == 0, tostring(ST.MeleeFillWidth()))
+check("...it is not left painted ready",
+  ST.MeleeFillColor() == nil, tostring(ST.MeleeFillColor()))
+check("...and the animation loop parks itself",
+  ST.IsAnimating() == false, tostring(ST.IsAnimating()))
+
+-- (b) the clip slice, stuck on the shot bar
+Shooting(2.035, 12100)
+At(12102.375)                     -- 0.34s later than predicted: a real clip
+ST._OnShotFired(12102.375)
+At(12103)
+ST.Refresh(); ST.OnUpdate()
+check("precondition: the clip slice is up after a late shot",
+  ST.ClipShown() == true, tostring(ST.ClipShown()))
+
+regen()
+At(12160)
+ST.OnUpdate()
+check("leaving combat clears the clip slice",
+  ST.ClipShown() == false, tostring(ST.ClipShown()))
+
+-- (c) The same fault with no combat transition at all: simply stop shooting.
+--     The slice outlived the +0.34s number that explains it, because the text
+--     had a DELAY_HOLD window and the slice had none -- so the bar showed a
+--     clip with nothing beside it to say what it was.
+Shooting(2.035, 12200)
+At(12202.375)
+ST._OnShotFired(12202.375)
+At(12203)
+ST.Refresh(); ST.OnUpdate()
+check("precondition: slice and number come up together",
+  ST.ClipShown() == true, tostring(ST.ClipShown()))
+At(12210)                         -- 7s on, no further shot, still in combat
+ST.OnUpdate()
+check("the slice expires with the number it illustrates",
+  ST.ClipShown() == false, tostring(ST.ClipShown()))
+check("...and the +0.34s text has gone with it",
+  (ST.DelayText() or "") == "", tostring(ST.DelayText()))
+
+HKTest.state.playerCombat = false
+
 HKTest.report("test_shottimer.lua", passes, #failures)
 
 say(string.format("\n%d passed, %d failed", passes, #failures))

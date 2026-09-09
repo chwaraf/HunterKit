@@ -1307,7 +1307,12 @@ local function Redraw(now)
   -- ---------------------------------------------------------------------
   if clipSlice and castZone then
     local cyc = math.max(speed, MIN_SPEED)
-    local secs = (lastDelay > CLIP_EPSILON) and lastDelay or 0
+    -- The slice and the +0.34s text are the SAME measurement, so they get the
+    -- SAME lifetime. The text already expired after DELAY_HOLD; the slice had
+    -- no time bound at all, so stop shooting -- target dead, fight over -- and
+    -- the yellow stayed welded to the bar with no number next to it.
+    local live = delayShownAt > 0 and (now - delayShownAt) < DELAY_HOLD
+    local secs = (live and lastDelay > CLIP_EPSILON) and lastDelay or 0
     if secs > cyc then secs = cyc end              -- never wider than the bar
     local lw = math.floor(w * (secs / cyc))
     lastClipW = SetWidthIf(clipSlice, lw, lastClipW)
@@ -1363,8 +1368,22 @@ local function Redraw(now)
   if dtxt ~= lastDelayStr then delayText:SetText(dtxt); lastDelayStr = dtxt end
 end
 
+-- Forward-declared: assigned below beside Refresh, because it needs
+-- BindOnUpdate and DrawSpecialPips, both of which live further down.
+local ParkIdle
+
 function ShotTimer.OnUpdate()
   local now = tonumber(Call(GetTime)) or 0
+  -- Re-ask whether there is still anything to animate.
+  --
+  -- OnUpdate used to do nothing but Redraw, so once the loop was bound NOTHING
+  -- ever parked it again. Leaving combat fires exactly one Refresh, and at that
+  -- instant the melee clock is still inside its idle window, so the loop is
+  -- bound -- then runs forever, repainting the melee bar full and pale green at
+  -- a swing that came up long ago, with the clip slice still welded to the shot
+  -- bar. That is the "stuck after combat ends" report: not a wrong colour, a
+  -- loop that never stopped to ask.
+  if ParkIdle and ShotTimer.IsIdle() then ParkIdle() return end
   Redraw(now)
 end
 
@@ -1434,6 +1453,33 @@ function ShotTimer.IsIdle()
   return true
 end
 
+-- The parked, non-animating form of the bar: an empty track with the lockout
+-- still to scale, "ready", no melee fill, no clip slice.
+--
+-- Factored out of Refresh so the update loop can park ITSELF. It also clears
+-- the clip slice, which the inline version never did -- the branch hid the
+-- melee fill and blanked the delay TEXT but left the yellow slice painted, so a
+-- parked bar showed a clip with no number beside it.
+--
+-- Both cached widths are invalidated, not just the widgets hidden: SetWidthIf
+-- skips a write when the value is unchanged, so a stale cache would suppress
+-- the first real width after the bar wakes up.
+ParkIdle = function()
+  fill:SetWidth(0.001)
+  label:SetText(db.showText and "|cff808080ready|r" or "")
+  delayText:SetText("")
+  lastClipW = -1
+  if clipSlice then clipSlice:Hide() end
+  -- Keep the melee track visible (empty) so the parked bar shows its full
+  -- layout rather than silently losing a row.
+  if meleeFill then meleeFill:Hide(); lastMeleeW = -1 end
+  if meleeTrack then
+    if db.weave ~= false then meleeTrack:Show() else meleeTrack:Hide() end
+  end
+  DrawSpecialPips(tonumber(Call(GetTime)) or 0)
+  BindOnUpdate(false)
+end
+
 function ShotTimer.Refresh()
   if not frame then return end
   local show = ShouldShow()
@@ -1449,21 +1495,7 @@ function ShotTimer.Refresh()
       delayText:SetText("|cffff4040+0.34s|r")
       BindOnUpdate(false)          -- never animate a frame being dragged
     elseif ShotTimer.IsIdle() then
-      -- Shown but idle (the "keep it on screen" option). Draw an empty track
-      -- with the lockout zone still to scale, so the bar reads as "ready" and
-      -- keeps its meaning, and stop the OnUpdate loop -- there is nothing to
-      -- animate, and a permanent per-frame loop for a static bar is waste.
-      fill:SetWidth(0.001)
-      label:SetText(db.showText and "|cff808080ready|r" or "")
-      delayText:SetText("")
-      -- Keep the melee track visible (empty) so the parked bar shows its full
-      -- layout rather than silently losing a row.
-      if meleeFill then meleeFill:Hide() end
-      if meleeTrack then
-        if db.weave ~= false then meleeTrack:Show() else meleeTrack:Hide() end
-      end
-      DrawSpecialPips(tonumber(Call(GetTime)) or 0)
-      BindOnUpdate(false)
+      ParkIdle()
     else
       ShotTimer.OnUpdate()
     end
@@ -1704,9 +1736,18 @@ function ShotTimer.Init()
   end)
 
   -- Leaving combat ends the series; stale predictions must not survive it.
+  --
+  -- The melee clock and the clip measurement are part of that series too. Both
+  -- used to survive, and both were visible: `meleeSwungAt` left MeleeReady
+  -- returning an ever-more-negative number, which painted the melee bar full
+  -- and pale green at a swing from the last pull, and `lastDelay` kept the
+  -- yellow slice on the shot bar with no further shot ever to clear it.
   HK.On("PLAYER_REGEN_ENABLED", function()
     repeating = false
     nextAt = nil
+    meleeSwungAt = nil
+    lastDelay = 0
+    delayShownAt = 0
     ShotTimer.Refresh()
   end)
 

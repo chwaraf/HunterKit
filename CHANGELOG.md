@@ -3,6 +3,52 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.82] - 2026-09-09
+
+### Fixed
+- **Both bars could be left stuck after combat ended.** Reported as *"sometimes
+  the light melee bar gets stuck as light green when combat ends, sometimes the
+  yellow bar gets stuck in the auto shot main bar."* They should reset, and both
+  turned out to be the same fault.
+- **The animation loop never re-asked whether there was anything left to
+  animate.** `OnUpdate` did nothing but call `Redraw`. Leaving combat fires
+  exactly *one* `Refresh`, and at that instant the melee clock is still inside
+  its idle window, so the loop is bound — and then runs forever. `MeleeReady`
+  keeps returning an ever-more-negative number, `done` clamps to 1, and the
+  melee bar sits **full and pale green at a swing from the last pull**. `OnUpdate`
+  now re-checks `IsIdle` and parks itself; the parked form is factored out of
+  `Refresh` into `ParkIdle` so both paths draw the same thing.
+- **Leaving combat left the melee clock and the clip measurement behind.** The
+  handler cleared `repeating` and `nextAt` — "leaving combat ends the series" —
+  but not `meleeSwungAt`, `lastDelay` or `delayShownAt`. All three are part of
+  the series. They are now cleared with it.
+- **The clip slice outlived the number that explains it.** The `+0.34s` text
+  already expired after `DELAY_HOLD`; the slice had no time bound at all, so
+  stop shooting — target dead, fight over — and the yellow stayed welded to the
+  bar with nothing beside it to say what it was. Both now share one lifetime.
+- **The parked bar hid the melee fill but not the clip slice.** `Refresh`'s idle
+  branch hid `meleeFill` and blanked the delay text, and simply never mentioned
+  `clipSlice`. `ParkIdle` clears it, and invalidates both cached widths —
+  `SetWidthIf` skips an unchanged write, so a stale cache would have suppressed
+  the first real width after the bar woke up.
+
+### Notes
+- The melee-bar fix is deliberately redundant: clearing `meleeSwungAt` on combat
+  end *and* letting the loop park itself each fix the reported case on their
+  own. Verified — reverting either one alone leaves the suite green; reverting
+  both fails it. Both are kept, because the loop parking is what also covers
+  stopping mid-fight with no combat transition at all.
+
+### Tests
+- **`tests/test_shottimer.lua` 258 -> 268**, with `always` on because that is
+  the configuration where a parked bar is visible at all: the melee bar is not
+  left painted ready after combat (the reverted code returns `COL_READY`'s
+  `0.55`), the clip slice is not left on the shot bar, the animation loop parks
+  itself, and the slice expires together with its number when you simply stop
+  shooting.
+
+  1107 green in nine files.
+
 ## [0.9.81] - 2026-09-09
 
 ### Fixed
