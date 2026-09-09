@@ -6,7 +6,7 @@
 
 local ADDON_NAME, HK = ...
 
-HK.version = "0.9.82"
+HK.version = "0.9.83"
 
 -- ---------------------------------------------------------------------------
 -- Defaults (schema). This is the source of truth for the options window and
@@ -34,6 +34,12 @@ HK.defaults = {
     rule           = "best",
     hungryOnly     = false,        -- show the button only when the pet is hungry (<3)
     useSpellIcon   = false,        -- show the Feed Pet spell icon instead of the food's
+    -- Foods the player taught the button by dropping them on it, each carrying
+    -- the diet list that was in force at the moment of the drop. There is no API
+    -- for a food's diet type, so the curated DB will always have holes -- see
+    -- FeedPet:Learn.
+    learned        = {},
+    learnDrop      = true,         -- dropping a food on the button pins it
   },
 
   ammo = {

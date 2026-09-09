@@ -643,6 +643,10 @@ function BuildWindow()
     function(v) db.feed.hungryOnly = v; RefreshFeed() end,
     "Hide the button once the pet is Happy. A Content pet still shows it — that is the one you feed to get back to green.")
   y = y - CHK
+  MakeCheckbox(content, y, "Learn food dropped on the button", function() return db.feed.learnDrop end,
+    function(v) db.feed.learnDrop = v end,
+    "Drag any food onto the feed button to pin it and teach the button that your pet eats it. There is no game API for what diet a food belongs to, so the built-in list can never cover every cooked dish — this closes the gap. Hold Shift over the button to see the foods it is not counting. Quest items are always refused.")
+  y = y - CHK
   MakeCheckbox(content, y, "Use default Feed Pet icon", function() return db.feed.useSpellIcon end,
     function(v) db.feed.useSpellIcon = v; RefreshFeed() end,
     "Replace the chosen food's icon on the button with the default Feed Pet spell icon. The count of available food stays on the button either way.")

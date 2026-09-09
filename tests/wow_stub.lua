@@ -452,6 +452,19 @@ function GetItemInfo(id)
   return it.name, nil, it.quality or 1, it.iLevel or 1, nil, it.class,
          it.subclass, nil, nil, it.texture
 end
+-- Drag-and-drop onto a frame, and the shift key. FeedPet uses both: dropping a
+-- food on the button teaches it, and shift-hover lists what was not counted.
+-- `cursor.value` may be an itemID (modern clients) or a full item link
+-- (classic), because GetCursorInfo answers differently between them and the
+-- addon has to read both.
+function IsShiftKeyDown() return HKTest.state.shift == true end
+function GetCursorInfo()
+  local c = HKTest.state.cursor
+  if not c then return nil end
+  return "item", c.value
+end
+function ClearCursor() HKTest.state.cursor = nil end
+
 function GetContainerNumSlots(bag) return (HKTest.state.bags or {})[bag] or 0 end
 function GetContainerItemLink() return nil end
 function GetContainerItemInfo(bag, slot)

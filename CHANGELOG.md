@@ -3,6 +3,64 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.83] - 2026-09-09
+
+### Added
+- **Drop a food on the feed button to teach it.** The button can now be taught
+  that your pet eats something. There is **no API for a food's diet type** — not
+  a weak one, none at all; the *Feed Me* author states it outright (*"No ingame
+  method seems to detect what 'type' of food it is"*), and every maintained
+  feeder (Feed-O-Matic, Lazy Feed Pet) ships a hand-curated item table and
+  admits it is incomplete. **Cooked food is the hole that matters, because
+  cooked food is what a hunter actually carries.** So rather than guess more
+  item IDs, the button takes them from you: drag a food onto it and it is
+  learned *and* pinned to the right-click list. Gated behind *Learn food dropped
+  on the button*, and turning that off leaves you holding the item — you may
+  have been dragging it somewhere else.
+- **Shift-hover the button to see what it is *not* counting.** The honest
+  response to a database that can never be complete: show the blind spot instead
+  of guessing at it. Lists the edible-looking items in your bags that are not
+  being counted, biggest stack first, so you know what to drop.
+- Taught foods **carry the diet list that was in force when you dropped them**,
+  so switching to a pet that cannot eat the food does not resurrect it — and
+  switching back does. If the pet had not resolved yet (the first moments after
+  every login, when `GetPetFoodTypes` has nothing to say) there is no diet to
+  record, and your word stands anyway; otherwise the gesture would appear to
+  work and then quietly stop counting the food a minute later.
+
+### Fixed
+- **The diet tooltip scan skipped the item's name.** It started at line 2 —
+  sensible for the *quest* scan, where an item merely named something must never
+  be mistaken for a quest item, because that mistake destroys it. But for diet
+  the name is the most informative line on the tooltip: half of Classic's foods
+  are called some kind of meat or fish. Skipping it silently discarded the best
+  evidence available for any food the curated DB does not list. The quest scan
+  still starts at line 2.
+
+### Notes
+- A **quest item is never learned and never pinned**, on the drop path as
+  everywhere else — feeding one destroys it, the one mistake this button can
+  make that money cannot undo. The cursor is always released, even on a refusal.
+- Both cursor shapes are read: classic answers `"item", link`, newer clients
+  answer `"item", id`. Reading only one would silently ignore every drop on the
+  other client.
+
+### Tests
+- **`tests/test_feedpet.lua` 50 -> 71**: a cooked dish is not in the DB and not
+  counted; dropping it teaches, pins, releases the cursor and makes it count; a
+  pet that cannot eat it stops counting it and switching back restores it; a
+  quest item on the cursor is refused and still releases the cursor; the option
+  off refuses the drop *and* leaves you holding the item; an unlisted food
+  matches on its name alone; shift-hover lists only what is not counted and
+  stays out of the way without shift; an item *link* is read as well as an id;
+  and food taught while the diet was unresolved is still feedable with the pin
+  cleared, so the taught-diet path is what proves it.
+- Three negative controls, each failing the checks it should: removing the
+  taught-food lookup, restoring the line-2 diet scan, and removing the
+  shift-hover list.
+
+  1128 green in nine files.
+
 ## [0.9.82] - 2026-09-09
 
 ### Fixed

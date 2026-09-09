@@ -448,6 +448,148 @@ check("a content pet still says it will feed on click",
 HKTest.state.happiness = 2
 HKTest.state.combatLockdown = false
 
+-- ---------------------------------------------------------------------------
+-- 10) Teaching the button, and showing what it is NOT counting.
+--
+-- There is no API for a food's diet type -- the Feed Me author states it
+-- outright, and every maintained feeder ships a hand-curated table and admits
+-- it is incomplete. Cooked food is the hole that matters, because cooked food
+-- is what a hunter carries. So the button can be taught by dropping food on it,
+-- and shift-hover shows the gap so the player can see what to drop.
+-- ---------------------------------------------------------------------------
+local ROAST, STEW, NAMEFOOD = 9001, 9002, 9003
+local fb10 = _G["HunterKitFeedButton"]
+local function MarkEdible(id)
+  HKTest.state.itemInfo[id].class = "Consumable"
+  HKTest.state.itemInfo[id].subclass = "Food & Drink"
+end
+
+PutFoods({ { id = ROAST, name = "Roasted Quail", level = 55, stacks = { 12 } } })
+MarkEdible(ROAST)
+check("a cooked dish is not in the curated DB", FP:FoodType(ROAST) == nil,
+  tostring(FP:FoodType(ROAST)))
+check("...so it is not counted as feedable", FP.ShownCount() == 0,
+  tostring(FP.ShownCount()))
+
+-- (a) drop it on the button
+HKTest.state.cursor = { value = ROAST }
+fb10:GetScript("OnReceiveDrag")(fb10)
+check("dropping a food on the button teaches it", FP.HasLearned(ROAST) == true,
+  tostring(FP.HasLearned(ROAST)))
+check("...and pins it to the right-click list", FP:IsPinned(ROAST) == true,
+  tostring(FP:IsPinned(ROAST)))
+check("...and releases the cursor", HKTest.state.cursor == nil,
+  tostring(HKTest.state.cursor))
+check("...and it is now counted", FP.ShownCount() == 12, tostring(FP.ShownCount()))
+
+-- (b) the diet recorded at the moment of the drop travels with the entry
+GetPetFoodTypes = function() return "Fish" end
+HKTest.Fire("UNIT_PET", "pet")
+FP.Refresh()
+check("a pet that cannot eat it no longer counts it", FP.ShownCount() == 0,
+  tostring(FP.ShownCount()))
+GetPetFoodTypes = function() return "Meat" end
+HKTest.Fire("UNIT_PET", "pet")
+FP.Refresh()
+check("...and switching back restores it", FP.ShownCount() == 12,
+  tostring(FP.ShownCount()))
+
+-- (c) a quest item is never learned: feeding one destroys it
+HKTest.state.cursor = { value = QUEST }
+fb10:GetScript("OnReceiveDrag")(fb10)
+check("a quest item on the cursor is refused", FP.HasLearned(QUEST) == false,
+  tostring(FP.HasLearned(QUEST)))
+check("...and the cursor is still released", HKTest.state.cursor == nil,
+  tostring(HKTest.state.cursor))
+
+-- (d) the gesture is an option, and turning it off must not swallow the item --
+--     the player may be dragging it somewhere else entirely.
+HK.db.feed.learnDrop = false
+HKTest.state.cursor = { value = STEW }
+fb10:GetScript("OnReceiveDrag")(fb10)
+check("the option turns the gesture off", FP.HasLearned(STEW) == false,
+  tostring(FP.HasLearned(STEW)))
+check("...and leaves the player holding the item", HKTest.state.cursor ~= nil,
+  tostring(HKTest.state.cursor))
+HKTest.state.cursor = nil
+HK.db.feed.learnDrop = true
+
+-- (e) the tooltip scan now reads the item's NAME, not just the lines under it.
+--     Half of Classic's foods are called some kind of meat or fish, and the old
+--     loop started at line 2 -- quietly discarding the best evidence available
+--     for an item the DB does not list.
+PutFoods({ { id = NAMEFOOD, name = "Stringy Bat Meat", level = 55, stacks = { 7 } } })
+MarkEdible(NAMEFOOD)
+HKTest.state.bagItems[0][1].tip = { "Stringy Bat Meat",
+  "Use: Restores 1320 health over 30 sec." }
+FP.Refresh()                      -- the scan has to run WITH the tooltip present
+check("an unlisted food matches the diet on its name alone",
+  FP.ShownCount() == 7, tostring(FP.ShownCount()))
+
+-- (f) shift-hover shows what is not being counted
+PutFoods({
+  { id = JERKY, name = "Tough Jerky",  level = 55, stacks = { 3 } },
+  { id = STEW,  name = "Hunter's Stew", level = 55, stacks = { 9 } },
+})
+MarkEdible(STEW)
+HKTest.state.shift = true
+local tip10 = TooltipText()
+check("shift-hover names the food that is not counted",
+  tip10:find("Hunter's Stew", 1, true) ~= nil, tip10)
+check("...and says what to do about it",
+  tip10:find("drop one here", 1, true) ~= nil, tip10)
+-- Only the part under the heading: the picked food is named higher up in the
+-- tooltip as "Will feed:", so asserting on the whole string would fail for the
+-- wrong reason.
+local uncounted = tip10:match("Not counted.*") or ""
+check("...and lists only what is NOT counted",
+  uncounted:find("Hunter's Stew", 1, true) ~= nil and
+  uncounted:find("Tough Jerky", 1, true) == nil, uncounted)
+HKTest.state.shift = false
+tip10 = TooltipText()
+check("without shift the list stays out of the way",
+  tip10:find("Hunter's Stew", 1, true) == nil, tip10)
+
+-- (g) both cursor shapes. Classic answers "item", link; newer clients answer
+--     "item", id. Reading only one would silently ignore every drop on the
+--     other client.
+HKTest.state.cursor = { value = "|cffffffff|Hitem:9002::::::::60:::::|h[Hunter's Stew]|h|r" }
+fb10:GetScript("OnReceiveDrag")(fb10)
+check("an item LINK on the cursor is read as well as an id",
+  FP.HasLearned(STEW) == true, tostring(FP.HasLearned(STEW)))
+
+-- (h) Taught while the pet had not resolved yet. GetPetFoodTypes has nothing to
+--     say for a moment after every login, so there is no diet to record -- and
+--     the player's word still has to stand, or the gesture would appear to work
+--     and then silently stop counting the food a minute later.
+local BACON = 9004
+PutFoods({ { id = BACON, name = "Crisp Bacon Strips", level = 55, stacks = { 4 } } })
+MarkEdible(BACON)
+GetPetFoodTypes = function() return nil end
+HKTest.Fire("UNIT_PET", "pet")
+check("precondition: the diet is unresolved here", next(FP:GetDiets()) == nil,
+  FP:GetDietsString())
+HKTest.state.cursor = { value = BACON }
+fb10:GetScript("OnReceiveDrag")(fb10)
+GetPetFoodTypes = function() return "Meat" end
+HKTest.Fire("UNIT_PET", "pet")
+FP.Refresh()
+check("the button remembers the food it was taught", FP:IsLearned(BACON) == true,
+  tostring(FP:IsLearned(BACON)))
+-- Unpin it first. ReceiveDrop pins as well as teaches, and the pin path
+-- honours the player's word on its own -- so with the pin still in place the
+-- count would come from the pin and prove nothing about the taught diet.
+HK.db.feed.preferredFoods = {}
+FP.Refresh()
+check("food taught while the diet was unresolved is still feedable",
+  FP.ShownCount() == 4, tostring(FP.ShownCount()))
+GetPetFoodTypes = function() return "Meat" end
+HKTest.Fire("UNIT_PET", "pet")
+
+HKTest.state.shift = false
+HKTest.state.cursor = nil
+HK.db.feed.learnDrop = true
+
 HKTest.report("test_feedpet.lua", passes, #failures)
 
 say(string.format("\n%d passed, %d failed", passes, #failures))

@@ -240,9 +240,33 @@ function BuildButton()
         GameTooltip:AddLine("Pet is " .. htxt .. " — will feed on click.", 0.4, 1, 0.4)
       end
     end
+    -- Shift-hover: what the button is NOT counting. There is no API for a
+    -- food's diet type, so the curated DB has holes -- cooked food especially --
+    -- and the honest response is to show the gap rather than guess at it.
+    if IsShiftKeyDown and IsShiftKeyDown() then
+      local others = FeedPet:OtherConsumables()
+      GameTooltip:AddLine(" ")
+      if #others == 0 then
+        GameTooltip:AddLine("Nothing else in your bags looks edible.", 0.7, 0.7, 0.7)
+      else
+        GameTooltip:AddLine("Not counted — drop one here to teach the button:", 1, 0.85, 0.3)
+        for i = 1, math.min(#others, 8) do
+          GameTooltip:AddLine("  " .. others[i].name .. " x" .. others[i].count, 0.8, 0.8, 0.8)
+        end
+        if #others > 8 then
+          GameTooltip:AddLine("  +" .. (#others - 8) .. " more", 0.6, 0.6, 0.6)
+        end
+      end
+    elseif db.learnDrop ~= false then
+      GameTooltip:AddLine("Drop a food here to pin it · shift-hover for foods not counted",
+        0.6, 0.6, 0.6)
+    end
     GameTooltip:Show()
   end)
   button:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  -- EnableMouse(true) is already set above; this is the other half of the drop
+  -- gesture -- what happens when the item is released over the button.
+  button:SetScript("OnReceiveDrag", function() FeedPet:ReceiveDrop() end)
 
   -- drag / reposition. `blankSecure` lets unlock-mode blank the secure macro so
   -- a left-press-drag never accidentally feeds. saveFromScreen computes the
@@ -360,6 +384,15 @@ function FeedPet:PrintFeed()
   else
     print("|cff39ff14HunterKit|r feed: no food found in bags | casts " .. tostring(spell))
   end
+  -- The foods the player taught the button, because "why is my food not
+  -- counted" is otherwise unanswerable from outside the addon.
+  local taught = {}
+  for _, e in ipairs(db.learned or {}) do
+    taught[#taught + 1] = tostring(e.name or e.id)
+      .. (self:IsLearned(e.id) and "" or " (not for this pet)")
+  end
+  print(("|cff39ff14HunterKit|r feed: %d taught food(s): %s")
+    :format(#taught, #taught > 0 and table.concat(taught, ", ") or "none -- drag one onto the button"))
 end
 
 -- Diagnostic for /htk selfcheck. Reports the real anchor state so we can see
@@ -434,10 +467,90 @@ function FeedPet:GetDietsString()
   return table.concat(t, ", ")
 end
 
--- The item's diet type name, from the curated FoodDB, or nil if it isn't a
--- known pet food. Also recognises foods by subclass/type for items not in the DB.
+-- ---------------------------------------------------------------------------
+-- Foods the player has TAUGHT the button
+--
+-- There is no API for a food's diet type. Not a weak one, none at all: the
+-- Feed Me author put it plainly -- "No ingame method seems to detect what type
+-- of food it is" -- and every maintained feeder (Feed-O-Matic, Lazy Feed Pet)
+-- ships a hand-curated item table and admits it is incomplete. Cooked food is
+-- the hole that matters, because cooked food is what a hunter actually carries.
+--
+-- So instead of guessing item IDs, the button can be taught: drop a food on it
+-- and the addon remembers that THIS PET eats it. The diet list in force at the
+-- moment of the drop travels with the entry, so switching to a pet that cannot
+-- eat the food does not resurrect it.
+-- ---------------------------------------------------------------------------
+
+-- Is this a food the player taught us, for the pet that is out right now?
+function FeedPet:IsLearned(itemID)
+  if not itemID then return false end
+  for _, e in ipairs(db.learned or {}) do
+    if e.id == itemID then
+      -- No diet recorded: the pet had not resolved when it was dropped, so
+      -- there was nothing to record. Take the player's word for it.
+      if not e.diets or #e.diets == 0 then return true end
+      local ds = self:GetDiets()
+      if not next(ds) then return true end
+      for _, d in ipairs(e.diets) do
+        if ds[d] then return true end
+      end
+      return false
+    end
+  end
+  return false
+end
+
+-- The diet name a taught food was recorded under, or nil. Used for display and
+-- by ContradictsDiet; matching goes through IsLearned, which also has to answer
+-- "the player said so and we recorded no diet".
+function FeedPet:LearnedType(itemID)
+  for _, e in ipairs(db.learned or {}) do
+    if e.id == itemID and e.diets and e.diets[1] then
+      return e.diets[1]:gsub("^%l", string.upper)
+    end
+  end
+  return nil
+end
+
+function FeedPet:Learn(itemID, name)
+  if not itemID then return end
+  db.learned = db.learned or {}
+  local diets = {}
+  for k in pairs(self:GetDiets()) do diets[#diets + 1] = k end
+  for _, e in ipairs(db.learned) do
+    if e.id == itemID then
+      e.name = name or e.name
+      e.diets = diets
+      return
+    end
+  end
+  db.learned[#db.learned + 1] = { id = itemID, name = name, diets = diets }
+end
+
+function FeedPet:Unlearn(itemID)
+  local kept = {}
+  for _, e in ipairs(db.learned or {}) do
+    if e.id ~= itemID then kept[#kept + 1] = e end
+  end
+  db.learned = kept
+end
+
+-- Test/diagnostic seams: assert on what the PLAYER taught, not on internals.
+function FeedPet.LearnedCount() return #(db and db.learned or {}) end
+function FeedPet.HasLearned(id)
+  for _, e in ipairs(db and db.learned or {}) do
+    if e.id == id then return true end
+  end
+  return false
+end
+
+-- The item's diet type name, from the curated FoodDB or from what the player
+-- taught the button, or nil if it isn't a known pet food.
 function FeedPet:FoodType(itemID)
   if not itemID then return nil end
+  local taught = self:LearnedType(itemID)
+  if taught then return taught end
   if HK.FOOD_BY_ITEM and HK.FOOD_BY_ITEM[itemID] then
     return HK.FOOD_BY_ITEM[itemID]
   end
@@ -495,6 +608,9 @@ function FeedPet:ContradictsDiet(itemID)
 end
 
 function FeedPet:MatchesDiet(bag, slot, itemID)
+  -- A food the player dropped on the button. Checked before everything else:
+  -- it is the only signal here that is not a guess.
+  if self:IsLearned(itemID) then return true end
   local ds = self:GetDiets()
   local ftype = self:FoodType(itemID)
   if not next(ds) then
@@ -515,10 +631,17 @@ function FeedPet:MatchesDiet(bag, slot, itemID)
   end
   -- Fallback: scan the item tooltip for the diet keywords (for foods the DB
   -- doesn't list, e.g. raw meat/fish or odd vendor foods).
+  --
+  -- From line 1, unlike the quest scan below, which starts at 2. Here the name
+  -- is the most informative line on the tooltip -- half of Classic's foods are
+  -- called some kind of meat or fish, and skipping the name was quietly
+  -- discarding the best evidence available for an unlisted item. (The quest
+  -- scan must keep skipping it: an item merely NAMED something must not be
+  -- mistaken for a quest item, and that error destroys the item.)
   if not scanTip then return false end
   scanTip:ClearLines()
   scanTip:SetBagItem(bag, slot)
-  for i = 2, scanTip:NumLines() do
+  for i = 1, scanTip:NumLines() do
     local line = _G["HunterKitScanTipTextLeft" .. i]
     local text = line and line:GetText()
     if text then
@@ -752,6 +875,107 @@ function FeedPet.ShownCount() return FeedPet.shownCount end
 -- How many DIFFERENT foods made up that number. The tooltip uses it to say
 -- "5 feedable, across 3 different foods" instead of implying five of one item.
 function FeedPet.ShownKinds() return FeedPet.shownKinds end
+
+-- ---------------------------------------------------------------------------
+-- Drop a food on the button to teach it
+-- ---------------------------------------------------------------------------
+
+-- Quest check that needs no bag slot, for the drop path where the item is on
+-- the cursor and there is nothing to SetBagItem. Deliberately class-only: with
+-- no tooltip to fall back on, the honest answer is "not proven a quest item",
+-- and the pin/menu paths still run the full check before anything is fed.
+function FeedPet:QuestByID(itemID)
+  local ok, class = pcall(function() return (select(6, HK.GetItemInfo(itemID))) end)
+  if not ok or type(class) ~= "string" or class == "" then return false end
+  local c = class:lower()
+  return c == "quest" or c:find("quest", 1, true) ~= nil
+end
+
+-- The item the cursor is holding, as an itemID. Classic answers "item", link;
+-- newer clients answer "item", id. Both shapes are read, and anything else is
+-- refused -- guessing here would pin the wrong item.
+local function CursorItemID()
+  if not GetCursorInfo then return nil end
+  local ok, kind, a = pcall(GetCursorInfo)
+  if not ok or kind ~= "item" then return nil end
+  if type(a) == "number" then return a end
+  if type(a) == "string" then return tonumber(a:match("item:(%d+)")) end
+  return nil
+end
+
+local function Say(msg)
+  print("|cff39ff14HunterKit|r feed: " .. msg)
+end
+
+function FeedPet:ReceiveDrop()
+  if db.learnDrop == false then return end
+  local id = CursorItemID()
+  -- Always release the cursor, even on a refusal: leaving the player holding an
+  -- item the button declined to take is worse than a message.
+  if ClearCursor then pcall(ClearCursor) end
+  if not id then return end
+  if self:QuestByID(id) then
+    Say("that is a quest item -- it was not pinned, feeding one destroys it.")
+    return
+  end
+  local name = HK.GetItemInfo(id) or ("item " .. tostring(id))
+  local fresh = not FeedPet.HasLearned(id)
+  self:Learn(id, name)
+  if not self:IsPinned(id) then
+    db.preferredFoods = db.preferredFoods or {}
+    db.preferredFoods[#db.preferredFoods + 1] = { id = id, name = name }
+  end
+  bagsDirty = true
+  RefreshEverything()
+  Say((fresh and "learned " or "updated ") .. name ..
+      " -- pinned. Right-click the button for the list.")
+end
+
+function FeedPet:IsPinned(itemID)
+  for _, e in ipairs(db.preferredFoods or {}) do
+    if e.id == itemID then return true end
+  end
+  return false
+end
+
+-- ---------------------------------------------------------------------------
+-- What the addon is NOT counting
+-- ---------------------------------------------------------------------------
+
+-- Is this item plausibly something you could eat? The subclass name is
+-- localised, so this is a HINT, not a gate: it only decides what the
+-- shift-hover list offers, where a false positive costs nothing and a false
+-- negative hides the very food the player came looking for.
+local function LooksEdible(itemID)
+  local ok, sub = pcall(function() return (select(7, HK.GetItemInfo(itemID))) end)
+  if not ok or type(sub) ~= "string" then return false end
+  return sub:lower():find("food", 1, true) ~= nil
+end
+
+-- Every edible-looking item in the bags that is NOT being counted as feedable.
+-- This is the honest answer to a database that can never be complete: show the
+-- blind spot instead of guessing at it, and let the player close it with one
+-- drag.
+function FeedPet:OtherConsumables()
+  local out, seen = {}, {}
+  local feedable = self.feedableByItem or {}
+  for bag = 0, 4 do
+    for slot = 1, HK.GetBagNumSlots(bag) do
+      local itemID = HK.GetBagItemID(bag, slot)
+      if itemID and not feedable[itemID] and not seen[itemID] then
+        seen[itemID] = true
+        local name = HK.GetItemInfo(itemID)
+        if name and LooksEdible(itemID) and not self:IsQuestItem(bag, slot, itemID) then
+          out[#out + 1] = { id = itemID, name = name,
+                            count = (self.foodTotals and self.foodTotals[itemID]) or 1 }
+        end
+      end
+    end
+  end
+  table.sort(out, function(a, b) return (a.count or 0) > (b.count or 0) end)
+  return out
+end
+
 
 -- ---------------------------------------------------------------------------
 -- Macro + visuals
