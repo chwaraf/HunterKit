@@ -3,6 +3,48 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.79] - 2026-09-09
+
+### Fixed
+- **The clip slice blamed you for things you did not do.** Reported as *"the
+  yellow bar appears even when I'm only auto shooting"*. It was measuring
+  correctly and interpreting badly, in two separate ways.
+- **A haste buff expiring was reported as a massive clip.** `OnShotFired`
+  measures `now - nextAt`, but `nextAt` was predicted from the speed in force
+  *when the previous shot fired*. Rapid Fire dropping a 3.0s bow to 1.5s and
+  then expiring left a prediction one full hasted cycle long, and the next shot
+  — arriving exactly on its new 3.0s schedule — read as **+1.50s clipped**. The
+  one-cycle bound meant to catch stale predictions did not help: a 1.5s cycle
+  followed by a 3.0s one fits inside it comfortably. The speed is now re-read
+  *before* the measurement, and a cycle whose speed moved is not measured at
+  all. Reproduced and pinned by test.
+- **The noise floor was below the noise.** `CLIP_EPSILON` was 0.08s, but the
+  clip is measured between two *client-observed* events, so it already carries
+  frame quantisation (a whole frame at low FPS), network jitter, and Classic's
+  spell-batching window before the player has touched a key. On the default
+  220px bar, 90ms of ordinary jitter painted a visible 7px sliver against a
+  weapon that was simply shooting itself — a standing accusation, and exactly
+  the thing that teaches a player to stop trusting the bar. Raised to **0.15s**,
+  about where "you clipped it" separates from "the network moved". The
+  `+0.34s` readout, the slice geometry and the clip count are unchanged above
+  that; `PrintDiag`'s `clipped: N` now counts only delays worth acting on.
+
+### Notes
+- A *constant* latency offset cancels out of this measurement: it delays this
+  shot's timestamp and the next one equally. So the slice was never really a
+  latency indicator, which is the same conclusion 0.9.78 reached from the other
+  direction. What remains in the number is how much the gap between your shots
+  *varied*, and only above the noise floor is that you.
+
+### Tests
+- **`tests/test_shottimer.lua` 249 -> 258**: haste expiring is not a clip (and
+  is not counted, and still moves the bar to the new speed); a haste proc
+  landing is not a clip; 120ms of jitter is below the floor; 200ms is still
+  measured and counted. Also dropped the last four "latency slice" comments the
+  0.9.78 rename missed in this file.
+
+  1077 green in nine files.
+
 ## [0.9.78] - 2026-09-08
 
 ### Fixed

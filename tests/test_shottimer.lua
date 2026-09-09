@@ -105,8 +105,8 @@ check("a late shot reports the delay",
 shots, clips = ST.Stats()
 check("...and is counted", clips == 1, tostring(clips))
 
--- A few milliseconds late is latency, not a mistake. Reporting it would train
--- the player to chase noise.
+-- A few milliseconds late is network noise, not a mistake. Reporting it would
+-- train the player to chase it.
 Shooting(3.0, 700)
 ST._OnShotFired(703.04)
 check("a few ms late is noise, not a clip", ST.LastDelay() == 0, tostring(ST.LastDelay()))
@@ -1607,7 +1607,7 @@ check("a height the player chose is never rewritten", HKh2.db.shottimer.height =
 
 
 -- ---------------------------------------------------------------------------
--- The latency end-slice, and the bound on what counts as a clip.
+-- The clip slice, and the bound on what counts as a clip.
 --
 -- Regression, shipped in 0.9.71 and reported from game: Redraw drew the slice
 -- with SetHeight(h), but `h` is a local of ApplySize -- in Redraw it resolved
@@ -1634,7 +1634,7 @@ check("a real clip is measured", math.abs((ST.LastDelay() or 0) - 0.34) < 0.02,
   tostring(ST.LastDelay()))
 At(1003)
 ST.Refresh(); ST.OnUpdate()
-check("the latency slice draws without error", ST.ClipShown() == true)
+check("the clip slice draws without error", ST.ClipShown() == true)
 local expW = math.floor(220 * 0.34 / 2.035)
 check("...and it is the size a 0.34s tail should be",
   math.abs((ST.ClipWidth() or -999) - expW) <= 1,
@@ -1644,7 +1644,7 @@ check("...a small tail, not most of the bar",
 
 -- A gap where you simply were not shooting is NOT a clip. Without the bound
 -- this recorded the whole gap -- lastDelay 18.165, printed as "+18.17s" -- and
--- inflated the clip count. That was pre-existing: the latency slice only made
+-- inflated the clip count. That was pre-existing: the clip slice only made
 -- it visible by trying to draw it.
 local clips = select(2, ST.Stats())
 At(1030)
@@ -1653,6 +1653,55 @@ check("a stale prediction is not recorded as a clip", ST.LastDelay() == 0,
   tostring(ST.LastDelay()))
 check("...and does not inflate the clip count", select(2, ST.Stats()) == clips,
   string.format("%s vs %s", tostring(select(2, ST.Stats())), tostring(clips)))
+
+-- A haste buff EXPIRING mid-cycle. The prediction was built on the hasted
+-- speed, so the shot arrives "late" against it purely because the weapon got
+-- slower. The bound above does not catch this: a 1.50s hasted cycle followed
+-- by a 3.00s unhasted one fits inside a one-cycle bound comfortably, and the
+-- bar used to paint a 1.50s clip for a bow that fired exactly on schedule.
+Shooting(1.5, 2000)
+HKTest.state.rangedSpeed = 3.0
+At(2003.0)                       -- precisely on the new 3.0s schedule
+ST._OnShotFired(2003.0)
+check("a haste buff expiring is not a clip", ST.LastDelay() == 0,
+  tostring(ST.LastDelay()))
+check("...and is not counted against the player", select(2, ST.Stats()) == 0,
+  tostring(select(2, ST.Stats())))
+check("...but the bar still adopts the new speed",
+  math.abs(ST.Speed() - 3.0) < 0.001, tostring(ST.Speed()))
+
+-- And the mirror case: Rapid Fire LANDS, the weapon speeds up, the shot arrives
+-- early against the old prediction. Negative was already discarded, but the
+-- guard has to leave the count alone too.
+Shooting(3.0, 2050)
+HKTest.state.rangedSpeed = 1.5
+At(2051.5)
+ST._OnShotFired(2051.5)
+check("a haste proc landing is not a clip either", ST.LastDelay() == 0,
+  tostring(ST.LastDelay()))
+check("...and is not counted", select(2, ST.Stats()) == 0,
+  tostring(select(2, ST.Stats())))
+
+-- The noise floor. The clip is measured between two client-observed events, so
+-- it carries frame quantisation, network jitter and Classic's spell batching
+-- before the player has touched anything. 0.08s was low enough that a bow
+-- doing nothing wrong painted a visible 7px sliver every cycle -- which reads
+-- as a standing accusation and teaches the player to ignore the bar.
+Shooting(3.0, 2100)
+At(2103.12)                      -- 120ms: the network moved, not the player
+ST._OnShotFired(2103.12)
+check("120ms of jitter is below the noise floor", ST.LastDelay() == 0,
+  tostring(ST.LastDelay()))
+check("...and is not counted", select(2, ST.Stats()) == 0,
+  tostring(select(2, ST.Stats())))
+
+Shooting(3.0, 2200)
+At(2203.20)                      -- 200ms: that is a real clip
+ST._OnShotFired(2203.20)
+check("200ms late is still measured as a clip",
+  math.abs(ST.LastDelay() - 0.20) < 0.001, tostring(ST.LastDelay()))
+check("...and is counted", select(2, ST.Stats()) == 1,
+  tostring(select(2, ST.Stats())))
 
 
 -- ---------------------------------------------------------------------------

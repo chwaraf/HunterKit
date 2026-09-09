@@ -216,7 +216,16 @@ local rangeStrip, rangeStripText, reco, clipSlice
 local iconFrame, iconTex, iconText, iconCd
 
 local DELAY_HOLD  = 2.5      -- seconds the "+0.34s" readout lingers
-local CLIP_EPSILON = 0.08    -- below this, a delay is latency noise, not a clip
+-- Below this the number is not the player's.
+--
+-- The clip is measured between two CLIENT-observed events, so before the player
+-- has done anything at all it already carries frame quantisation (a whole frame
+-- at low FPS), network jitter, and Classic's spell-batching window. At the
+-- default 220px bar, 0.08s painted a visible 7px sliver for a weapon that was
+-- simply shooting itself -- which reads as a standing accusation, and trains the
+-- player to distrust the bar. 0.15s is about where "you clipped it" becomes
+-- separable from "the network moved".
+local CLIP_EPSILON = 0.15
 
 -- Every client call is wrapped: a single missing API must not break the bar.
 -- Forwards ALL return values -- an earlier version truncated at three, which
@@ -1474,6 +1483,15 @@ end
 local function OnShotFired(now)
   now = now or (tonumber(Call(GetTime)) or 0)
 
+  -- Read the speed FIRST, and note whether it moved. A haste proc landing or
+  -- expiring mid-cycle changes the schedule the prediction was built on, so the
+  -- gap between "when we expected" and "when it arrived" is no longer about the
+  -- player at all -- it is the weapon speed changing underneath us. Measuring
+  -- across that boundary reported Rapid Fire EXPIRING as a 1.50s clip on a 3.0s
+  -- bow that had fired perfectly on its new schedule.
+  local fresh = ReadSpeed()
+  local speedMoved = (fresh ~= nil and fresh ~= speed)
+
   -- Measure the clip BEFORE moving the prediction on. `nextAt` still holds what
   -- we expected, so the difference is the honest cost of whatever the player
   -- did during the last cycle. This is the number the feature is really for.
@@ -1488,8 +1506,13 @@ local function OnShotFired(now)
     -- Without this bound, resuming after any pause printed the whole gap as a
     -- clip: "+18.17s", and counted it, which is exactly what the 0.9.71
     -- clip slice then tried to draw. `speed` here is still the PREVIOUS
-    -- cycle's, which is the one `nextAt` was derived from.
-    if delta > CLIP_EPSILON and delta <= speed then
+    -- cycle's, which is the one `nextAt` was derived from -- which is also why
+    -- a speed change has to be excluded separately rather than trusted to the
+    -- bound: a 1.5s hasted cycle followed by a 3.0s unhasted one fits inside
+    -- it comfortably.
+    if speedMoved then
+      lastDelay = 0
+    elseif delta > CLIP_EPSILON and delta <= speed then
       lastDelay = delta
       delayShownAt = now
       clipCount = clipCount + 1
@@ -1501,7 +1524,7 @@ local function OnShotFired(now)
 
   -- Re-read the speed every shot: haste procs change it mid-fight, and using a
   -- stale value would silently mis-place the lockout zone.
-  speed = ReadSpeed() or speed
+  speed = fresh or speed
   shotAt = now
   nextAt = now + speed
   castStartedAt = nil
