@@ -3,6 +3,45 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.74] - 2026-09-08
+
+### Fixed
+- **The feed button still read "1" over a stack of 20.** 0.9.69 fixed the totals
+  table and the count was *still* wrong, because the table was never the problem
+  — the per-slot numbers feeding it were.
+
+  `PickFood` counted the inventory by summing `HK.GetBagItemCount(bag, slot)`
+  across every slot, with `or 1` when that call returned nothing. So on any
+  client/container path where the per-slot count does not answer, **every stack
+  counted as one**: a stack of 20 read `1`, and `1 + 20` read `2`. The totals
+  table then faithfully summed the garbage and the button displayed it. Fixing
+  the table could not help; it was doing its job on bad input.
+
+- **The count is now reconciled against `GetItemCount`** — the client's own
+  "how many of this item are in my bags", and exactly what `AmmoBuy.lua` and
+  `AmmoWarn.lua` have always used. FeedPet was the one module re-implementing
+  that question from container slots.
+
+  It takes the **max** of the two rather than trusting either alone:
+  `GetItemCount` can answer `0` for a second or two after a bag change (AmmoWarn
+  documents this, post-hearthstone) and the scan can under-count when the
+  container API is cold. Neither ever over-reports, so the max is the honest
+  number whenever either source works. The per-slot scan is still what *picks*
+  the stack, since feeding needs a bag and slot.
+
+### Tests
+- **`tests/test_feedpet.lua` 26 -> 30**, and the stub gained a way to reproduce
+  the failure: `HKTest.state.noStackCount` makes `C_Container.GetContainerItemInfo`
+  answer with the item but no `stackCount`, which is the state the live client
+  was in. Without that switch the whole bug class is invisible to the suite —
+  which is why 26 green checks sat on top of it.
+- Covered: a single stack of 20 reads 20 (not 1), two stacks read 21 (not 2),
+  and when `GetItemCount` is cold the scan still counts every stack.
+- Negative control reproduces the report exactly: with the reconciliation
+  removed, `FAIL a single stack of 20 reads 20, not 1 — 1`.
+
+  1043 green in nine files.
+
 ## [0.9.73] - 2026-09-08
 
 ### Changed

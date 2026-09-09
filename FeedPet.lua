@@ -538,6 +538,33 @@ function FeedPet:FindBestStackByID(itemID, petLevel)
   return best
 end
 
+-- How much of an item you are actually carrying.
+--
+-- The authoritative answer is GetItemCount: the client's own "how many of this
+-- item are in my bags", and exactly what AmmoBuy.lua and AmmoWarn.lua already
+-- use. FeedPet did NOT use it -- it summed per-slot stack counts from the
+-- container API instead, which is a reimplementation of the same question and
+-- depends on which container call the client answers with. When that call did
+-- not answer, `HK.GetBagItemCount` returned nil, every stack fell back to
+-- `or 1`, and the button read "1" over a stack of 20. That is the reported bug,
+-- and it is why it survived a fix that was aimed at the totals table: the table
+-- was fine, the per-slot numbers feeding it were not.
+--
+-- We take the MAX of the two rather than trusting either alone. GetItemCount
+-- can answer 0 for a second or two after a bag change (AmmoWarn documents
+-- exactly this, post-hearthstone), and the scan can under-count when the
+-- container API is cold. Neither ever OVER-reports, so the max is the honest
+-- number whenever either source is working.
+local function TotalOf(itemID, scanned)
+  scanned = tonumber(scanned) or 0
+  local fromAPI = 0
+  if GetItemCount then
+    local ok, n = pcall(GetItemCount, itemID)
+    if ok and type(n) == "number" and n > fromAPI then fromAPI = n end
+  end
+  return math.max(fromAPI, scanned)
+end
+
 function FeedPet:PickFood()
   local petLevel = UnitLevel("pet") or UnitLevel("player")
   local best
@@ -585,6 +612,11 @@ function FeedPet:PickFood()
   end
   -- Every stack of every item, keyed by itemID. The button's number reads this
   -- and nothing else, so it is right no matter which path picked the food.
+  -- Each entry is reconciled against GetItemCount before it is published -- see
+  -- TotalOf for why the scan alone is not trusted.
+  for id, scanned in pairs(totals) do
+    totals[id] = TotalOf(id, scanned)
+  end
   self.foodTotals = totals
   -- pinned food override
   for _, pin in ipairs(db.preferredFoods) do

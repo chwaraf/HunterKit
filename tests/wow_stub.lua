@@ -453,7 +453,15 @@ C_Container = {
   GetContainerItemInfo = function(bag, slot)
     local it = ((HKTest.state.bagItems or {})[bag] or {})[slot]
     if not it then return nil end
-    return { stackCount = it.count or 1, itemID = it.id, hyperlink = it.link }
+    local info = { itemID = it.id, hyperlink = it.link }
+    -- Models a client/container path that answers with the item but no usable
+    -- stack count. Core's HK.GetBagItemCount then returns nil, and the caller's
+    -- `or 1` fallback silently counts every stack as ONE -- which is how the
+    -- feed button came to read "1" over a stack of 20. Tests need to be able to
+    -- reproduce that, or the fallback is invisible here and only shows up in
+    -- game.
+    if not HKTest.state.noStackCount then info.stackCount = it.count or 1 end
+    return info
   end,
   UseContainerItem = function() end,
 }

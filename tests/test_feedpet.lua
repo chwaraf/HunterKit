@@ -221,6 +221,49 @@ HKTest.Fire("UNIT_PET", "pet")
 
 -- Report this file's tally so tests/test_docs.lua can check the README's
 -- advertised check counts against what the suite really runs.
+
+-- ---------------------------------------------------------------------------
+-- 7) The container API answering with no stack count.
+--
+-- THIS is the reported "shows 1 when more", and it survived the earlier fix
+-- because that fix was aimed at the totals table -- and the table was never the
+-- problem. The per-slot numbers feeding it were.
+--
+-- When HK.GetBagItemCount returns nil, PickFood's `or 1` counts EVERY stack as
+-- one: a stack of 20 reads 1, and 1 + 20 reads 2. The totals table then
+-- faithfully summed garbage and the button displayed it. The fix reconciles
+-- each total against GetItemCount -- the client's own per-item total, and what
+-- AmmoBuy.lua and AmmoWarn.lua have always used.
+-- ---------------------------------------------------------------------------
+PutFood(JERKY, "Tough Jerky", 55, { 20 })
+HKTest.state.noStackCount = true
+check("precondition: the container API gives no per-slot count here",
+  HK.GetBagItemCount(0, 1) == nil, tostring(HK.GetBagItemCount(0, 1)))
+
+HKTest.state.items = { [JERKY] = 20 }
+FP.Refresh()
+check("a single stack of 20 reads 20, not 1", FP.ShownCount() == 20,
+  tostring(FP.ShownCount()))
+
+PutFood(JERKY, "Tough Jerky", 55, { 1, 20 })
+HKTest.state.noStackCount = true
+HKTest.state.items = { [JERKY] = 21 }
+FP.Refresh()
+check("two stacks read their real total, not 2", FP.ShownCount() == 21,
+  tostring(FP.ShownCount()))
+
+-- GetItemCount can answer 0 for a moment after a bag change (AmmoWarn documents
+-- this, post-hearthstone). The scan is the fallback in that window, so the
+-- worst case is an under-count from the scan -- never a wrong 1 over a good API.
+HKTest.state.noStackCount = false
+HKTest.state.items = {}
+FP.Refresh()
+check("when GetItemCount is cold the scan still counts every stack",
+  FP.ShownCount() == 21, tostring(FP.ShownCount()))
+
+HKTest.state.noStackCount = false
+HKTest.state.items = {}
+
 HKTest.report("test_feedpet.lua", passes, #failures)
 
 say(string.format("\n%d passed, %d failed", passes, #failures))
