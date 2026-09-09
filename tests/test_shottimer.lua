@@ -1753,6 +1753,52 @@ check("every layer follows the height slider",
 db12.height = 27
 ST.RescanSettings()
 
+
+-- ---------------------------------------------------------------------------
+-- With TRAVEL weaving OFF the blue marker and the "weave in X" label can still
+-- appear. That is the STATIC weave, and it is intended -- but "within swing
+-- distance" means any attackable mob inside the ~11yd probe, not only your
+-- target. The scan covers target, mouseover, pettarget and targettarget,
+-- because in the two-mob setup any of those can be the mob standing at your
+-- feet. So the marker comes and goes as mobs drift across the probe.
+--
+-- PINNED AS A DECISION, not an accident. It was reported as the travel option
+-- leaking; it is not -- but it reads that way, so the option's tooltip now says
+-- so explicitly. If a future edit narrows this scan, these checks are the ones
+-- that will fail, and that is the point.
+-- ---------------------------------------------------------------------------
+local db14 = Shooting(3.0, 1000)
+db14.travelWeave = false
+db14.weave = true
+SpecialsOnCD(1000)
+HKTest.state.target = true
+HKTest.state.targetDead = nil
+HKTest.state.dead = {}
+HKTest.state.units = { pettarget = true }
+HKTest.state.inMelee = { pettarget = true }   -- the PET's mob is at your feet
+-- Earlier scenarios leave a melee clock running, and a swing 2.1s out against a
+-- 2.0s free window correctly reads as "swing" -- no window. Put the swing
+-- properly UP instead, so this test is about the melee probe and not about
+-- leftover state from another section. _OnMeleeSwing(t) means a swing LANDED at
+-- t, so the next one is a full melee speed later: land it in the past.
+HKTest.state.meleeSpeed = 2.4
+At(1000.5); ST._OnMeleeSwing(997.0)
+ST.RescanSettings()
+check("a mob in melee that is not your target is still detected",
+  ST.InMeleeOfTarget() == true, tostring(ST.InMeleeOfTarget()))
+check("by design the static weave is advised even with travel weaving off",
+  ST.WeaveWindow(1000.5) ~= nil, tostring(ST.WeaveWindow(1000.5)))
+ST.Refresh(); ST.OnUpdate()
+check("...and the blue marker draws for it", ST.WeaveMarkShown() == true,
+  tostring(ST.WeaveMarkShown()))
+
+-- The guarantee the option DOES make: it never tells you to go running
+-- anywhere. With nothing in melee the round-trip logic never runs at all.
+HKTest.state.inMelee = {}
+check("with nothing in melee, travel weaving off means no weave is advised",
+  ST.WeaveWindow(1000.5) == nil, tostring(ST.WeaveWindow(1000.5)))
+HKTest.state.cooldowns = {}
+
 -- Put the shared state back for the teardown below.
 HKTest.state.units = {}
 HKTest.state.inMelee = {}

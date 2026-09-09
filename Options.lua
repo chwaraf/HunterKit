@@ -901,7 +901,7 @@ function BuildWindow()
   MakeCheckbox(content, y, "Also weave by running in and out",
     function() return db.shottimer.travelWeave end,
     function(v) db.shottimer.travelWeave = v; RefreshShotTimer() end,
-    "Off by default. Leave it off and the bar only suggests a melee hit when your target is ALREADY in melee range, so it never tells you to go running anywhere. Turn it on for \"normal\" weaving -- running out to a distant target between shots and back before the lockout -- which is a real technique but needs the round trip below to match how fast you actually move.")
+    "Off by default. Leave it off and the bar never tells you to go running anywhere. It will STILL show the blue marker and read WEAVE when a mob is already within swing distance -- that is the static weave, and it is intended. Note this means any attackable mob within the ~11yd melee probe, not only your target: your mouseover, your pet's target, and whatever is attacking your target all count, because in the two-mob setup any of those can be the mob standing at your feet. So the marker can come and go as mobs drift in and out of range while travel weaving is off -- that is the static weave switching on and off, not this setting leaking. Turn it on for \"normal\" weaving -- running out to a distant target between shots and back before the lockout -- which is a real technique but needs the round trip below to match how fast you actually move.")
   y = y - CHK
   -- Stored in tenths on the bar (the widget formats with %d, so a fractional
   -- step would crash it) but DISPLAYED in seconds via the formatter -- the

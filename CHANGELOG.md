@@ -3,6 +3,48 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.77] - 2026-09-08
+
+### Changed
+- **The "Also weave by running in and out" tooltip no longer misdescribes what
+  the option does.** It said that with the option off "the bar only suggests a
+  melee hit when *your target* is ALREADY in melee range" — and that word was
+  the whole source of confusion.
+
+  The test is `InMeleeOfTarget()`, which scans **four** units and answers true if
+  *any* attackable mob is inside the ~11yd probe: `target`, `mouseover`,
+  `pettarget` and `targettarget`. In the two-mob setup your **pet's target is
+  standing at your feet**, so the blue marker and the "weave in X" label appear
+  while the option is off — and come and go as mobs drift across the probe. That
+  is the *static* weave doing its job, not the travel option leaking, but the
+  tooltip implied otherwise. It now says exactly which units count and why.
+  README says the same.
+
+### Added
+- **Four checks pinning that behaviour as a decision**, not an accident:
+  a mob in melee that is *not* your target is still detected; the static weave is
+  still advised with travel weaving off; the blue marker draws for it; and — the
+  guarantee the option *does* make — with nothing in melee, no weave is advised
+  at all. If a future edit narrows that four-unit scan these are what fail, and
+  that is the point. Uses the `WeaveMarkShown` seam, which had been added but
+  unused.
+
+  Considered and rejected: narrowing the scan to `target` (or `target` +
+  `mouseover`). It would stop the flicker, but four existing tests deliberately
+  lock the wide behaviour in — *"a mouseover macro must not blind the weave
+  advice"*, *"the pet's target in melee also counts"*, *"every route gives the
+  same advice"* — so reversing it is a design change rather than a bug fix.
+
+### Notes
+- Two test-isolation traps worth recording, both hit while writing the above.
+  `_OnMeleeSwing(t)` means a swing **landed** at `t`, so the next is a full melee
+  speed later — calling it "now" leaves the swing *not* up. And earlier
+  scenarios leave a melee clock running, which against a 2.0s free window reads
+  as `"swing"` (no window) for reasons that have nothing to do with the case
+  under test. Set the clock explicitly in any weave test.
+
+  1057 green in nine files.
+
 ## [0.9.76] - 2026-09-08
 
 ### Added
