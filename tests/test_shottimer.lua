@@ -1941,6 +1941,96 @@ check("...and the +0.34s text has gone with it",
 
 HKTest.state.playerCombat = false
 
+-- ---------------------------------------------------------------------------
+-- 30) THE STATE STRIP MUST OBEY ITS CHECKBOX ON A FRESH LOGIN
+--
+-- Regression, reported from game: "two mob weave state strip shows even when
+-- its off in ui after relog."
+--
+-- The strip is a PAINTED texture, and the WoW API shows a region the moment it
+-- is created. BuildBar painted it COL_SHOOTING and never hid it, and ParkIdle
+-- -- which is what a freshly logged-in, not-yet-shooting bar runs -- reset the
+-- fills, the clip slice and the melee row but left the strip completely alone.
+-- The only code that ever hid it was the live path in Redraw, so the stray
+-- strip survived login and only vanished once the first shot was fired.
+--
+-- Every earlier test set the option and then fired a shot, which ran Redraw and
+-- cleaned up after the bug. These boot a real saved profile instead.
+-- ---------------------------------------------------------------------------
+local function Login(saved)
+  HunterKitDB = saved
+  local h = HKTest.LoadAddon(unpack(HKTest.addonFiles))
+  h:Load()
+  -- The client fires this on the way in; it is what normally shows the bar.
+  if h.bus.handlers["PLAYER_ENTERING_WORLD"] then
+    h.bus.handlers["PLAYER_ENTERING_WORLD"]()
+  end
+  return h
+end
+
+local stripOff = Login({ dbVersion = 34, shottimer = {
+  enabled = true, always = true, rangeStrip = false,
+  width = 220, height = 27, offsetX = 0, offsetY = -210 } })
+local STso = stripOff.ShotTimer
+check("precondition: the saved profile really has the strip switched off",
+  stripOff.db.shottimer.rangeStrip == false,
+  tostring(stripOff.db.shottimer.rangeStrip))
+check("a fresh login does not show the strip when the option is off",
+  STso.StripShown() == false, tostring(STso.StripShown()))
+check("...and it carries no caption either",
+  (STso.StripText() or "") == "", tostring(STso.StripText()))
+
+-- Parked is the state a relog always starts in, so it gets its own assertion:
+-- forcing another park must not conjure the strip back.
+At(13000)
+STso.Refresh()
+check("re-parking the bar still honours the checkbox",
+  STso.StripShown() == false, tostring(STso.StripShown()))
+
+-- And it must stay off once shooting starts, which is where the old code
+-- happened to get it right -- so this pins the fix rather than the accident.
+STso._SetRepeating(true)
+At(13010); STso._OnShotFired(13010); STso.OnUpdate()
+check("...and shooting does not bring it back",
+  STso.StripShown() == false, tostring(STso.StripShown()))
+
+-- Positive control: with the option ON the strip must still be there on a
+-- fresh login, and it must say something. The old code left it painted with an
+-- EMPTY string, so this is also a straight-up improvement on the parked bar.
+local stripOn = Login({ dbVersion = 34, shottimer = {
+  enabled = true, always = true, rangeStrip = true,
+  width = 220, height = 27, offsetX = 0, offsetY = -210 } })
+local STon = stripOn.ShotTimer
+check("with the option on, a fresh login does show the strip",
+  STon.StripShown() == true, tostring(STon.StripShown()))
+check("...and the parked bar says something truthful rather than nothing",
+  (STon.StripText() or "") ~= "", tostring(STon.StripText()))
+
+-- Both directions of the checkbox, while parked -- no shot required. Unticking
+-- used to work only because RescanSettings ran HideExtras; ticking it back on
+-- did nothing until you shot something.
+stripOn.db.shottimer.rangeStrip = false
+STon.RescanSettings()
+check("unticking while parked takes the strip off screen at once",
+  STon.StripShown() == false, tostring(STon.StripShown()))
+stripOn.db.shottimer.rangeStrip = true
+STon.RescanSettings()
+check("ticking it while parked brings it straight back",
+  STon.StripShown() == true and (STon.StripText() or "") ~= "",
+  string.format("%s %q", tostring(STon.StripShown()), tostring(STon.StripText())))
+
+-- The reco row is the same bug class: an option-gated region created visible
+-- and never hidden by ParkIdle. It only escaped notice because an empty
+-- fontstring renders nothing.
+local recoOff = Login({ dbVersion = 34, shottimer = {
+  enabled = true, always = true, rangeStrip = true, recoRow = false,
+  width = 220, height = 27, offsetX = 0, offsetY = -210 } })
+At(13100)
+recoOff.ShotTimer.Refresh()
+check("the reco row obeys its own checkbox while parked too",
+  recoOff.ShotTimer.RecoShown() == false,
+  tostring(recoOff.ShotTimer.RecoShown()))
+
 HKTest.report("test_shottimer.lua", passes, #failures)
 
 say(string.format("\n%d passed, %d failed", passes, #failures))

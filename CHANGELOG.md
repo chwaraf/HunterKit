@@ -3,6 +3,42 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.86] - 2026-09-10
+
+### Fixed
+- **The two-mob weave state strip showed up on login even with the option
+  switched off.** Reported as *"two mob weave state strip shows even when its off
+  in ui after relog."*
+- **The strip is a painted texture, and the WoW API shows a region the moment it
+  is created.** `BuildBar` painted it and never hid it, and `ParkIdle` — which is
+  what a freshly logged-in, not-yet-shooting bar runs — reset the fills, the clip
+  slice and the melee row but left the strip completely alone. The only code that
+  ever hid it was the live path in `Redraw`, so the stray strip survived login
+  and vanished only once you fired your first shot. That is also why it looked
+  like a *relog* bug: a relog is the one moment the bar is built fresh and idle.
+- **Every earlier test missed it by firing a shot**, which ran `Redraw` and
+  cleaned up after the fault. The new checks boot a real saved profile instead
+  and assert what is on screen before anything is shot.
+- **The reco row had the same fault** — an option-gated region created visible and
+  never hidden by `ParkIdle`. It only escaped notice because an empty fontstring
+  renders nothing, so there was nothing to see.
+
+### Changed
+- **The parked bar now says something truthful.** `PaintStrip` is shared by the
+  live and parked paths, so a bar sitting idle with the strip enabled reads
+  `RANGE` (or `MELEE ONLY`, if you are standing in something) instead of showing
+  a bare coloured bar with no text on it.
+- **Ticking the strip on now takes effect immediately**, even while idle. It used
+  to do nothing until you shot something, because only `Redraw` could show it.
+- Optional rows are now created hidden, so "visible" is always an explicit
+  decision rather than the API default.
+
+### Tests
+- **`tests/test_shottimer.lua` 268 -> 278**, covering the off profile on a fresh
+  login, the off profile while parked, the on profile on a fresh login, both
+  directions of the checkbox while parked, and the reco row.
+  1163 green in nine files.
+
 ## [0.9.85] - 2026-09-10
 
 ### Fixed

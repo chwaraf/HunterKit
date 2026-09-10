@@ -935,6 +935,12 @@ local function BuildBar()
   rangeStripText:SetFont(STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF", 10, "OUTLINE")
   rangeStripText:SetJustifyH("CENTER")
   rangeStripText:SetText("")
+  -- Regions are SHOWN the instant they are created, and this one is already
+  -- painted. Starting it visible meant a bar built with the strip switched off
+  -- still showed a bare coloured strip until the first Redraw ran. Start
+  -- hidden and let PaintStrip decide, from both the live and parked paths.
+  rangeStrip:Hide()
+  rangeStripText:Hide()
 
   -- "What to press next", the Fluffy Hunter Bars idea: rather than only
   -- showing clocks, say which button is worth pressing. Opt-in, because it
@@ -943,6 +949,7 @@ local function BuildBar()
   reco:SetFont(STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF", 11, "OUTLINE")
   reco:SetJustifyH("LEFT")
   reco:SetText("")
+  reco:Hide()   -- same reason as the strip: created visible, option-gated
 
   HK.CreateBorder(frame)
   ApplySize()
@@ -1055,6 +1062,53 @@ local function DrawSpecialPips(now)
       ShownIf(pip, true); ShownIf(fs, true)
     end
   end
+end
+
+-- ---------------------------------------------------------------------------
+-- The state strip: one legible line saying which situation you are in.
+--
+-- This is the indicator the two-mob weave never had. The old bar could only
+-- ever mark the travel-weave departure point, so a hunter standing in melee
+-- of one mob with the pet on a second one got nothing at all -- the single
+-- most common weaving setup was the one it stayed silent about.
+--
+-- Shared by the live path (Redraw) and the parked path (ParkIdle). It HAS to
+-- be shared: the strip is a painted texture, so it is visible from the moment
+-- BuildBar creates it, and anything that shows the bar without running this
+-- leaves a stray coloured strip on screen that ignores the checkbox.
+-- ---------------------------------------------------------------------------
+local function PaintStrip(now)
+  if not rangeStrip then return end
+  if db and db.rangeStrip == false then
+    ShownIf(rangeStrip, false); ShownIf(rangeStripText, false)
+    return
+  end
+
+  local st, s = ShotTimer.RangeState(now)
+  local col, txt
+  if st == "twogo" then
+    col, txt = COL_TWOGO, "PRESS 2-MOB"
+  elseif st == "two" then
+    -- Set up but not yet time. Say WHAT you are waiting on: a bare "2-MOB"
+    -- that never changes teaches you nothing about when to press.
+    col = COL_TWO
+    if not s.swingUp and s.swingIn then
+      txt = string.format("2-MOB - SWING %.1fs", s.swingIn)
+    elseif s.locked then
+      txt = "2-MOB - SHOT LOCKED"
+    else
+      txt = "2-MOB READY"
+    end
+  elseif st == "melee" then
+    col, txt = COL_INMELEE, "MELEE ONLY"
+  elseif st == "oor" then
+    col, txt = COL_OOR, "OUT OF RANGE"
+  else
+    col, txt = COL_SHOOTING, "RANGE"
+  end
+  lastStripCol = PaintIf(rangeStrip, col, lastStripCol)
+  if txt ~= lastStripTxt then rangeStripText:SetText(txt); lastStripTxt = txt end
+  ShownIf(rangeStrip, true); ShownIf(rangeStripText, true)
 end
 
 local function Redraw(now)
@@ -1205,44 +1259,9 @@ local function Redraw(now)
   end
 
   -- ---------------------------------------------------------------------
-  -- The state strip: one legible line saying which situation you are in.
-  --
-  -- This is the indicator the two-mob weave never had. The old bar could only
-  -- ever mark the travel-weave departure point, so a hunter standing in melee
-  -- of one mob with the pet on a second one got nothing at all -- the single
-  -- most common weaving setup was the one it stayed silent about.
+  -- The state strip. Shared with ParkIdle -- see PaintStrip.
   -- ---------------------------------------------------------------------
-  if rangeStrip then
-    if db.rangeStrip == false then
-      ShownIf(rangeStrip, false); ShownIf(rangeStripText, false)
-    else
-      local st, s = ShotTimer.RangeState(now)
-      local col, txt
-      if st == "twogo" then
-        col, txt = COL_TWOGO, "PRESS 2-MOB"
-      elseif st == "two" then
-        -- Set up but not yet time. Say WHAT you are waiting on: a bare "2-MOB"
-        -- that never changes teaches you nothing about when to press.
-        col = COL_TWO
-        if not s.swingUp and s.swingIn then
-          txt = string.format("2-MOB - SWING %.1fs", s.swingIn)
-        elseif s.locked then
-          txt = "2-MOB - SHOT LOCKED"
-        else
-          txt = "2-MOB READY"
-        end
-      elseif st == "melee" then
-        col, txt = COL_INMELEE, "MELEE ONLY"
-      elseif st == "oor" then
-        col, txt = COL_OOR, "OUT OF RANGE"
-      else
-        col, txt = COL_SHOOTING, "RANGE"
-      end
-      lastStripCol = PaintIf(rangeStrip, col, lastStripCol)
-      if txt ~= lastStripTxt then rangeStripText:SetText(txt); lastStripTxt = txt end
-      ShownIf(rangeStrip, true); ShownIf(rangeStripText, true)
-    end
-  end
+  PaintStrip(now)
 
   -- ---------------------------------------------------------------------
   -- "What to press next", the Fluffy Hunter Bars idea: do not only show
@@ -1477,6 +1496,15 @@ ParkIdle = function()
     if db.weave ~= false then meleeTrack:Show() else meleeTrack:Hide() end
   end
   DrawSpecialPips(tonumber(Call(GetTime)) or 0)
+  -- The parked bar still owes the player a truthful state line -- and, more
+  -- to the point, it must NOT show one when the option is off. The strip is a
+  -- painted texture created visible, and ParkIdle used to leave it alone, so
+  -- a fresh login (always an idle bar until the first shot) showed a stray
+  -- coloured strip with no text on it regardless of the checkbox. It only
+  -- disappeared once the first shot ran a Redraw.
+  local now = tonumber(Call(GetTime)) or 0
+  PaintStrip(now)
+  if reco and db and db.recoRow == false then ShownIf(reco, false) end
   BindOnUpdate(false)
 end
 
@@ -1773,6 +1801,7 @@ function ShotTimer.DelayText() return delayText and delayText.text or nil end
 function ShotTimer.StripText() return rangeStripText and rangeStripText.text or nil end
 function ShotTimer.StripShown() return rangeStrip ~= nil and rangeStrip:IsShown() == true end
 function ShotTimer.RecoText() return reco and reco.text or nil end
+function ShotTimer.RecoShown() return reco ~= nil and reco:IsShown() == true end
 function ShotTimer.IconBuilt() return iconFrame ~= nil end
 function ShotTimer.IconShown() return iconFrame ~= nil and iconFrame:IsShown() == true end
 function ShotTimer.IconAlpha() return iconFrame and iconFrame.alpha or nil end
