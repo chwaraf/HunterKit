@@ -526,29 +526,50 @@ FP.Refresh()                      -- the scan has to run WITH the tooltip presen
 check("an unlisted food matches the diet on its name alone",
   FP.ShownCount() == 7, tostring(FP.ShownCount()))
 
--- (f) shift-hover shows what is not being counted
+-- (f) shift-hover: an icon column of EVERY food in the bags, one below the
+--     other. The first version of this put a text list in the tooltip and only
+--     listed food that was NOT being counted -- so for a pet whose food the
+--     addon already recognises the list was empty and the gesture appeared to
+--     do nothing at all, which is what was reported.
 PutFoods({
-  { id = JERKY, name = "Tough Jerky",  level = 55, stacks = { 3 } },
+  { id = JERKY, name = "Tough Jerky",   level = 55, stacks = { 3 } },
   { id = STEW,  name = "Hunter's Stew", level = 55, stacks = { 9 } },
 })
 MarkEdible(STEW)
+
+-- (f1) shift held BEFORE hovering
 HKTest.state.shift = true
-local tip10 = TooltipText()
-check("shift-hover names the food that is not counted",
-  tip10:find("Hunter's Stew", 1, true) ~= nil, tip10)
-check("...and says what to do about it",
-  tip10:find("drop one here", 1, true) ~= nil, tip10)
--- Only the part under the heading: the picked food is named higher up in the
--- tooltip as "Will feed:", so asserting on the whole string would fail for the
--- wrong reason.
-local uncounted = tip10:match("Not counted.*") or ""
-check("...and lists only what is NOT counted",
-  uncounted:find("Hunter's Stew", 1, true) ~= nil and
-  uncounted:find("Tough Jerky", 1, true) == nil, uncounted)
+fb10:GetScript("OnEnter")(fb10)
+check("shift + hover opens the food panel", FP.PanelShown() == true,
+  tostring(FP.PanelShown()))
+check("...with an icon on each row", FP.PanelIcon(1) ~= nil,
+  tostring(FP.PanelIcon(1)))
+check("...the food the button will feed comes first",
+  FP.PanelName(1) == "Tough Jerky", tostring(FP.PanelName(1)))
+check("...then the food it is not counting",
+  FP.PanelName(2) == "Hunter's Stew", tostring(FP.PanelName(2)))
+check("...and food the DB already knows is listed too",
+  FP.PanelTotal() == 2, tostring(FP.PanelTotal()))
+
+-- (f2) releasing shift while still hovering closes it
 HKTest.state.shift = false
-tip10 = TooltipText()
-check("without shift the list stays out of the way",
-  tip10:find("Hunter's Stew", 1, true) == nil, tip10)
+HKTest.Fire("MODIFIER_STATE_CHANGED", "LSHIFT", 0)
+check("releasing shift closes the panel", FP.PanelShown() == false,
+  tostring(FP.PanelShown()))
+
+-- (f3) THE OTHER HALF OF THE REPORT: hover first, THEN press shift. OnEnter
+--      does not fire again, so sampling the modifier only there could never
+--      work in this direction.
+HKTest.state.shift = true
+HKTest.Fire("MODIFIER_STATE_CHANGED", "LSHIFT", 1)
+check("pressing shift while already hovering opens it too",
+  FP.PanelShown() == true, tostring(FP.PanelShown()))
+
+-- (f4) moving away closes it even with shift still down
+fb10:GetScript("OnLeave")(fb10)
+check("leaving the button closes the panel", FP.PanelShown() == false,
+  tostring(FP.PanelShown()))
+HKTest.state.shift = false
 
 -- (g) both cursor shapes. Classic answers "item", link; newer clients answer
 --     "item", id. Reading only one would silently ignore every drop on the

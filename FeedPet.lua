@@ -12,6 +12,9 @@ HK.FeedPet = FeedPet
 
 local db
 local button, iconTex, countText, border, timerText, feeder
+local panel, panelTitle, panelRows
+local PANEL_ROWS = 12
+local ROW_H      = 20
 local pending = false           -- attribute refresh deferred (combat)
 local positionPending = false   -- a move was blocked by combat; replay on regen
 local bagsDirty = true          -- food rescan needed (CPU: scan only on real changes)
@@ -137,6 +140,11 @@ function FeedPet.Init()
   -- The Feed Pet Effect buff appearing, ticking and being cancelled (damage
   -- during the feed drops it outright) all arrive here.
   HK.On("UNIT_AURA", function(u) if u == "pet" then FeedPet.UpdateFeeding() end end)
+  -- Shift can be pressed while the mouse is ALREADY over the button, and
+  -- OnEnter does not fire again -- so sampling the modifier only there made the
+  -- gesture work one way round and not the other. This is the half that was
+  -- missing.
+  HK.On("MODIFIER_STATE_CHANGED", function() FeedPet.UpdateFoodPanel() end)
   HK.On("UNIT_HEALTH", function(u) if u == "pet" then RefreshEverything() end end)
   HK.On("PLAYER_ENTERING_WORLD", function() bagsDirty = true; RefreshEverything() end)
   HK.On("PLAYER_REGEN_DISABLED", RefreshEverything)   -- kill the highlight on combat start
@@ -224,6 +232,7 @@ function BuildButton()
   -- hover tooltip: shows what the click will feed so the player knows the action
   button:SetScript("OnEnter", function()
     local f = FeedPet.lastFood
+    FeedPet.hovering = true
     GameTooltip:SetOwner(button, "ANCHOR_RIGHT")
     GameTooltip:SetText("HunterKit — Feed Pet", 0.2, 1, 0.2)
     if f and f.name then
@@ -270,35 +279,23 @@ function BuildButton()
         GameTooltip:AddLine("Pet is " .. htxt .. " — will feed on click.", 0.4, 1, 0.4)
       end
     end
-    -- Shift-hover: what the button is NOT counting. There is no API for a
-    -- food's diet type, so the curated DB has holes -- cooked food especially --
-    -- and the honest response is to show the gap rather than guess at it.
     -- Feeding again while the buff is running does not stack -- it replaces a
     -- feed that is already paying out, so the second food is simply lost.
     if FeedPet.IsFeeding() then
       GameTooltip:AddLine("Already eating — feeding again wastes the food.", 1, 0.7, 0.3)
     end
-    if IsShiftKeyDown and IsShiftKeyDown() then
-      local others = FeedPet:OtherConsumables()
-      GameTooltip:AddLine(" ")
-      if #others == 0 then
-        GameTooltip:AddLine("Nothing else in your bags looks edible.", 0.7, 0.7, 0.7)
-      else
-        GameTooltip:AddLine("Not counted — drop one here to teach the button:", 1, 0.85, 0.3)
-        for i = 1, math.min(#others, 8) do
-          GameTooltip:AddLine("  " .. others[i].name .. " x" .. others[i].count, 0.8, 0.8, 0.8)
-        end
-        if #others > 8 then
-          GameTooltip:AddLine("  +" .. (#others - 8) .. " more", 0.6, 0.6, 0.6)
-        end
-      end
-    elseif db.learnDrop ~= false then
-      GameTooltip:AddLine("Drop a food here to pin it · shift-hover for foods not counted",
+    if db.learnDrop ~= false then
+      GameTooltip:AddLine("Drop a food here to pin it · hold Shift for every food in your bags",
         0.6, 0.6, 0.6)
     end
     GameTooltip:Show()
+    FeedPet.UpdateFoodPanel()
   end)
-  button:SetScript("OnLeave", function() GameTooltip:Hide() end)
+  button:SetScript("OnLeave", function()
+    GameTooltip:Hide()
+    FeedPet.hovering = false
+    FeedPet.UpdateFoodPanel()
+  end)
   -- EnableMouse(true) is already set above; this is the other half of the drop
   -- gesture -- what happens when the item is released over the button.
   button:SetScript("OnReceiveDrag", function() FeedPet:ReceiveDrop() end)
@@ -995,6 +992,146 @@ end
 -- This is the honest answer to a database that can never be complete: show the
 -- blind spot instead of guessing at it, and let the player close it with one
 -- drag.
+-- ---------------------------------------------------------------------------
+-- The shift-hover food panel: every food in the bags, as icons, one below the
+-- other.
+--
+-- Two things this replaces. The first version put a TEXT list in the tooltip
+-- and only listed food that was NOT being counted -- so for a pet whose food
+-- the addon already recognises, the list was empty and the gesture appeared to
+-- do nothing at all, which is exactly what was reported. The second problem was
+-- that shift was sampled once, inside OnEnter, so hovering first and pressing
+-- shift afterwards could never update anything.
+-- ---------------------------------------------------------------------------
+
+function FeedPet:BuildPanel()
+  if panel then return end
+  panel = CreateFrame("Frame", "HunterKitFoodPanel", UIParent)
+  panel:SetWidth(216)
+  panel:SetFrameStrata("FULLSCREEN_DIALOG")
+  panel:SetClampedToScreen(true)
+  local bg = panel:CreateTexture(nil, "BACKGROUND")
+  bg:SetAllPoints()
+  bg:SetTexture("Interface\\Tooltips\\UI-Tooltip-Background")
+  bg:SetVertexColor(0, 0, 0, 0.95)
+  panelTitle = panel:CreateFontString(nil, "OVERLAY")
+  panelTitle:SetPoint("TOPLEFT", panel, "TOPLEFT", 8, -6)
+  if not panelTitle:SetFont("Fonts\\ARIALN.TTF", 11, "OUTLINE") then
+    panelTitle:SetFontObject(GameFontHighlightSmall)
+  end
+  panelTitle:SetJustifyH("LEFT")
+  -- Rows are pooled and reused. Building frames on every hover is the kind of
+  -- per-hover allocation that shows up as a hitch.
+  panelRows = {}
+  for i = 1, PANEL_ROWS + 1 do
+    local row = CreateFrame("Frame", nil, panel)
+    row:SetHeight(ROW_H)
+    row:SetPoint("TOPLEFT", panel, "TOPLEFT", 0, -22 - (i - 1) * ROW_H)
+    row:SetWidth(216)
+    row.icon = row:CreateTexture(nil, "ARTWORK")
+    row.icon:SetSize(16, 16)
+    row.icon:SetPoint("LEFT", row, "LEFT", 6, 0)
+    row.name = row:CreateFontString(nil, "OVERLAY")
+    row.name:SetPoint("LEFT", row.icon, "RIGHT", 6, 0)
+    if not row.name:SetFont("Fonts\\ARIALN.TTF", 11, "OUTLINE") then
+      row.name:SetFontObject(GameFontHighlightSmall)
+    end
+    row.name:SetJustifyH("LEFT")
+    row.count = row:CreateFontString(nil, "OVERLAY")
+    row.count:SetPoint("RIGHT", row, "RIGHT", -6, 0)
+    if not row.count:SetFont("Fonts\\ARIALN.TTF", 11, "OUTLINE") then
+      row.count:SetFontObject(GameFontHighlightSmall)
+    end
+    row.count:SetJustifyH("RIGHT")
+    row:Hide()
+    panelRows[i] = row
+  end
+  panel:Hide()
+end
+
+-- Every food in the bags: what the button will feed first, then the edible food
+-- it is not counting, so the panel is useful whether or not the curated DB
+-- knows your food.
+function FeedPet:FoodPanelList()
+  local out, seen = {}, {}
+  for id, f in pairs(self.feedableByItem or {}) do
+    if not seen[id] then
+      seen[id] = true
+      out[#out + 1] = { id = id, name = f.name, count = f.count or 0, feedable = true }
+    end
+  end
+  for _, o in ipairs(self:OtherConsumables()) do
+    if not seen[o.id] then
+      seen[o.id] = true
+      out[#out + 1] = { id = o.id, name = o.name, count = o.count or 0, feedable = false }
+    end
+  end
+  -- Feedable first (that is what the click will use), biggest stack first
+  -- within each group.
+  table.sort(out, function(a, b)
+    if a.feedable ~= b.feedable then return a.feedable end
+    return (a.count or 0) > (b.count or 0)
+  end)
+  return out
+end
+
+function FeedPet.UpdateFoodPanel()
+  FeedPet:BuildPanel()
+  if not (FeedPet.hovering and IsShiftKeyDown and IsShiftKeyDown()) then
+    panel:Hide()
+    FeedPet.panelShown = false
+    return
+  end
+  local list = FeedPet:FoodPanelList()
+  local shown = math.min(#list, PANEL_ROWS)
+  for i = 1, PANEL_ROWS + 1 do
+    local row = panelRows[i]
+    local item = list[i]
+    if item and i <= PANEL_ROWS then
+      row.icon:SetTexture(select(10, HK.GetItemInfo(item.id)) or QUESTION_ICON)
+      row.name:SetText(item.name)
+      -- Feedable food in white, food the addon will NOT feed in amber, so the
+      -- ones worth dropping on the button are obvious without a legend.
+      row.name:SetTextColor(item.feedable and 1 or 1, item.feedable and 1 or 0.7,
+                            item.feedable and 1 or 0.3, 1)
+      row.count:SetText(tostring(item.count))
+      row:Show()
+    elseif i == PANEL_ROWS + 1 and #list > PANEL_ROWS then
+      row.icon:SetTexture("Interface\\Buttons\\UI-PlusButton-Up")
+      row.name:SetText("+" .. (#list - PANEL_ROWS) .. " more")
+      row.name:SetTextColor(0.7, 0.7, 0.7, 1)
+      row.count:SetText("")
+      row:Show()
+    else
+      row:Hide()
+    end
+  end
+  panelTitle:SetText("Food in your bags — drop one on the button to pin it")
+  panelTitle:SetTextColor(0.6, 1, 0.6, 1)
+  panel:SetHeight(24 + (shown + (#list > PANEL_ROWS and 1 or 0)) * ROW_H)
+  panel:ClearAllPoints()
+  panel:SetPoint("RIGHT", button, "LEFT", -8, 0)
+  panel:Show()
+  FeedPet.panelShown = true
+end
+
+-- Test seams: what the PLAYER can see, not the internals that built it.
+function FeedPet.PanelShown() return FeedPet.panelShown == true end
+function FeedPet.PanelCount()
+  local n = 0
+  for i = 1, PANEL_ROWS do
+    if panelRows and panelRows[i] and panelRows[i]:IsShown() then n = n + 1 end
+  end
+  return n
+end
+function FeedPet.PanelName(i)
+  return panelRows and panelRows[i] and panelRows[i].name.text or nil
+end
+function FeedPet.PanelIcon(i)
+  return panelRows and panelRows[i] and panelRows[i].icon.texture or nil
+end
+function FeedPet.PanelTotal() return #(FeedPet:FoodPanelList()) end
+
 function FeedPet:OtherConsumables()
   local out, seen = {}, {}
   local feedable = self.feedableByItem or {}

@@ -3,6 +3,45 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.85] - 2026-09-10
+
+### Fixed
+- **Shift-hover did nothing, in both directions.** Reported as *"I think it does
+  nothing, when I have mouseover and press shift or shift pressed and I mouseover
+  nothing changes."* Two separate faults, one of them mine.
+- **Shift was sampled once, inside `OnEnter`.** Hovering first and pressing shift
+  afterwards can never work that way — `OnEnter` does not fire again. The panel
+  is now driven by `MODIFIER_STATE_CHANGED` as well, so it opens and closes on
+  the modifier whichever way round you press it.
+- **The list only contained food that was *not* being counted.** I read "the rest
+  of the possible consumable foods" as the ones the addon was missing; the point
+  was to see your food. For a pet whose food the curated DB already knows, the
+  list was empty and the gesture said "Nothing else in your bags looks edible" —
+  which reads exactly as *does nothing*.
+
+### Changed
+- **Shift-hover is now a panel of icons, one below the other**, not a text list
+  in the tooltip: every food in the bags, **what the button will feed first**
+  (white) and then the edible food it is not counting (amber, so the ones worth
+  dropping on the button are obvious without a legend), biggest stack first,
+  capped at 12 rows with a *+N more*. Rows are pooled and reused; building frames
+  on every hover is the kind of per-hover allocation that shows up as a hitch.
+- The tooltip keeps a one-line hint and no longer carries the list.
+
+### Tests
+- **`tests/test_feedpet.lua` 92 -> 96**, replacing the three checks that asserted
+  the old tooltip text: shift + hover opens the panel with an icon per row,
+  feedable food first and uncounted food after, **food the DB already knows is
+  listed too**; releasing shift while still hovering closes it; **pressing shift
+  while already hovering opens it too**; leaving the button closes it even with
+  shift still down.
+- Negative controls: removing the `MODIFIER_STATE_CHANGED` handler fails
+  *"releasing shift closes the panel"*; restricting the list to uncounted food
+  fails three checks, including *"food the DB already knows is listed too"* —
+  which is the assertion that would have caught the original bug.
+
+  1153 green in nine files.
+
 ## [0.9.84] - 2026-09-10
 
 ### Added
