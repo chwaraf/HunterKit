@@ -590,6 +590,129 @@ HKTest.state.shift = false
 HKTest.state.cursor = nil
 HK.db.feed.learnDrop = true
 
+-- ---------------------------------------------------------------------------
+-- 11) The feed readout: happiness per bite on the food, seconds left beside it.
+--
+-- The Feed Pet Effect buff is spell 1539, 20 seconds, 10 bites, and it lives on
+-- the PET. It is cancelled outright if the pet deals or takes damage, so this
+-- reads the buff rather than counting down a private timer -- a private timer
+-- would keep ticking over a feed that was already wasted.
+-- ---------------------------------------------------------------------------
+local FEEDBUFF = 1539
+local function Feeding(untilT)
+  HKTest.state.auras = { pet = { [1] = { spellId = FEEDBUFF,
+    name = "Feed Pet Effect", duration = 20, expirationTime = untilT } } }
+end
+
+HKTest.state.auras = nil
+PutFoods({ { id = JERKY, name = "Tough Jerky", level = 55, stacks = { 5 } } })
+FP.UpdateFeeding()
+check("not eating: no feed readout", FP.IsFeeding() == false,
+  tostring(FP.IsFeeding()))
+check("...the count string shows the count", FP.CountText() == "5",
+  tostring(FP.CountText()))
+check("...and no timer is drawn", FP.FeedTimerText() == "" or FP.FeedTimerText() == nil,
+  tostring(FP.FeedTimerText()))
+
+-- (a) the pet starts eating on-level food
+HKTest.state.now = 500
+Feeding(520)
+FP.UpdateFeeding()
+check("eating: the button reports it", FP.IsFeeding() == true,
+  tostring(FP.IsFeeding()))
+check("...happiness per bite goes on the food", FP.CountText() == "+35",
+  tostring(FP.CountText()))
+check("...and seconds left sit to the right", FP.FeedTimerText() == "20s",
+  tostring(FP.FeedTimerText()))
+check("...the countdown ticker starts", FP.Ticking() == true,
+  tostring(FP.Ticking()))
+
+HKTest.state.now = 513
+FP.UpdateFeeding()
+check("the seconds count down", FP.FeedTimerText() == "7s",
+  tostring(FP.FeedTimerText()))
+
+-- (b) lower-level food is worth less per bite, and the readout must say so
+HKTest.state.auras = nil
+PutFoods({ { id = JERKY, name = "Tough Jerky", level = 40, stacks = { 5 } } })
+HKTest.state.now = 600
+Feeding(620)
+FP.UpdateFeeding()
+check("a lower-level food reports its own per-bite value",
+  FP.CountText() == "+17", tostring(FP.CountText()))
+
+-- (c) a refresh mid-feed must not put the count back. Back to on-level food
+--     first: (b) left a level-40 stack in the bags, which is worth 17 a bite,
+--     and the assertion below is about the refresh, not about the tier.
+HKTest.state.auras = nil
+PutFoods({ { id = JERKY, name = "Tough Jerky", level = 55, stacks = { 5 } } })
+HKTest.state.now = 700
+Feeding(720)
+FP.UpdateFeeding()
+FP.Refresh()
+check("a refresh mid-feed leaves the readout alone", FP.CountText() == "+35",
+  tostring(FP.CountText()))
+
+-- (d) damage during the feed drops the buff outright
+HKTest.state.now = 730
+HKTest.state.auras = nil
+FP.UpdateFeeding()
+check("a feed cancelled by damage clears the readout",
+  FP.IsFeeding() == false, tostring(FP.IsFeeding()))
+check("...the count comes back", FP.CountText() == "5", tostring(FP.CountText()))
+check("...the timer is cleared", FP.FeedTimerText() == "",
+  tostring(FP.FeedTimerText()))
+check("...and the ticker stops", FP.Ticking() == false, tostring(FP.Ticking()))
+
+-- (e2) SetCount is guarded, not merely ordered. UpdateState happens to call
+--      UpdateFeeding last, so the readout survives today either way -- but a
+--      count update from anywhere else must not clobber it, and the new count
+--      must still be waiting when the feed ends.
+HKTest.state.now = 1000
+Feeding(1020)
+FP.UpdateFeeding()
+FP.SetCount(9)
+check("a count update mid-feed does not clobber the readout",
+  FP.CountText() == "+35", tostring(FP.CountText()))
+check("...but the new count is remembered", FP.ShownCount() == 9,
+  tostring(FP.ShownCount()))
+HKTest.state.auras = nil
+FP.UpdateFeeding()
+check("...and it appears once the feed is over", FP.CountText() == "9",
+  tostring(FP.CountText()))
+
+-- (e3) feeding again mid-feed does not stack, so the tooltip should say so
+HKTest.state.now = 1100
+Feeding(1120)
+FP.UpdateFeeding()
+HKTest.state.shift = false
+local tip11 = TooltipText()
+check("the tooltip warns against feeding again mid-feed",
+  tip11:find("wastes the food", 1, true) ~= nil, tip11)
+HKTest.state.auras = nil
+FP.UpdateFeeding()
+tip11 = TooltipText()
+check("...and only while the pet is actually eating",
+  tip11:find("wastes the food", 1, true) == nil, tip11)
+HKTest.state.now = 1150
+
+-- (e) some other buff on the pet is not a feed
+HKTest.state.now = 800
+HKTest.state.auras = { pet = { [1] = { spellId = 136, name = "Mend Pet",
+                                       expirationTime = 999 } } }
+FP.UpdateFeeding()
+check("another pet buff is not mistaken for a feed",
+  FP.IsFeeding() == false, tostring(FP.IsFeeding()))
+
+-- (f) the aura event picks it up without anyone asking
+HKTest.state.now = 900
+Feeding(920)
+HKTest.Fire("UNIT_AURA", "pet")
+check("UNIT_AURA on the pet picks the feed up", FP.IsFeeding() == true,
+  tostring(FP.IsFeeding()))
+HKTest.state.auras = nil
+HKTest.state.now = 950
+
 HKTest.report("test_feedpet.lua", passes, #failures)
 
 say(string.format("\n%d passed, %d failed", passes, #failures))

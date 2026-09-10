@@ -144,6 +144,7 @@ HKTest.KNOWN_EVENTS = {
   SPELLS_CHANGED = true,
   START_AUTOREPEAT_SPELL = true,
   STOP_AUTOREPEAT_SPELL = true,
+  UNIT_AURA = true,
   UNIT_HAPPINESS = true,
   UNIT_HEALTH = true,
   UNIT_INVENTORY_CHANGED = true,
@@ -457,6 +458,19 @@ end
 -- `cursor.value` may be an itemID (modern clients) or a full item link
 -- (classic), because GetCursorInfo answers differently between them and the
 -- addon has to read both.
+-- Auras, shaped like the modern client's AuraData struct (what Classic Era
+-- 1.15.x answers with). FeedPet reads this for the Feed Pet Effect buff, spell
+-- 1539, which lives on the PET.
+C_UnitAuras = {
+  GetAuraDataByIndex = function(unit, index)
+    local list = (HKTest.state.auras or {})[unit]
+    local a = list and list[index]
+    if not a then return nil end
+    return { name = a.name, spellId = a.spellId, duration = a.duration,
+             expirationTime = a.expirationTime }
+  end,
+}
+
 function IsShiftKeyDown() return HKTest.state.shift == true end
 function GetCursorInfo()
   local c = HKTest.state.cursor

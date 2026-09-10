@@ -3,6 +3,55 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.84] - 2026-09-10
+
+### Added
+- **The feed button reads out while the pet is eating.** The count swaps to the
+  **happiness each bite is worth** — `+35`, `+17` or `+8` — and the **seconds
+  left** appear just to the right of the button. Both are things you otherwise
+  have to open the combat log for.
+- Sourced from the **Feed Pet Effect buff, spell 1539**, 20 seconds, 10 bites,
+  which lives on the *pet*. That matters: the buff is cancelled outright if the
+  pet deals or takes any damage, so reading the buff means the countdown stops
+  the moment the feed is actually wasted. A private 20-second timer — the
+  obvious implementation — would have kept ticking over a feed that was already
+  gone.
+- Per-bite value comes from the **tier `TierFor` already computes**: within 15
+  levels of the pet 35, at 16–25 levels 17, beyond that 8. It is the documented
+  value for the food's tier, not a measurement — there is no API for what a bite
+  just granted, and the code says so.
+- The countdown ticker is **bound only while a feed is running**. A permanent
+  per-frame loop for a 20-second buff that happens now and then is waste.
+- `SetCount` now **defers to the feed readout** rather than relying on call
+  order. `UpdateState` happens to call `UpdateFeeding` last, so it works today
+  either way, but a count update from anywhere else would have clobbered the
+  readout mid-feed — and the new count is still remembered for when the feed
+  ends.
+
+### Notes
+- The seconds sit **outside** the button rather than in the count's corner: two
+  numbers in one corner is two numbers you cannot read at a glance.
+- Aura reading prefers the modern `C_UnitAuras` struct and falls back to
+  `UnitAura`, the same way `HK.GetItemInfo` handles the two container APIs.
+
+### Tests
+- **`tests/test_feedpet.lua` 71 -> 92**: no readout when not eating; `+35` and
+  `20s` when the pet starts on on-level food; the seconds count down; a
+  lower-level food reports `+17`; a refresh mid-feed leaves the readout alone;
+  damage dropping the buff restores the count, clears the timer and stops the
+  ticker; another pet buff is not mistaken for a feed; `UNIT_AURA` picks it up
+  unprompted; and a `SetCount` mid-feed neither clobbers the readout nor loses
+  the count; and the tooltip warns against feeding again while the buff is
+  running, because a second feed does not stack -- it replaces one that is
+  already paying out.
+- Negative controls: a wrong buff id fails the feeding checks outright; a
+  per-bite value that ignores the tier fails at `+35` where `+17` was due; and
+  removing the `SetCount` guard fails at `9` where `+35` was due — the last one
+  needed a test written against the guard directly, because the call order in
+  `UpdateState` was masking it.
+
+  1149 green in nine files.
+
 ## [0.9.83] - 2026-09-09
 
 ### Added

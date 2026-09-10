@@ -11,7 +11,7 @@ local FeedPet = {}
 HK.FeedPet = FeedPet
 
 local db
-local button, iconTex, countText, border
+local button, iconTex, countText, border, timerText, feeder
 local pending = false           -- attribute refresh deferred (combat)
 local positionPending = false   -- a move was blocked by combat; replay on regen
 local bagsDirty = true          -- food rescan needed (CPU: scan only on real changes)
@@ -23,6 +23,18 @@ local diets = {}
 local dietsReady = false
 
 local HAPPINESS_COLOR = { [3] = {0.2,1,0.2}, [2] = {1,0.8,0}, [1] = {1,0.2,0.2} }
+
+-- The Feed Pet Effect buff: spell 1539, 20 seconds, 10 bites, and it sits on
+-- the PET, not on the player. It is also cancelled outright if the pet deals or
+-- takes any damage, which is why this reads the buff rather than counting down
+-- a timer of its own -- a timer would keep ticking over a feed that was already
+-- wasted.
+local FEED_BUFF_ID  = 1539
+local FEED_DURATION = 20
+local FEED_TICKS    = 10
+-- Happiness per bite, by the tier TierFor already computes. The documented
+-- split: within 15 levels of the pet 35, at 16-25 levels 17, beyond that 8.
+local HAPPINESS_PER_TIER = { [3] = 35, [2] = 17, [1] = 8 }
 local QUESTION_ICON = 134400
 -- Feed Pet's real icon file (spell 6991) is ability_hunter_beasttraining --
 -- NOT "Ability_Hunter_FeedPet", which does not exist: that path rendered
@@ -106,6 +118,10 @@ function FeedPet.Init()
   scanTip = CreateFrame("GameTooltip", "HunterKitScanTip", nil, "GameTooltipTemplate")
   scanTip:SetOwner(UIParent, "ANCHOR_NONE")
 
+  -- Owns nothing and draws nothing; it exists only to tick the feed countdown,
+  -- and only while a feed is running (see BindFeeder).
+  feeder = CreateFrame("Frame", "HunterKitFeedTicker", UIParent)
+
   BuildButton()
 
   HK.On("UNIT_PET", function(u)
@@ -118,6 +134,9 @@ function FeedPet.Init()
     RefreshEverything()
   end)
   HK.On("UNIT_HAPPINESS", function(u) if u == "pet" then RefreshEverything() end end)
+  -- The Feed Pet Effect buff appearing, ticking and being cancelled (damage
+  -- during the feed drops it outright) all arrive here.
+  HK.On("UNIT_AURA", function(u) if u == "pet" then FeedPet.UpdateFeeding() end end)
   HK.On("UNIT_HEALTH", function(u) if u == "pet" then RefreshEverything() end end)
   HK.On("PLAYER_ENTERING_WORLD", function() bagsDirty = true; RefreshEverything() end)
   HK.On("PLAYER_REGEN_DISABLED", RefreshEverything)   -- kill the highlight on combat start
@@ -191,6 +210,17 @@ function BuildButton()
   end
   countText:SetJustifyH("RIGHT")
 
+  -- Seconds left on the feed, to the RIGHT of the button. Outside the frame on
+  -- purpose: the count already owns the bottom-right corner, and two numbers in
+  -- one corner is two numbers you cannot read at a glance.
+  timerText = button:CreateFontString(nil, "OVERLAY")
+  timerText:SetPoint("LEFT", button, "RIGHT", 3, 0)
+  if not timerText:SetFont("Fonts\\ARIALN.TTF", 12, "OUTLINE") then
+    timerText:SetFontObject(GameFontHighlightSmall)
+  end
+  timerText:SetJustifyH("LEFT")
+  timerText:Hide()
+
   -- hover tooltip: shows what the click will feed so the player knows the action
   button:SetScript("OnEnter", function()
     local f = FeedPet.lastFood
@@ -243,6 +273,11 @@ function BuildButton()
     -- Shift-hover: what the button is NOT counting. There is no API for a
     -- food's diet type, so the curated DB has holes -- cooked food especially --
     -- and the honest response is to show the gap rather than guess at it.
+    -- Feeding again while the buff is running does not stack -- it replaces a
+    -- feed that is already paying out, so the second food is simply lost.
+    if FeedPet.IsFeeding() then
+      GameTooltip:AddLine("Already eating — feeding again wastes the food.", 1, 0.7, 0.3)
+    end
     if IsShiftKeyDown and IsShiftKeyDown() then
       local others = FeedPet:OtherConsumables()
       GameTooltip:AddLine(" ")
@@ -858,6 +893,10 @@ end
 function FeedPet.SetCount(n)
   if not countText then return end
   FeedPet.shownCount = n
+  -- While the pet is eating this string is showing the happiness per bite, not
+  -- the count. Remember the count and leave the string alone; UpdateFeeding
+  -- puts it back when the feed ends.
+  if FeedPet.feedSecondsLeft then return end
   countText:SetText(tostring(n))
   if n > 0 then
     countText:SetTextColor(1, 0.82, 0, 1)
@@ -976,6 +1015,88 @@ function FeedPet:OtherConsumables()
   return out
 end
 
+-- ---------------------------------------------------------------------------
+-- While the pet is eating
+-- ---------------------------------------------------------------------------
+
+-- Seconds left on the pet's Feed Pet Effect, or nil when it is not eating.
+-- Prefers the modern C_UnitAuras struct and falls back to UnitAura, the same way
+-- HK.GetItemInfo handles the two container APIs.
+local function FeedBuffRemaining()
+  local now = tonumber(GetTime and GetTime() or 0) or 0
+  if C_UnitAuras and C_UnitAuras.GetAuraDataByIndex then
+    for i = 1, 40 do
+      local ok, a = pcall(C_UnitAuras.GetAuraDataByIndex, "pet", i, "HELPFUL")
+      if not ok or not a then break end
+      if a.spellId == FEED_BUFF_ID then
+        local left = (a.expirationTime or 0) - now
+        return (left > 0) and left or nil
+      end
+    end
+    return nil
+  end
+  if UnitAura then
+    for i = 1, 40 do
+      local ok, name, _, _, _, _, exp, _, _, spellID =
+        pcall(UnitAura, "pet", i, "HELPFUL")
+      if not ok or not name then break end
+      if spellID == FEED_BUFF_ID then
+        local left = (exp or 0) - now
+        return (left > 0) and left or nil
+      end
+    end
+  end
+  return nil
+end
+
+-- The countdown needs a tick, and a permanent per-frame loop for a buff that
+-- lasts 20 seconds now and then is waste -- so the ticker is bound only while
+-- the pet is actually eating.
+local feederBound = false
+local function BindFeeder(on)
+  if not feeder then return end
+  if on == feederBound then return end
+  feederBound = on
+  feeder:SetScript("OnUpdate", on and function() FeedPet.UpdateFeeding() end or nil)
+end
+
+function FeedPet.UpdateFeeding()
+  if not countText then return end
+  local left = FeedBuffRemaining()
+  FeedPet.feedSecondsLeft = left
+  if left then
+    local tier = FeedPet.lastFood and FeedPet.lastFood.tier
+    -- The per-bite figure is the documented value for the food's tier, not a
+    -- measurement: there is no API for what a bite just granted.
+    local per = HAPPINESS_PER_TIER[tier] or 35
+    FeedPet.feedPerTick = per
+    countText:SetText("+" .. per)
+    countText:SetTextColor(0.4, 1, 0.4, 1)
+    if timerText then
+      timerText:SetText(string.format("%ds", math.ceil(left)))
+      timerText:Show()
+    end
+    BindFeeder(true)
+  else
+    FeedPet.feedPerTick = nil
+    if timerText then timerText:SetText(""); timerText:Hide() end
+    BindFeeder(false)
+    -- Hand the string back to the count.
+    FeedPet.SetCount(FeedPet.shownCount or 0)
+  end
+end
+
+-- Test/diagnostic seams: assert on what is on screen.
+function FeedPet.IsFeeding() return FeedPet.feedSecondsLeft ~= nil end
+function FeedPet.FeedSecondsLeft() return FeedPet.feedSecondsLeft end
+function FeedPet.FeedPerTick() return FeedPet.feedPerTick end
+function FeedPet.FeedTimerText() return timerText and timerText.text or nil end
+-- The RAW count string, not the number. While the pet eats it holds "+35", so
+-- asserting on ShownCount would prove nothing about what is on screen.
+function FeedPet.CountText() return countText and countText.text or nil end
+function FeedPet.Ticking() return feederBound end
+
+
 
 -- ---------------------------------------------------------------------------
 -- Macro + visuals
@@ -1082,6 +1203,9 @@ UpdateState = function()
       iconTex:SetVertexColor(0.6, 0.6, 0.6, 1)
     end
   end
+  -- Last, so it wins the count string: while the pet is eating the button shows
+  -- the happiness per bite, and a refresh mid-feed must not put the count back.
+  FeedPet.UpdateFeeding()
 end
 
 -- Update feed button visibility. Secure frames can't be shown/hidden from
