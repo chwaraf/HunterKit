@@ -738,9 +738,41 @@ WorldFrame = newFrame("Frame", "WorldFrame", UIParent)
 function WorldFrame:GetChildren()
   local out = {}
   for _, f in ipairs(HKTest.frames) do
-    if f.name and f.name:match("^NamePlate%d+$") then out[#out + 1] = f end
+    if f.name and f.name:match("^NamePlate%d+$") then
+      out[#out + 1] = f
+    elseif f.forbidden then
+      -- The real client keeps ForbiddenNamePlate1..N, ActionStatus and a few
+      -- unnamed Frames among WorldFrame's children right beside the plates.
+      -- Leaving them out made this a cleaner world than the game, which is
+      -- exactly how a scan that dies in game stayed green here.
+      out[#out + 1] = f
+    end
   end
-  return table.unpack and table.unpack(out) or unpack(out)
+  -- NOT `table.unpack and table.unpack(out) or unpack(out)`: an and/or
+  -- expression adjusts its middle operand to exactly ONE value, so that form
+  -- silently returned the first child and nothing else. Which is how a scan
+  -- that walks every child of WorldFrame looked fine here while dying on the
+  -- 30th child in game.
+  if table.unpack then return table.unpack(out) end
+  return unpack(out)
+end
+
+-- A forbidden (restricted) frame. It LOOKS like a frame and it HAS the methods,
+-- but calling almost anything on it raises "calling 'X' on bad self". Testing
+-- for the method is therefore not a guard -- the call itself has to be.
+-- Pass { noProbe = true } for a client with no IsForbidden, so callers that
+-- rely on that probe have to survive without it.
+function HKTest.MakeForbidden(name, opts)
+  opts = opts or {}
+  local f = newFrame("Frame", name, WorldFrame)
+  f.forbidden = true
+  f.GetName = function()
+    error("calling 'GetName' on bad self (Usage: local name = self:GetName())", 0)
+  end
+  if not opts.noProbe then
+    f.IsForbidden = function() return true end
+  end
+  return f
 end
 function InCombatLockdown() return HKTest.state.combatLockdown == true end
 function GetCVar(n)

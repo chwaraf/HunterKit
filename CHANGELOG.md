@@ -3,6 +3,36 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.87] - 2026-09-10
+
+### Fixed
+- **`36x HunterKit/MendMark.lua:208: calling 'GetName' on bad self`**, in a party.
+- **`WorldFrame`'s children are not all name plates.** The client keeps
+  `ForbiddenNamePlate1..8` in there too, alongside `ActionStatus` and a few unnamed
+  frames. Restricted frames like those *have* a `GetName` method — they just raise
+  `calling 'GetName' on bad self` the moment it is called. The fallback
+  `NamePlateN` scan tested for the method and then called it, which is not a guard.
+- **It only fires when the pet has no plate**, because the scan returns as soon as
+  it finds one and never reaches the forbidden end of the list. Pet nameplates are
+  usually off, so that is the common case — and the scan runs from the 0.1s ticker,
+  which is what turned one bad call into a 36-count error report.
+- `SafeName` now probes `IsForbidden()` first (the one call that *is* safe on a
+  restricted frame) and `pcall`s `GetName` regardless, for a client with no such
+  probe. Every other `GetName` in the addon was already `pcall`'d; this one had
+  slipped.
+
+### Tests
+- **`tests/test_mendmark.lua` 119 -> 122**: a forbidden plate in `WorldFrame` does
+  not break the scan, the marker still falls back to the pet frame, and a pet plate
+  is still found *past* the forbidden frames. `HKTest.MakeForbidden()` models a
+  restricted frame faithfully, including a variant with no `IsForbidden`.
+- **Fixed a stub bug that had been hiding this class of fault.** `WorldFrame:GetChildren()`
+  ended in `table.unpack and table.unpack(out) or unpack(out)`; an `and/or` expression
+  adjusts its middle operand to exactly one value, so it returned the **first child
+  and nothing else**. The existing legacy-plate test passed only because there was a
+  single child in the world. The stub now returns all of them, the way the client does.
+  1166 green in nine files.
+
 ## [0.9.86] - 2026-09-10
 
 ### Fixed

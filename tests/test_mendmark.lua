@@ -402,6 +402,37 @@ HKTest.TickMarker(1)
 check("stops using a plate that is no longer a NamePlateN",
   HK.MendMark.AnchorMode() == "petframe", HK.MendMark.AnchorMode())
 
+-- The client's WorldFrame does not only hold plates. Alongside NamePlate1..N it
+-- keeps ForbiddenNamePlate1..8 -- restricted frames that HAVE a GetName method
+-- but raise "calling 'GetName' on bad self" the moment it is called. Testing
+-- for the method is not a guard; the call itself has to be.
+--
+-- This only bites when the pet has NO plate, because the scan returns as soon
+-- as it finds one and never reaches the forbidden end of the list. That is the
+-- common case -- pet nameplates are usually off -- and it runs ten times a
+-- second, which is why the report came back as "36x".
+HKTest.MakeForbidden("ForbiddenNamePlate1")
+-- ...and a client with no IsForbidden, so the guard cannot depend on it.
+HKTest.MakeForbidden("ForbiddenNamePlate2", { noProbe = true })
+HKTest.state.plate = nil               -- no C_NamePlate answer either
+local okScan = pcall(HKTest.TickMarker, 1)
+check("a forbidden plate among WorldFrame's children does not break the scan",
+  okScan, "the legacy NamePlateN scan threw on a ForbiddenNamePlate")
+check("...and the marker still falls back to the pet frame",
+  HK.MendMark.AnchorMode() == "petframe", HK.MendMark.AnchorMode())
+
+-- And the scan must still WORK with the forbidden frames in the list, not
+-- merely survive them: a pet plate placed after them has to be found.
+local latePlate = CreateFrame("Frame", "NamePlate9", WorldFrame)
+latePlate:SetSize(100, 40)
+local lateUnit = CreateFrame("Frame", nil, nil)
+lateUnit.unit = "pet"
+function latePlate:GetChildren() return lateUnit end
+HKTest.TickMarker(1)
+check("a pet plate is still found with forbidden frames in the way",
+  HK.MendMark.AnchorMode() == "plate", HK.MendMark.AnchorMode())
+latePlate.name = "RetiredPlate9"
+
 -- a direct screen-position API needs no plate at all
 _G["GetUnitNamePosition"] = function(u)
   if u ~= "pet" then return nil end

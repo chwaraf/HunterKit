@@ -199,22 +199,42 @@ end
 
 -- 4) the pre-C_NamePlate layout: NamePlate1..N children of WorldFrame, with the
 --    unit token on the child unit frame. TBC/Wrath-lineage clients use this.
+--
+-- WorldFrame's children are NOT all plates. The client keeps
+-- ForbiddenNamePlate1..N in there as well -- restricted frames that HAVE a
+-- GetName method but raise "calling 'GetName' on bad self" the moment it is
+-- called. `f.GetName` is therefore not a guard; the call itself has to be
+-- defended. This only bites when the pet has no plate, because the loop returns
+-- as soon as it finds one and never reaches the forbidden end of the list --
+-- and that is the common case, run ten times a second, which is what turned one
+-- bad call into a "36x" error report.
+local function SafeName(f)
+  if type(f) ~= "table" or not f.GetName then return nil end
+  -- IsForbidden is the one probe that IS safe on a forbidden frame, so skip
+  -- those outright. pcall'd anyway: a client without the probe must not die.
+  if f.IsForbidden then
+    local okb, bad = pcall(f.IsForbidden, f)
+    if okb and bad then return nil end
+  end
+  local okn, nm = pcall(f.GetName, f)
+  if okn and type(nm) == "string" then return nm end
+  return nil
+end
+
 local function PlateFromLegacyScan()
   if type(WorldFrame) ~= "table" or not WorldFrame.GetChildren then return nil end
   local ok, kids = pcall(function() return { WorldFrame:GetChildren() } end)
   if not ok or type(kids) ~= "table" then return nil end
   for _, f in ipairs(kids) do
-    if type(f) == "table" and f.GetName then
-      local nm = f:GetName()
-      if type(nm) == "string" and nm:match("^NamePlate%d+$") then
-        local unit = f.unit
-        if unit == nil and type(f.UnitFrame) == "table" then unit = f.UnitFrame.unit end
-        if unit == nil then
-          local okc, child = pcall(f.GetChildren, f)
-          if okc and type(child) == "table" then unit = child.unit end
-        end
-        if unit == "pet" and PlateUsable(f) then return f end
+    local nm = SafeName(f)
+    if type(nm) == "string" and nm:match("^NamePlate%d+$") then
+      local unit = f.unit
+      if unit == nil and type(f.UnitFrame) == "table" then unit = f.UnitFrame.unit end
+      if unit == nil then
+        local okc, child = pcall(f.GetChildren, f)
+        if okc and type(child) == "table" then unit = child.unit end
       end
+      if unit == "pet" and PlateUsable(f) then return f end
     end
   end
   return nil
