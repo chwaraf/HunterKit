@@ -35,7 +35,15 @@ function Frame:Record(op, ...)
   c[#c + 1] = { op = op, args = { ... } }
 end
 
-function Frame:SetPoint(a, b, c, d, e) self.points[#self.points + 1] = { a, b, c, d, e } end
+function Frame:SetPoint(a, b, c, d, e)
+  -- The live client refuses to anchor anything to a restricted frame, and an
+  -- instance name plate is one. MendMark depends on that throwing, so the stub
+  -- has to throw too or the fallback path is never exercised.
+  if type(b) == "table" and b.forbidden then
+    error("Action[SetPoint] failed because[Cannot anchor to restricted frame]", 0)
+  end
+  self.points[#self.points + 1] = { a, b, c, d, e }
+end
 function Frame:ClearAllPoints() self.points = {} end
 -- `return t and unpack(t)` would TRUNCATE to one value -- an `and` expression
 -- adjusts its right operand to a single result, so GetPoint handed back only

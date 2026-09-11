@@ -3,6 +3,39 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.88] - 2026-09-10
+
+### Fixed
+- **A pet plate that the client refuses to let you anchor to cost you the
+  world-position fallback too.** Reported as *"sometimes addon does not anchor
+  mend pet icon to pet nameplate, after relog when previously it was fine, not
+  sure if its because of being inside dungeon or not."*
+- Inside an instance the pet's friendly name plate is a **restricted** frame.
+  `C_NamePlate.GetNamePlateForUnit("pet", true)` hands it over -- that `true`
+  asks for exactly those -- so the plate is *found*, and then `SetPoint` to it
+  throws. Found is not the same as usable.
+- The fallback went straight from that failure to the pet frame, skipping the
+  world-position path entirely: `ResolveAnchor` only reaches for
+  `GetUnitNamePosition`/`GetUnitScreenPosition` when **no** plate was found at
+  all. So on the one kind of client that could still put the mark over the pet's
+  head, an unusable plate cost you that too. It is now tried before the pet frame.
+
+### Added
+- **`/htk mend` now says why the plate was not used.** The fallback was silent,
+  which is what made this undiagnosable from the player's side -- the mark just
+  quietly moved onto the pet frame. When a plate is found but the anchor is
+  refused, the report prints `plate not used: ...`.
+
+### Tests
+- **`tests/test_mendmark.lua` 122 -> 127**: a restricted plate is found but not
+  anchored to, the reason is recorded and reaches the report, a world-position
+  API keeps the mark over the pet instead of dropping it on the UI, and an
+  ordinary tick clears the note.
+- **The stub now refuses to anchor to a restricted frame**, the way the live
+  client does. Without that the whole fallback path was untestable -- `SetPoint`
+  accepted anything.
+  1171 green in nine files.
+
 ## [0.9.87] - 2026-09-10
 
 ### Fixed

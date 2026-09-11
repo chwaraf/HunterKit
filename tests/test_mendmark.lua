@@ -461,6 +461,45 @@ check("falls back when the API stops answering",
 check("stale screen-source is cleared", HK.MendMark.AnchorSource() == nil,
   tostring(HK.MendMark.AnchorSource()))
 
+-- ---------------------------------------------------------------------------
+-- 5e) An instance plate: found, but unusable
+--
+-- GetNamePlateForUnit("pet", true) -- that `true` -- asks the client for the
+-- friendly plates that are otherwise "forbidden", which is what a pet's plate
+-- is inside an instance. So the plate IS found, and then SetPoint to it throws.
+-- Found is not the same as usable, and the fallback used to be silent about it:
+-- the mark just quietly moved onto the pet frame with nothing to say why.
+-- ---------------------------------------------------------------------------
+local restricted = HKTest.MakeForbidden("InstancePetPlate")
+restricted:SetSize(100, 40)
+HKTest.state.plate = restricted
+HKTest.TickMarker(1)
+check("a restricted instance plate is found but cannot be anchored to",
+  HK.MendMark.AnchorMode() ~= "plate", HK.MendMark.AnchorMode())
+check("...and the marker says WHY instead of failing silently",
+  HK.MendMark.AnchorNote() ~= nil, tostring(HK.MendMark.AnchorNote()))
+check("the report carries the reason",
+  (HK.MendMark.Capabilities() or ""):find("plate not used:") ~= nil)
+
+-- The regression this is really about: a plate that cannot be anchored to used
+-- to cost you the world-position fallback as well, because ResolveAnchor only
+-- reaches for that when NO plate was found. So the one client that could still
+-- put the mark over the pet's head was skipped, straight to the pet frame.
+_G["GetUnitNamePosition"] = function(u)
+  if u ~= "pet" then return nil end
+  return 900, 400
+end
+HKTest.TickMarker(1)
+check("with a world-position API the mark still sits over the pet, not on the UI",
+  HK.MendMark.AnchorMode() == "screen", HK.MendMark.AnchorMode())
+_G["GetUnitNamePosition"] = nil
+
+-- And a healthy tick leaves no stale complaint behind.
+HKTest.state.plate = nil
+HKTest.TickMarker(1)
+check("an ordinary tick clears the note", HK.MendMark.AnchorNote() == nil,
+  tostring(HK.MendMark.AnchorNote()))
+
 -- capability report names the paths it tried
 local caps = HK.MendMark.Capabilities()
 check("capability report covers screen-pos APIs", caps:find("GetUnitNamePosition=absent") ~= nil, caps)

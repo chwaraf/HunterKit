@@ -39,6 +39,10 @@ local phase = 0
 local urgentNow = false
 local lastAnchorMode = nil
 local lastAnchorSource = nil
+-- Set when a plate WAS found but the client refused to let us hang off it. The
+-- fallback used to be completely silent, so "the mark stopped sitting over my
+-- pet's head" was undiagnosable from the player's side.
+local lastAnchorNote = nil
 local eventPlate = nil
 
 -- Mend Pet (136) resolves to the localized name of the rank you actually know.
@@ -486,22 +490,49 @@ local function AnchorUnderAvatar(pf, ox, oy)
   frame:SetPoint("TOP", pf, "BOTTOMLEFT", cx + ox, -6 + oy)
 end
 
+-- Place the marker from raw screen coordinates, the way the world-position
+-- APIs report them (pixels from the TOP-left, unscaled).
+local function AnchorAtScreen(x, y, oy)
+  local scale = (UIParent.GetEffectiveScale and UIParent:GetEffectiveScale()) or 1
+  local sh = (GetScreenHeight and GetScreenHeight()) or (UIParent and UIParent:GetHeight()) or 0
+  frame:ClearAllPoints()
+  frame:SetPoint("BOTTOM", UIParent, "BOTTOMLEFT", x / scale, sh - (y / scale) + oy)
+end
+
 -- Re-resolved every tick: the pet moves, and plate frames come and go. Returns
 -- the mode actually applied.
 local function ApplyAnchor()
   local ox, oy = db.offsetX or 0, db.offsetY or 0
   local mode, a, b, c = ResolveAnchor()
   lastAnchorSource = nil     -- only set by the screen-position path
+  lastAnchorNote = nil
 
   if mode == "plate" then
-    -- Anchoring to a forbidden (instance) plate can throw; fall through to the
-    -- pet frame instead of erroring out.
+    -- Anchoring to a forbidden (instance) plate can throw; fall through instead
+    -- of erroring out.
     local ok = pcall(function()
       frame:ClearAllPoints()
       frame:SetPoint("BOTTOM", a, "TOP", ox, oy)
     end)
     if ok then
       lastAnchorMode = "plate"
+      return lastAnchorMode
+    end
+    -- The client refused. In an instance the pet's friendly plate is a
+    -- RESTRICTED frame: GetNamePlateForUnit("pet", true) hands it over -- the
+    -- `true` asks for exactly those -- and then SetPoint to it throws. So the
+    -- plate being FOUND is not the same as it being USABLE, and this is the
+    -- "sometimes it stops sitting over my pet's head" case.
+    lastAnchorNote = "plate found but the client refused the anchor (restricted/instance plate)"
+    -- Try the world-position path BEFORE dropping to the pet frame. It was
+    -- being skipped entirely: ResolveAnchor only reaches for it when no plate
+    -- was found at all, so a plate that cannot be anchored to cost you the one
+    -- fallback that still keeps the mark over the pet's head.
+    local wx, wy, src = WorldScreenPos()
+    if wx then
+      AnchorAtScreen(wx, wy, oy)
+      lastAnchorMode = "screen"
+      lastAnchorSource = src
       return lastAnchorMode
     end
     local pf = _G["PetFrame"]
@@ -516,10 +547,7 @@ local function ApplyAnchor()
   end
 
   if mode == "screen" then
-    local scale = (UIParent.GetEffectiveScale and UIParent:GetEffectiveScale()) or 1
-    local sh = (GetScreenHeight and GetScreenHeight()) or (UIParent and UIParent:GetHeight()) or 0
-    frame:ClearAllPoints()
-    frame:SetPoint("BOTTOM", UIParent, "BOTTOMLEFT", a / scale, sh - (b / scale) + oy)
+    AnchorAtScreen(a, b, oy)
     lastAnchorMode = "screen"
     lastAnchorSource = c
     return lastAnchorMode
@@ -738,6 +766,11 @@ function MendMark.AnchorSource()
   return lastAnchorSource
 end
 
+-- Why the plate was not used, when one was found. nil when nothing went wrong.
+function MendMark.AnchorNote()
+  return lastAnchorNote
+end
+
 -- Diagnostics for /htk selfcheck and /htk mend: the raw values behind the icon.
 function MendMark.Diagnostic()
   local hp = PetHPPercent()
@@ -807,6 +840,9 @@ function MendMark.Capabilities()
   end
   out[#out + 1] = "  plates visible:  " .. tostring(n) .. "   anchor now: " .. tostring(lastAnchorMode)
     .. (lastAnchorSource and (" (" .. lastAnchorSource .. ")") or "")
+  if lastAnchorNote then
+    out[#out + 1] = "  plate not used:  " .. lastAnchorNote
+  end
 
   local up = "n/a"
   if UnitPosition then
