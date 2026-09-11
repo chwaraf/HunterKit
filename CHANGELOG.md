@@ -32,6 +32,10 @@ All notable changes to HunterKit are documented here. Format follows
   and nothing else**. The existing legacy-plate test passed only because there was a
   single child in the world. The stub now returns all of them, the way the client does.
   1166 green in nine files.
+- **`Frame:IsForbidden()` was hardcoded to `false` in the stub**, so a restricted
+  frame claimed not to be restricted. It now answers from the frame's own state,
+  which is what makes the `IsForbidden` half of `SafeName` mean anything at all;
+  the `noProbe` variant models a client with no such method.
 
 ## [0.9.86] - 2026-09-10
 

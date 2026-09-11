@@ -178,7 +178,10 @@ function Frame:RegisterForClicks(...) self.clicks = { ... } end
 function Frame:UnregisterAllClicks() self.clicks = {} end
 function Frame:GetName() return self.name end
 function Frame:GetParent() return self.parent end
-function Frame:IsForbidden() return false end
+-- Every frame on the live client answers this, and a forbidden (restricted)
+-- frame says true. It is the one method that IS safe to call on one, which is
+-- why MendMark's plate scan probes it before touching anything else.
+function Frame:IsForbidden() return self.forbidden == true end
 function Frame:SetHitRectInsets() end
 function Frame:SetBackdrop() end
 function Frame:SetBackdropColor() end
@@ -769,8 +772,10 @@ function HKTest.MakeForbidden(name, opts)
   f.GetName = function()
     error("calling 'GetName' on bad self (Usage: local name = self:GetName())", 0)
   end
-  if not opts.noProbe then
-    f.IsForbidden = function() return true end
+  if opts.noProbe then
+    -- Shadow the metatable method with false, modelling a client that has no
+    -- such probe at all -- callers must not depend on it.
+    f.IsForbidden = false
   end
   return f
 end
