@@ -1023,6 +1023,86 @@ function BuildWindow()
     "Hunter macros worth having, each with a short explanation. Click a macro to select it, then Ctrl+C to copy it into your macro window.")
   y = y - 30
 
+  -- Display priority. One master layer for every HunterKit frame, a fine level,
+  -- and a per-widget override for the ones that need to differ from the rest.
+  AddSection(content, y, "Display priority")
+  y = y - HDR
+
+  -- The per-widget list gets "Follow master" instead of the global's "Current":
+  -- the two mean different things. There, Current = the layer it was built with;
+  -- here, the widget defers to whatever the master row says.
+  local WIDGET_PRESETS = { { key = "inherit", label = "Follow master" } }
+  for _, p in ipairs(HK.PRIORITY_PRESETS) do
+    if p.key ~= "inherit" then WIDGET_PRESETS[#WIDGET_PRESETS + 1] = p end
+  end
+
+  local WIDGET_LABEL = {
+    ammo       = "Ammo warning",
+    feed       = "Feed button",
+    mend       = "Mend marker",
+    pulse      = "Passive pet alert",
+    range      = "Sniper mark",
+    shottimer  = "Weapon timer bars",
+    threat     = "Pet aggro alert",
+    threatpct  = "Threat readout",
+    twomobicon = "Two-mob press icon",
+  }
+
+  local function LabelOf(options, key)
+    for _, o in ipairs(options) do if o.key == key then return o.label end end
+    return options[1].label
+  end
+
+  -- Click-to-cycle, the same control the sniper-mark shapes already use: the
+  -- window is hand-built, there is no dropdown template to lean on, and the
+  -- current value stays on screen instead of hiding behind a click.
+  local function CycleRow(labelText, options, get, set, tip)
+    local row = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
+    row:SetSize(150, 22)
+    row:SetPoint("TOPLEFT", content, "TOPLEFT", 0, y - 4)
+    row:SetText(LabelOf(options, get()))
+    row:SetScript("OnClick", function()
+      local cur, idx = get(), 1
+      for i, o in ipairs(options) do if o.key == cur then idx = i end end
+      local nxt = options[(idx % #options) + 1]
+      set(nxt.key)
+      row:SetText(nxt.label)
+    end)
+    AttachTooltip(row, labelText, tip)
+    controlRefresh[#controlRefresh + 1] = function()
+      row:SetText(LabelOf(options, get()))
+    end
+    local st = content:CreateFontString(nil, "OVERLAY")
+    st:SetPoint("LEFT", row, "RIGHT", 10, 0)
+    st:SetFontObject(GameFontNormal)
+    st:SetJustifyH("LEFT")
+    st:SetWordWrap(false)
+    st:SetText(labelText)
+    st:SetTextColor(0.9, 0.9, 0.9)
+    y = y - CHK
+  end
+
+  CycleRow("All HunterKit frames", HK.PRIORITY_PRESETS,
+    function() return db.priority.strata end,
+    function(v) db.priority.strata = v; HK.ApplyPriority() end,
+    "How high every HunterKit bar, icon and mark draws against the rest of your UI. |cff4dff73Current|r leaves each frame exactly on the layer it was built with, so nothing changes until you ask it to. |cff9fd8ffAlways on top|r sits above every normal panel but still under fullscreen ones such as the world map -- drawing over the map is a bug, not a feature, so it is deliberately not offered.")
+  MakeSlider(content, y, "Extra frame level", 0, 200, 5,
+    function() return db.priority.level end,
+    function(v) db.priority.level = v; HK.ApplyPriority() end,
+    "Added to each frame's own level inside its layer. Only matters against OTHER addons drawing in the same layer: raise it to sit above them. HunterKit's own frames keep their relative order at any value.")
+  y = y - ROW
+
+  for _, key in ipairs(HK.WidgetNames()) do
+    CycleRow(WIDGET_LABEL[key] or key, WIDGET_PRESETS,
+      function() return (db.priority.widgets and db.priority.widgets[key]) or "inherit" end,
+      function(v)
+        db.priority.widgets = db.priority.widgets or {}
+        db.priority.widgets[key] = v
+        HK.ApplyPriority(key)
+      end,
+      "Overrides the master layer for this one frame. Follow master means it uses whatever the row at the top of this section says.")
+  end
+
   -- Positions
   AddSection(content, y, "Positions")
   y = y - HDR

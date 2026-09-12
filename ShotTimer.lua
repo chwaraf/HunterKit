@@ -822,6 +822,7 @@ local function BuildTwoMobIcon()
   if iconFrame then return end
   iconFrame = CreateFrame("Frame", "HunterKitTwoMobIcon", UIParent)
   iconFrame:SetFrameStrata("MEDIUM")
+  HK.RegisterWidget("twomobicon", iconFrame)
   iconFrame:EnableMouse(false)
   iconFrame:Hide()
 
@@ -855,6 +856,7 @@ local function BuildBar()
   if frame then return end
   frame = CreateFrame("Frame", "HunterKitShotTimer", UIParent)
   frame:SetFrameStrata("MEDIUM")
+  HK.RegisterWidget("shottimer", frame)
   frame:EnableMouse(false)
   frame:Hide()
 

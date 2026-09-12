@@ -107,7 +107,7 @@ end
 -- Master, Feed Pet, Sniper Mark, Pet Mend Marker, Ammo, Ammo auto-buy,
 -- Pet aggro warning, Weapon timers, Gun Sound, Passive pet alert, Macros,
 -- Positions, Reset.
-check("every section has a divider rule", #rules == 13, tostring(#rules))
+check("every section has a divider rule", #rules == 14, tostring(#rules))
 local spanning = 0
 for _, r in ipairs(rules) do
   local a, b = r.points[1], r.points[2]
@@ -769,14 +769,14 @@ pcall(HK.Positions.ToggleLock)          -- relock
 
 -- ---------------------------------------------------------------------------
 -- The section index down the left edge: one button per section, each scrolling
--- the window straight to it. Thirteen sections in one pane otherwise means
+-- the window straight to it. Fourteen sections in one pane otherwise means
 -- scroll-and-scan every time the window is opened.
 -- ---------------------------------------------------------------------------
 local nav = HK.Options.SectionNav()
 local SECTIONS = {
   "Master", "Feed Pet", "Sniper Mark", "Pet Mend Marker", "Ammo",
   "Ammo auto-buy", "Pet aggro warning", "Weapon timers", "Gun Sound",
-  "Passive pet alert", "Macros", "Positions", "Reset",
+  "Passive pet alert", "Macros", "Display priority", "Positions", "Reset",
 }
 check("there is a nav button for every section",
   #nav == #SECTIONS, string.format("%d vs %d", #nav, #SECTIONS))
@@ -787,6 +787,34 @@ for i, want in ipairs(SECTIONS) do
 end
 check("...labelled with the section names, in order", namesOK,
   wrongAt and string.format("#%d is %s", wrongAt, tostring(nav[wrongAt].name)) or "")
+
+-- The display-priority controls have to be real, not decoration: clicking the
+-- master cycle must change the db AND move a frame. Found by caption, because
+-- the window is built from plain unnamed buttons.
+local function FindButtonCaption(t)
+  for _, f in ipairs(HKTest.frames) do
+    if f.kind == "Button" and f.text == t then return f end
+  end
+  return nil
+end
+local priBtn = FindButtonCaption("Current")
+check("the display-priority master control is built", priBtn ~= nil)
+if priBtn then
+  local before = HK.db.priority.strata
+  priBtn:GetScript("OnClick")(priBtn)
+  check("clicking it cycles the master preset",
+    HK.db.priority.strata ~= before,
+    string.format("%s -> %s", tostring(before), tostring(HK.db.priority.strata)))
+  check("...and the button label follows the value",
+    priBtn:GetText() == HK.PriorityLabel(HK.db.priority.strata),
+    tostring(priBtn:GetText()))
+  check("...and the new layer is actually applied to a frame",
+    HK.widgets.mend.frame:GetFrameStrata() == HK.PriorityStrata(HK.db.priority.strata),
+    tostring(HK.widgets.mend.frame:GetFrameStrata()))
+  HK.db.priority.strata = before
+  HK.ApplyPriority()
+  HK.Options.RefreshControls()
+end
 
 -- Clicking one must actually move the pane. The content runs downward-negative
 -- and AddSection draws the header 4px below the y it was handed, so the offset

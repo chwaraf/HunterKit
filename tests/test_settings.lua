@@ -901,6 +901,98 @@ HKTest.state.ammoID = 2515
 HKTest.state.items = { [2515] = 1438 }
 HKTest.state.ammoEquipped = 1438
 
+-- ---------------------------------------------------------------------------
+-- Display priority: one layer for every HUD frame, with per-widget overrides.
+--
+-- The thing that most needs pinning is the DEFAULT. The 0.9.53 rule about never
+-- silently moving someone's frames applies to layering as well as position, so
+-- `inherit` has to restore the exact strata and level each widget was built
+-- with -- not a plausible-looking approximation of it.
+-- ---------------------------------------------------------------------------
+local NAMES = HK.WidgetNames()
+check("every HUD frame is registered for priority", #NAMES == 9, tostring(#NAMES))
+
+local function LayerOf(name)
+  local w = HK.widgets[name]
+  if not w then return nil, nil end
+  return w.frame:GetFrameStrata(), w.frame:GetFrameLevel()
+end
+
+local drifted = {}
+for _, n in ipairs(NAMES) do
+  local w = HK.widgets[n]
+  local st, lv = LayerOf(n)
+  if st ~= w.baseStrata or lv ~= w.baseLevel then
+    drifted[#drifted + 1] = n .. "=" .. tostring(st) .. "/" .. tostring(lv)
+  end
+end
+check("the default `inherit` leaves every frame exactly as it was built",
+  #drifted == 0, table.concat(drifted, ", "))
+
+HK.db.priority.strata = "above"
+HK.ApplyPriority()
+local notHigh = {}
+for _, n in ipairs(NAMES) do
+  if (LayerOf(n)) ~= "HIGH" then notHigh[#notHigh + 1] = n end
+end
+check("a master preset moves every HUD frame", #notHigh == 0,
+  table.concat(notHigh, ", "))
+
+HK.db.priority.strata = "ontop"
+HK.ApplyPriority()
+check("'always on top' is DIALOG, so the world map still covers the addon",
+  (LayerOf("mend")) == "DIALOG", tostring((LayerOf("mend"))))
+
+HK.db.priority.widgets = HK.db.priority.widgets or {}
+HK.db.priority.widgets.mend = "below"
+HK.ApplyPriority()
+check("a per-widget override beats the master preset",
+  (LayerOf("mend")) == "LOW" and (LayerOf("feed")) == "DIALOG",
+  string.format("mend=%s feed=%s",
+    tostring((LayerOf("mend"))), tostring((LayerOf("feed")))))
+
+HK.db.priority.widgets.mend = "inherit"
+HK.ApplyPriority()
+check("following the master again restores the master's layer",
+  (LayerOf("mend")) == "DIALOG", tostring((LayerOf("mend"))))
+
+-- The level slider OFFSETS each frame's own level rather than replacing it, so
+-- HunterKit's internal stacking order survives at any value.
+HK.db.priority.strata = "normal"
+HK.db.priority.level = 100
+HK.ApplyPriority()
+local _, mendLvl = LayerOf("mend")
+local _, feedLvl = LayerOf("feed")
+check("the level slider offsets each frame's own level",
+  mendLvl == 350 and feedLvl == 150,
+  string.format("mend=%s feed=%s", tostring(mendLvl), tostring(feedLvl)))
+check("...so the addon's own stacking order survives it",
+  mendLvl > feedLvl, string.format("%s vs %s", tostring(mendLvl), tostring(feedLvl)))
+
+HK.db.priority.strata = "nonsense"
+HK.db.priority.level = 0
+local okApply = pcall(HK.ApplyPriority)
+check("an unrecognised saved preset falls back instead of throwing",
+  okApply == true and (LayerOf("mend")) == HK.widgets.mend.baseStrata,
+  tostring((LayerOf("mend"))))
+
+HK.db.priority.strata = "inherit"
+HK.db.priority.level = -5000
+HK.ApplyPriority()
+local _, floorLvl = LayerOf("ammo")
+check("a runaway negative level is clamped at zero", floorLvl == 0,
+  tostring(floorLvl))
+
+-- Leave the db as we found it: every later file in this suite shares the state.
+HK.db.priority.strata = "inherit"
+HK.db.priority.level = 0
+HK.db.priority.widgets = {}
+HK.ApplyPriority()
+check("resetting the priority puts every frame back where it started",
+  #drifted == 0 and (LayerOf("mend")) == "HIGH" and (LayerOf("mend") == nil or
+    select(2, LayerOf("mend")) == 250),
+  tostring((LayerOf("mend"))))
+
 -- Report this file's tally so tests/test_docs.lua can check the README's
 -- advertised check counts against what the suite really runs.
 HKTest.report("test_settings.lua", passes, #failures)

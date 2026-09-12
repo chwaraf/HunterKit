@@ -206,6 +206,7 @@ end
 local function BuildFrame()
   frame = CreateFrame("Frame", "HunterKitAmmoWarn", UIParent)
   frame:SetFrameStrata("HIGH")
+  HK.RegisterWidget("ammo", frame)
   frame:EnableMouse(false)
   frame:SetSize(34, 34)
 

@@ -179,8 +179,12 @@ function Frame:GetScript(h) return self.scripts[h] end
 function Frame:SetAttribute(k, v) self.attrs[k] = v end
 function Frame:GetAttribute(k) return self.attrs[k] end
 function Frame:ClearAttribute(k) self.attrs[k] = nil end
-function Frame:GetFrameLevel() return self.frameLevel or 1 end
-function Frame:GetFrameStrata() return self.frameStrata or "MEDIUM" end
+-- SetFrameLevel/SetFrameStrata above write `level`/`strata`, so the getters have
+-- to read those first. Reading only frameLevel/frameStrata meant a test could
+-- set a layer and then read back the default -- which is exactly how a
+-- priority-setting feature would have passed while doing nothing.
+function Frame:GetFrameLevel() return self.level or self.frameLevel or 1 end
+function Frame:GetFrameStrata() return self.strata or self.frameStrata or "MEDIUM" end
 function Frame:IsMouseEnabled() return self.mouse and true or false end
 function Frame:RegisterForClicks(...) self.clicks = { ... } end
 function Frame:UnregisterAllClicks() self.clicks = {} end

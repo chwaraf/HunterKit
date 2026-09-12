@@ -118,6 +118,7 @@ end
 function BuildAlert()
   alert = CreateFrame("Frame", "HunterKitPassiveAlert", UIParent)
   alert:SetFrameStrata("HIGH")
+  HK.RegisterWidget("pulse", alert)
   alert:EnableMouse(false)
   alert:SetClampedToScreen(true)
   alert:SetWidth(db.size)

@@ -424,6 +424,7 @@ local function Build()
   if frame or not CreateFrame then return end
   frame = CreateFrame("Frame", "HunterKitThreatAlert", UIParent)
   frame:SetFrameStrata("HIGH")
+  HK.RegisterWidget("threat", frame)
   frame:SetSize(64, 64)
   frame:Hide()
 
@@ -519,6 +520,7 @@ local function BuildReadout()
   if readout or not CreateFrame then return end
   readout = CreateFrame("Frame", "HunterKitThreatPct", UIParent)
   readout:SetFrameStrata("MEDIUM")
+  HK.RegisterWidget("threatpct", readout)
   -- Wide enough for "12.3k 100%": the damage gap sits in front of the number.
   readout:SetSize(110, 18)
   readout:EnableMouse(false)          -- never intercept clicks on the player frame

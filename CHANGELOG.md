@@ -3,6 +3,24 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.90]
+
+### Added
+- **Display priority** - a new Options section that re-layers all nine HunterKit
+  HUD frames at once: a master preset (`Current` / `Below the UI` / `Normal` /
+  `Above the UI` / `Always on top`), an extra-frame-level offset from 0 to 200, and
+  a row per widget that either follows the master or overrides it. `Current` -
+  the default - leaves every frame on the exact layer it was built with, so
+  nothing moves unless you ask for it. `Always on top` stops at `DIALOG` on
+  purpose, so the world map still covers the addon and 0.9.89 cannot be undone
+  by a setting.
+
+### Fixed
+- The test stub's `GetFrameStrata`/`GetFrameLevel` read different fields from the
+  ones its setters wrote, so a test could set a layer and then read back the
+  default. Setters and getters now agree - without that, every layering test
+  would have passed against a stub that silently ignored the call.
+
 ## [0.9.89] - 2026-09-10
 
 ### Fixed

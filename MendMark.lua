@@ -330,6 +330,7 @@ local function BuildFrame()
   frame = CreateFrame("Frame", "HunterKitMendMarker", UIParent)
   frame:SetFrameStrata("HIGH")
   frame:SetFrameLevel(250)
+  HK.RegisterWidget("mend", frame)
   frame:EnableMouse(false)      -- never intercept clicks (world clicks matter!)
   HK.SafeClamp(frame, false)    -- it must follow the pet off-screen, not clamp
   frame:SetSize(db.size, db.size)

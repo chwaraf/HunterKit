@@ -6,7 +6,7 @@
 
 local ADDON_NAME, HK = ...
 
-HK.version = "0.9.89"
+HK.version = "0.9.90"
 
 -- ---------------------------------------------------------------------------
 -- Defaults (schema). This is the source of truth for the options window and
@@ -20,6 +20,19 @@ HK.defaults = {
   ui = {
     minimapShow  = true,
     minimapAngle = 210,
+  },
+
+  -- Display priority for every HUD frame the addon owns. One master preset plus
+  -- a fine level, and a per-widget override for the ones that need to differ.
+  --
+  -- `inherit` is the default and means "leave each widget on the layer it was
+  -- built with", so switching the feature on changes nothing until the player
+  -- asks for something. The 0.9.53 rule about never silently moving someone's
+  -- frames applies to layering as well as to position.
+  priority = {
+    strata  = "inherit",
+    level   = 0,
+    widgets = {},
   },
 
   feed = {
@@ -559,6 +572,89 @@ function HK.RegisterDraggable(name, frame, apply, save, opts)
 end
 
 -- ---------------------------------------------------------------------------
+-- Display priority
+--
+-- One place that decides how high every HunterKit HUD frame draws, so the whole
+-- addon can go above or below the rest of the player's UI without editing nine
+-- modules. Kept SEPARATE from HK.draggables on purpose: not every draggable is
+-- a HUD frame, and the ammo warning is a HUD frame that is not draggable.
+-- ---------------------------------------------------------------------------
+HK.widgets = {}
+
+-- The presets, in the order the UI cycles through them.
+--
+-- "Always on top" is DIALOG, not FULLSCREEN: above every normal panel, but
+-- still underneath fullscreen ones such as the world map. Drawing over the map
+-- is precisely the complaint 0.9.89 fixed, so it is not on offer.
+HK.PRIORITY_PRESETS = {
+  { key = "inherit", label = "Current",       strata = nil },
+  { key = "below",   label = "Below the UI",  strata = "LOW" },
+  { key = "normal",  label = "Normal",        strata = "MEDIUM" },
+  { key = "above",   label = "Above the UI",  strata = "HIGH" },
+  { key = "ontop",   label = "Always on top", strata = "DIALOG" },
+}
+
+function HK.PriorityStrata(key)
+  for _, p in ipairs(HK.PRIORITY_PRESETS) do
+    if p.key == key then return p.strata end
+  end
+  return nil
+end
+
+function HK.PriorityLabel(key)
+  for _, p in ipairs(HK.PRIORITY_PRESETS) do
+    if p.key == key then return p.label end
+  end
+  return "Current"
+end
+
+-- Widget names in a stable order. `pairs` is unordered, and the options list
+-- must not reshuffle between clicks.
+function HK.WidgetNames()
+  local out = {}
+  for name in pairs(HK.widgets) do out[#out + 1] = name end
+  table.sort(out)
+  return out
+end
+
+-- Apply the saved priority to one widget, or to all of them when `only` is nil.
+function HK.ApplyPriority(only)
+  local p = HK.db and HK.db.priority
+  local gStrata = (p and p.strata) or "inherit"
+  local gLevel = (p and tonumber(p.level)) or 0
+  for name, w in pairs(HK.widgets) do
+    if not only or only == name then
+      -- Two different "inherit"s, and conflating them is a bug: on the MASTER
+      -- row it means "the layer this frame was built with"; on a WIDGET row it
+      -- means "follow whatever the master row says". Only the master's own
+      -- value may resolve to the built layer.
+      local override = p and p.widgets and p.widgets[name]
+      local key = (override and override ~= "inherit") and override or gStrata
+      local strata = HK.PriorityStrata(key) or w.baseStrata
+      local level = w.baseLevel + gLevel
+      if level < 0 then level = 0 end
+      if w.frame.SetFrameStrata then w.frame:SetFrameStrata(strata) end
+      if w.frame.SetFrameLevel then w.frame:SetFrameLevel(level) end
+    end
+  end
+end
+
+-- Register a HUD frame and remember the layer it was built with, so `inherit`
+-- can restore it. Read back through pcall: a client without these accessors
+-- must still get a widget, just on its default layer.
+function HK.RegisterWidget(name, frame)
+  if not name or not frame then return end
+  local okS, strata = pcall(frame.GetFrameStrata, frame)
+  local okL, level = pcall(frame.GetFrameLevel, frame)
+  HK.widgets[name] = {
+    frame = frame,
+    baseStrata = (okS and strata) or "MEDIUM",
+    baseLevel = (okL and tonumber(level)) or 0,
+  }
+  HK.ApplyPriority(name)
+end
+
+-- ---------------------------------------------------------------------------
 -- Drag-position save/apply — the one fix that actually stops the "jump".
 -- Every draggable frame is a DIRECT child of UIParent, so its `GetCenter()` is
 -- already measured in UIParent's coordinate space. We store the frame on-screen
@@ -975,6 +1071,10 @@ function HK:Load()
       end
     end
   end
+
+  -- Safety net: re-apply once every module has registered its frames, so a
+  -- widget built lazily cannot end up on the layer it was created with.
+  HK.ApplyPriority()
 
   -- one-time welcome
   if HK.db.firstRun then

@@ -176,6 +176,7 @@ function BuildButton()
   button:EnableMouse(true)                 -- must be clickable
   button:SetFrameStrata("HIGH")
   button:SetFrameLevel(50)
+  HK.RegisterWidget("feed", button)
   button:SetClampedToScreen(true)
 
   button:SetNormalTexture("Interface\\Buttons\\WHITE8x8")

@@ -61,6 +61,7 @@ function BuildFrame()
   -- for position (ApplyPosition), keeping the parent UIParent so drag math is sane.
   frame = CreateFrame("Frame", "HunterKitSniperMark", UIParent)
   frame:SetSize(db.size, db.size)
+  HK.RegisterWidget("range", frame)
   frame:EnableMouse(false) -- never intercept clicks
   Range.ApplyPosition()
 
