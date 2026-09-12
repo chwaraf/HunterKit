@@ -7,7 +7,7 @@ For **WoW Classic Era & Hardcore** (patch 1.15.x).
 A self-contained, dependency-free (no Ace3/LibDBIcon) addon built for the
 hardcore-first hunter. Every action is a deliberate click; nothing is automated.
 
-Current version: **0.9.88** — see [`CHANGELOG.md`](CHANGELOG.md).
+Current version: **0.9.89** — see [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Features
 
@@ -323,11 +323,11 @@ against a stub client (`tests/wow_stub.lua`) — no logic is re-implemented — 
 needs a Lua interpreter on `PATH` (`lua`/`lua5.1`/`luajit`) or `pip install lupa`
 (in an externally-managed Python, `python3 -m venv .venv && .venv/bin/pip install
 lupa`, then run `.venv/bin/python tests/run_tests.py`).
-Add `--verbose` to also echo the addon's chat output. **1171 checks**, in **9** files:
+Add `--verbose` to also echo the addon's chat output. **1177 checks**, in **9** files:
 
 | File | Covers |
 |---|---|
-| `test_mendmark.lua` (127) | marker visibility, range/urgency styling, all four plate-discovery paths plus the direct screen-position APIs, the anchor modes, the *removal* of the force-plate CVar ladder (a leftover CVar from an older install is still restored, and a blocked `SetCVar` neither loops nor throws), drag/lock, restricted-region safety, the `/htk mend` capability report, and that **the `NamePlateN` scan survives the client's real `WorldFrame`** -- which also holds `ForbiddenNamePlate1..8`, restricted frames that have a `GetName` method but throw when it is called, and that a pet plate is still found past them, plus that an **instance plate -- found but restricted, so the client refuses the anchor -- falls back to the world-position path before the pet frame, and says why** |
+| `test_mendmark.lua` (133) | marker visibility, range/urgency styling, all four plate-discovery paths plus the direct screen-position APIs, the anchor modes, the *removal* of the force-plate CVar ladder (a leftover CVar from an older install is still restored, and a blocked `SetCVar` neither loops nor throws), drag/lock, restricted-region safety, the `/htk mend` capability report, and that **the `NamePlateN` scan survives the client's real `WorldFrame`** -- which also holds `ForbiddenNamePlate1..8`, restricted frames that have a `GetName` method but throw when it is called, and that a pet plate is still found past them, plus that an **instance plate -- found but restricted, so the client refuses the anchor -- falls back to the world-position path before the pet frame, says why, and **hides under the fullscreen world map** instead of drawing on top of it |
 | `test_options_ui.lua` (106) | **builds the real settings window** and checks the layout: window/content size, one divider per section, slider values visible before interaction, no clipped or overlapping text, wrapped tooltips, no stray globals, no module `Init` that throws — plus the **real** `Positions.ToggleLock` round trip (edit mode hands you the movable marker, locking cleans up, a plate-anchored marker is never clamped) |
 | `test_settings.lua` (133) | sniper-mark shapes: six distinct shapes per state, the shape on screen follows the cycle button, unknown saved values fall back — plus **Reset ALL settings** (defaults restored, the db slices the modules hold survive, the open window re-displays), the reset button's two-click confirm, and the low-ammo warning's thresholds, tiers and voice cooldowns |
 | `test_ammobuy.lua` (125) | the ammo auto-buy planner and queue: quiver capacity (slots × the ammo's stack size, partial stacks, foreign stacks, pouch-vs-quiver family), the three tier modes, level gating, the never-downgrade guard (low-tier vendor refused, same-tier restock and upgrades allowed, tier cap and empty ammo slot exempt), the fill percentage, gold reserve / spend cap / too-poor, limited stock, token-cost ammo, non-200 vendor bundles, no quiver, no vendor ammo — plus the purchase queue (exact amounts, full 200-unit calls, single-call top-ups, the `GetMerchantItemMaxStack`-returns-1 fallback, stall abort, cancel on vendor close), all three vendor modes, and the merchant button (anchored under the money frame, shown only at ammo vendors) |

@@ -271,6 +271,31 @@ local function WorldScreenPos()
 end
 
 -- ---------------------------------------------------------------------------
+-- Fullscreen panels that must cover the marker
+-- ---------------------------------------------------------------------------
+-- The marker is parented to UIParent at HIGH strata with frame level 250, which
+-- is ABOVE the world map on this client -- so a mark anchored over the pet's
+-- head sat on top of the continent you were trying to read. Anchoring it to the
+-- pet's name plate never helped: SetPoint does not reparent, so the strata was
+-- the same either way.
+--
+-- Probed by name, like WORLD_POS_APIS, rather than assumed. A name that is not
+-- there must degrade to "no map", never to an error.
+local COVERING_PANELS = { "WorldMapFrame" }
+
+-- The name of a fullscreen panel currently open, or nil.
+local function CoveringPanel()
+  for _, name in ipairs(COVERING_PANELS) do
+    local f = _G[name]
+    if type(f) == "table" and f.IsShown then
+      local ok, shown = pcall(f.IsShown, f)
+      if ok and shown == true then return name end
+    end
+  end
+  return nil
+end
+
+-- ---------------------------------------------------------------------------
 -- Leftover CVar cleanup (the force-plate ladder was removed in 0.9.1)
 -- ---------------------------------------------------------------------------
 -- CVars are locked while in combat; a blocked restore retries on the next call
@@ -680,6 +705,14 @@ Update = function()
   -- other modules follow.
   local editing = HK.Editing()
 
+  -- Nothing to indicate over a fullscreen map: the mark would just be a smudge
+  -- on the continent. Edit mode is exempt, the same as every other gate below,
+  -- so the size/height sliders can still be tuned.
+  if not editing and CoveringPanel() then
+    Hide()
+    return
+  end
+
   if not PetIsOut() and not editing then
     Hide()
     return
@@ -771,6 +804,12 @@ function MendMark.AnchorNote()
   return lastAnchorNote
 end
 
+-- The fullscreen panel currently covering the marker, or nil. Exposed so
+-- `/htk mend` can say whether the panel name this client uses was recognised.
+function MendMark.CoveringPanel()
+  return CoveringPanel()
+end
+
 -- Diagnostics for /htk selfcheck and /htk mend: the raw values behind the icon.
 function MendMark.Diagnostic()
   local hp = PetHPPercent()
@@ -820,6 +859,12 @@ function MendMark.Capabilities()
     end
   end
   out[#out + 1] = "  screen-pos APIs: " .. table.concat(apis, "  ")
+
+  local cov = {}
+  for _, name in ipairs(COVERING_PANELS) do
+    cov[#cov + 1] = name .. "=" .. (type(_G[name]) == "table" and "present" or "absent")
+  end
+  out[#out + 1] = "  covering panels: " .. table.concat(cov, "  ")
 
   local paths = {
     GetNamePlateForUnit = PlateForUnit(),

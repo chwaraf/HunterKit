@@ -705,6 +705,40 @@ check("only-below shows it at/below the threshold", HK.MendMark.IsShown(),
 HK.db.mend.onlyBelow = false
 HK.MendMark.Update()
 
+-- ---------------------------------------------------------------------------
+-- 8) THE WORLD MAP MUST COVER THE MARKER
+--
+-- The marker is parented to UIParent at HIGH strata with frame level 250, which
+-- is above the fullscreen map, so the mark sat on top of the continent you were
+-- trying to read. Anchoring it to the pet's name plate never helped: SetPoint
+-- does not reparent, so the strata was identical either way.
+-- ---------------------------------------------------------------------------
+HK.db.mend.enabled = true
+HK.db.mend.plateStyle = true
+HK.db.mend.combatOnly = false          -- so visibility is not gated on combat
+HK.db.mend.onlyBelow = false
+HKTest.TickMarker(1)
+check("precondition: the marker is up before the map opens",
+  HK.MendMark.IsShown() == true, tostring(HK.MendMark.IsShown()))
+
+local worldMap = CreateFrame("Frame", "WorldMapFrame", UIParent)
+worldMap:SetSize(1000, 700)
+worldMap:Show()
+HKTest.TickMarker(1)
+check("the world map covers the marker, not the other way round",
+  HK.MendMark.IsShown() == false, tostring(HK.MendMark.IsShown()))
+check("...and the marker can say which panel is covering it",
+  HK.MendMark.CoveringPanel() == "WorldMapFrame", tostring(HK.MendMark.CoveringPanel()))
+
+worldMap:Hide()
+HKTest.TickMarker(1)
+check("closing the map brings the marker straight back",
+  HK.MendMark.IsShown() == true, tostring(HK.MendMark.IsShown()))
+check("no covering panel is reported once it is closed",
+  HK.MendMark.CoveringPanel() == nil, tostring(HK.MendMark.CoveringPanel()))
+check("the report says whether this client's map frame was recognised",
+  (HK.MendMark.Capabilities() or ""):find("covering panels:") ~= nil)
+
 -- Report this file's tally so tests/test_docs.lua can check the README's
 -- advertised check counts against what the suite really runs.
 HKTest.report("test_mendmark.lua", passes, #failures)

@@ -3,6 +3,37 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.89] - 2026-09-10
+
+### Fixed
+- **The mend marker drew on top of the world map.** Reported as *"now mend pet
+  icon has higher priority than world map and displays over it."*
+- The marker is parented to `UIParent` at `HIGH` strata with frame level 250,
+  which is above the fullscreen map. A mark anchored over the pet's head
+  therefore sat on top of the continent you were trying to read.
+- Anchoring it to the pet's name plate never helped, and this is worth being
+  explicit about because it looks like it should: `SetPoint` positions a frame,
+  it does not reparent it. The strata was identical whichever anchor was in use.
+- The marker is now hidden while a fullscreen panel is open. The panel is probed
+  by name (`WorldMapFrame`), the same way the world-position APIs are, so a
+  client that calls it something else degrades to "no map" rather than erroring
+  -- and `/htk mend` prints a `covering panels:` line saying whether the name
+  was recognised.
+
+### Notes
+- **This was probably latent, not new.** Until 0.9.87 the `NamePlateN` scan threw
+  on `ForbiddenNamePlate1` every tick, and `ApplyAnchor` (line 748) runs before
+  `frame:SetShown(true)` (line 763) -- so the throw suppressed the marker
+  entirely. Fixing the crash let the marker actually appear, and with it a
+  strata that had always been too high.
+
+### Tests
+- **`tests/test_mendmark.lua` 127 -> 133**: the marker is up before the map
+  opens, the map covers it, it names the covering panel, closing the map brings
+  it straight back, nothing is reported once closed, and the capability report
+  covers the panel probe.
+  1177 green in nine files.
+
 ## [0.9.88] - 2026-09-10
 
 ### Fixed
