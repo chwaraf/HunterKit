@@ -113,6 +113,123 @@ local wide = HK.Range.VisibleShapes()
 check("a resized mark still draws", wide > 0, tostring(wide))
 
 -- ---------------------------------------------------------------------------
+-- CONTRAST RIM
+--
+-- The marks are ADDitive, so on a bright background no amount of glow separates
+-- them: adding light to light is still light. The rim is the same art drawn in
+-- BLEND underneath, which is the only thing that can. Two consequences are worth
+-- pinning hard. First, that the rim really is BLEND -- an ADDitive black rim is
+-- invisible, so getting this wrong would ship a setting that silently does
+-- nothing and every other assertion here would still pass. Second, that the
+-- 10 Hz redraw skip notices the setting, or toggling it in the options window
+-- would look like it worked and then do nothing until the next state change.
+-- ---------------------------------------------------------------------------
+local savedOutlineForLater = HK.db.range.outline
+local savedOutlineSizeForLater = HK.db.range.outlineSize
+HK.db.range.size = 60
+SetState("OK")
+
+local modes = HK.Range.OutlineModes()
+check("the outline offers off, dark and light",
+  table.concat(modes, ",") == "off,dark,light", table.concat(modes, ","))
+check("...and each has a label",
+  HK.Range.OutlineLabel("dark") == "Dark" and HK.Range.OutlineLabel("off") == "Off",
+  tostring(HK.Range.OutlineLabel("dark")))
+check("an unknown saved outline mode has a label too",
+  HK.Range.OutlineLabel("nonsense") == "Off",
+  tostring(HK.Range.OutlineLabel("nonsense")))
+
+HK.db.range.outline = "off"
+HK.Range.RescanSettings()
+check("off by default: no rim at all", #HK.Range.OutlinePasses() == 0,
+  tostring(#HK.Range.OutlinePasses()))
+local bareShapes = HK.Range.VisibleShapes()
+check("...and the mark itself is still the only thing drawn", bareShapes == 1,
+  tostring(bareShapes))
+
+HK.db.range.outline = "dark"
+HK.Range.RescanSettings()
+local rimPasses = HK.Range.OutlinePasses()
+check("dark draws eight rim passes", #rimPasses == 8, tostring(#rimPasses))
+
+local addRim, offBlack = 0, 0
+for _, pp in ipairs(rimPasses) do
+  if pp.tex.blend ~= "BLEND" then addRim = addRim + 1 end
+  local r, g, b = pp.tex:GetVertexColor()
+  if r ~= 0 or g ~= 0 or b ~= 0 then offBlack = offBlack + 1 end
+end
+check("...in BLEND, never ADD (an additive black rim would be invisible)",
+  addRim == 0, addRim .. " additive")
+check("...tinted black", offBlack == 0, offBlack .. " off-black")
+
+local seen, maxOff = {}, 0
+for _, pp in ipairs(rimPasses) do
+  seen[pp.dx .. "," .. pp.dy] = true
+  maxOff = math.max(maxOff, math.abs(pp.dx), math.abs(pp.dy))
+end
+local dirs = 0
+for _ in pairs(seen) do dirs = dirs + 1 end
+check("...offset in eight distinct directions", dirs == 8, tostring(dirs))
+check("...by exactly the outline width",
+  maxOff == (HK.db.range.outlineSize or 2), tostring(maxOff))
+check("the mark on top of the rim is still drawn",
+  HK.Range.VisibleShapes() == 9, tostring(HK.Range.VisibleShapes()))
+
+HK.db.range.outlineSize = 5
+HK.Range.RescanSettings()
+local widest = 0
+for _, pp in ipairs(HK.Range.OutlinePasses()) do
+  widest = math.max(widest, math.abs(pp.dx), math.abs(pp.dy))
+end
+check("the width slider moves the rim out", widest == 5, tostring(widest))
+check("...and the redraw skip does not swallow the change",
+  #HK.Range.OutlinePasses() == 8, tostring(#HK.Range.OutlinePasses()))
+
+HK.db.range.outline = "light"
+HK.Range.RescanSettings()
+local white = 0
+for _, pp in ipairs(HK.Range.OutlinePasses()) do
+  local r, g, b = pp.tex:GetVertexColor()
+  if r == 1 and g == 1 and b == 1 then white = white + 1 end
+end
+check("light tints the rim white", white == 8, white .. " of 8")
+check("...and the switch to it is not swallowed either",
+  #HK.Range.OutlinePasses() == 8, tostring(#HK.Range.OutlinePasses()))
+
+-- Overdrive stacks a second additive pass of the mark. It must not stack a
+-- second rim: sixteen black copies under one mark is mud, not contrast.
+HK.db.range.outline = "dark"
+HK.db.range.outlineSize = 2
+HK.db.range.brightOK = 200
+HK.Range.RescanSettings()
+check("overdrive still lays exactly one rim",
+  #HK.Range.OutlinePasses() == 8, tostring(#HK.Range.OutlinePasses()))
+HK.db.range.brightOK = 100
+
+-- The rim is a property of the art, not of the state, so all three get one.
+for _, st in ipairs({ "OK", "DEAD", "FAR" }) do
+  SetState(st)
+  HK.Range.RescanSettings()
+  HK.Range.Update()   -- FAR needs a second agreeing tick (debounce)
+  check(st .. " gets a rim too", #HK.Range.OutlinePasses() == 8,
+    st .. "=" .. tostring(#HK.Range.OutlinePasses()))
+end
+
+SetState("OK")
+HK.Range.RescanSettings()
+HK.Range.Update()
+HK.db.range.outline = "off"
+HK.Range.RescanSettings()
+check("switching it back off takes the rim away",
+  #HK.Range.OutlinePasses() == 0, tostring(#HK.Range.OutlinePasses()))
+check("...and leaves the mark as it was",
+  HK.Range.VisibleShapes() == 1, tostring(HK.Range.VisibleShapes()))
+
+HK.db.range.outline = savedOutlineForLater
+HK.db.range.outlineSize = savedOutlineSizeForLater
+HK.Range.RescanSettings()
+
+-- ---------------------------------------------------------------------------
 -- THE DEADZONE MUST NOT READ AS "OUT OF RANGE"
 --
 -- Regression: stepping a few yards into the deadzone showed the grey OUT OF

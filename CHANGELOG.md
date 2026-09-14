@@ -3,6 +3,17 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.91]
+
+### Added
+- **Contrast outline** for the sniper mark - Options -> Sniper Mark. The mark is
+  additive, so on a bright background (snow, sky, white sand) no amount of glow
+  separates it: adding light to light is still light. The outline draws the same
+  art again underneath in BLEND, offset in eight directions, so the strokes gain
+  a silhouette that actually replaces the background. Off (the default) / Dark /
+  Light, plus a 1-6 px width. It covers all three states, leaves the additive
+  mark on top untouched, and overdrive never stacks a second rim.
+
 ## [0.9.90]
 
 ### Added

@@ -660,7 +660,49 @@ function BuildWindow()
     "PetFrame = by the happiness icon. UIParent = free/drag, for when an addon hides the pet frame.")
   y = y - ROW
 
+  -- Click-to-cycle: the window is hand-built, there is no dropdown template to
+  -- lean on, and the current value stays on screen instead of hiding behind a
+  -- click. Shared by the mark outline and the display-priority rows.
+  local function LabelOf(options, key)
+    for _, o in ipairs(options) do if o.key == key then return o.label end end
+    return options[1].label
+  end
+
+  local function CycleRow(labelText, options, get, set, tip)
+    local row = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
+    row:SetSize(150, 22)
+    row:SetPoint("TOPLEFT", content, "TOPLEFT", 0, y - 4)
+    row:SetText(LabelOf(options, get()))
+    row:SetScript("OnClick", function()
+      local cur, idx = get(), 1
+      for i, o in ipairs(options) do if o.key == cur then idx = i end end
+      local nxt = options[(idx % #options) + 1]
+      set(nxt.key)
+      row:SetText(nxt.label)
+    end)
+    AttachTooltip(row, labelText, tip)
+    controlRefresh[#controlRefresh + 1] = function()
+      row:SetText(LabelOf(options, get()))
+    end
+    local st = content:CreateFontString(nil, "OVERLAY")
+    st:SetPoint("LEFT", row, "RIGHT", 10, 0)
+    st:SetFontObject(GameFontNormal)
+    st:SetJustifyH("LEFT")
+    st:SetWordWrap(false)
+    st:SetText(labelText)
+    st:SetTextColor(0.9, 0.9, 0.9)
+    y = y - CHK
+  end
+
+
   -- Range
+  -- Outline modes come from the module that draws them, so the window can never
+  -- offer a value the renderer does not understand.
+  local OUTLINE_OPTIONS = {}
+  for _, key in ipairs(HK.Range.OutlineModes()) do
+    OUTLINE_OPTIONS[#OUTLINE_OPTIONS + 1] = { key = key, label = HK.Range.OutlineLabel(key) }
+  end
+
   AddSection(content, y, "Sniper Mark")
   y = y - HDR
   MakeCheckbox(content, y, "Enable range mark", function() return db.range.enabled end,
@@ -727,6 +769,18 @@ function BuildWindow()
     "Shape when the target is out of range (grey). Click to cycle the six styles.",
     function() return db.range.brightFar or 100 end,
     function(v) db.range.brightFar = v; RefreshRange() end)
+  -- The rim. Sits with the shapes because it is a property of the mark's art,
+  -- not of a state: one setting covers all three.
+  CycleRow("Contrast outline", OUTLINE_OPTIONS,
+    function() return db.range.outline or "off" end,
+    function(v) db.range.outline = v; RefreshRange() end,
+    "A silhouette drawn UNDER the mark so it keeps an edge on backgrounds the glow washes out against - snow, open sky, white sand. The mark itself is additive, so brightness alone cannot fix that: adding light to light is still light. |cff4dff73Dark|r is the one you want on a bright background; |cff9fd8ffLight|r boldens the mark against dark art. Off leaves the mark exactly as it was.")
+  MakeSlider(content, y, "Outline width", 1, 6, 1,
+    function() return db.range.outlineSize or 2 end,
+    function(v) db.range.outlineSize = v; RefreshRange() end,
+    "How far the silhouette extends past the mark, in pixels. 1-2 keeps it a crisp edge, 5-6 reads as a halo.", true)
+  y = y - CHK
+
   MakeCheckbox(content, y, "Show range label", function() return db.range.showLabel end,
     function(v) db.range.showLabel = v; RefreshRange() end, "Spell the state out under the mark.")
   y = y - CHK
@@ -1047,40 +1101,6 @@ function BuildWindow()
     threatpct  = "Threat readout",
     twomobicon = "Two-mob press icon",
   }
-
-  local function LabelOf(options, key)
-    for _, o in ipairs(options) do if o.key == key then return o.label end end
-    return options[1].label
-  end
-
-  -- Click-to-cycle, the same control the sniper-mark shapes already use: the
-  -- window is hand-built, there is no dropdown template to lean on, and the
-  -- current value stays on screen instead of hiding behind a click.
-  local function CycleRow(labelText, options, get, set, tip)
-    local row = CreateFrame("Button", nil, content, "UIPanelButtonTemplate")
-    row:SetSize(150, 22)
-    row:SetPoint("TOPLEFT", content, "TOPLEFT", 0, y - 4)
-    row:SetText(LabelOf(options, get()))
-    row:SetScript("OnClick", function()
-      local cur, idx = get(), 1
-      for i, o in ipairs(options) do if o.key == cur then idx = i end end
-      local nxt = options[(idx % #options) + 1]
-      set(nxt.key)
-      row:SetText(nxt.label)
-    end)
-    AttachTooltip(row, labelText, tip)
-    controlRefresh[#controlRefresh + 1] = function()
-      row:SetText(LabelOf(options, get()))
-    end
-    local st = content:CreateFontString(nil, "OVERLAY")
-    st:SetPoint("LEFT", row, "RIGHT", 10, 0)
-    st:SetFontObject(GameFontNormal)
-    st:SetJustifyH("LEFT")
-    st:SetWordWrap(false)
-    st:SetText(labelText)
-    st:SetTextColor(0.9, 0.9, 0.9)
-    y = y - CHK
-  end
 
   CycleRow("All HunterKit frames", HK.PRIORITY_PRESETS,
     function() return db.priority.strata end,

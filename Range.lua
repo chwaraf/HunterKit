@@ -298,6 +298,60 @@ local function DrawArt(path, r, g, b)
   t:Show()
 end
 
+-- ---------------------------------------------------------------------------
+-- Contrast rim
+--
+-- The marks are drawn ADDitive, which is exactly why they read well over dark
+-- art: the transparent surround adds nothing and the strokes add their tint at
+-- full strength. The flip side is the one the player hits on snow, open sky or
+-- white sand -- ADD can never separate a bright mark from a bright background,
+-- because adding light to light is still light. Turning the brightness up makes
+-- it worse, not better.
+--
+-- Only something that REPLACES the background can fix that, which means
+-- ordinary BLEND. So the rim is the same art drawn black (or white) in BLEND
+-- underneath, offset in eight directions: the offsets dilate the strokes into a
+-- silhouette, and the additive mark on top is left completely alone. On a dark
+-- background the rim is invisible and nothing changes; on a light one the mark
+-- finally has an edge.
+-- ---------------------------------------------------------------------------
+local OUTLINE_MODES = {
+  { key = "off",   label = "Off"   },
+  { key = "dark",  label = "Dark"  },
+  { key = "light", label = "Light" },
+}
+
+-- Cardinals first, so the rim still looks deliberate if it is ever trimmed.
+local OUTLINE_DIRS = {
+  { -1, 0 }, { 1, 0 }, { 0, -1 }, { 0, 1 },
+  { -1, -1 }, { 1, -1 }, { -1, 1 }, { 1, 1 },
+}
+
+-- What the last draw laid down as rim, for the options window and the tests.
+local outlinePasses = {}
+
+local function DrawOutline(path, size, px, light)
+  local r, g, b = 0, 0, 0
+  if light then r, g, b = 1, 1, 1 end
+  px = math.max(1, tonumber(px) or 2)
+  for _, d in ipairs(OUTLINE_DIRS) do
+    local t = NextTex()
+    t:ClearAllPoints()
+    t:SetSize(size, size)
+    t:SetPoint("CENTER", frame, "CENTER", d[1] * px, d[2] * px)
+    t:SetTexture(path)
+    -- BLEND, never ADD: this pass exists to COVER the background.
+    t:SetBlendMode("BLEND")
+    if t.SetRotation then t:SetRotation(0) end
+    if t.SetDrawLayer then t:SetDrawLayer("BACKGROUND") end
+    t:SetVertexColor(r, g, b, 1)
+    t:Show()
+    outlinePasses[#outlinePasses + 1] = {
+      tex = t, dx = d[1] * px, dy = d[2] * px, light = light,
+    }
+  end
+end
+
 local function DrawSeg(x1, y1, x2, y2, w, size, r, g, b)
   local t = NextTex()
   local dx, dy = (x2 - x1) * size / 2, (y2 - y1) * size / 2
@@ -335,13 +389,22 @@ local function DrawStyle(prims, size, r, g, b, keep)
   if not keep then
     for i = 1, poolUsed do pool[i]:Hide() end
     poolUsed = 0
+    outlinePasses = {}
   end
   if not prims then return end
+  -- Only the first pass lays a rim. `keep` is the overdrive re-draw, and eight
+  -- more black copies under an already-rimmed mark would just muddy it.
+  local mode = (not keep) and (db and db.outline or "off") or "off"
   for _, p in ipairs(prims) do
     if p[1] == "seg" then DrawSeg(p[2], p[3], p[4], p[5], p[6], size, r, g, b)
     elseif p[1] == "ring" then DrawRing(p[2], p[3], p[4], p[5], size, r, g, b)
     elseif p[1] == "dot" then DrawDot(p[2], p[3], p[4], size, r, g, b)
-    elseif p[1] == "art" then DrawArt(p[2], r, g, b) end
+    elseif p[1] == "art" then
+      if mode ~= "off" then
+        DrawOutline(p[2], size, db.outlineSize or 2, mode == "light")
+      end
+      DrawArt(p[2], r, g, b)
+    end
   end
 end
 
@@ -370,6 +433,17 @@ function Range.VisibleShapes()
   for i = 1, poolUsed do if pool[i]:IsShown() then n = n + 1 end end
   return n
 end
+function Range.OutlineModes()
+  local t = {}
+  for _, m in ipairs(OUTLINE_MODES) do t[#t + 1] = m.key end
+  return t
+end
+function Range.OutlineLabel(key)
+  for _, m in ipairs(OUTLINE_MODES) do if m.key == key then return m.label end end
+  return "Off"
+end
+-- The rim passes on screen right now: { tex, dx, dy, light } in draw order.
+function Range.OutlinePasses() return outlinePasses end
 
 ApplyState = function(state)
   local c = COLORS[state] or COLORS.FAR
@@ -380,7 +454,8 @@ ApplyState = function(state)
   -- texture was the addon's busiest pointless work.
   local bkey = state == "OK" and "brightOK" or state == "DEAD" and "brightDead" or "brightFar"
   local sig = state .. "|" .. style .. "|" .. (db.size or 60) .. "|" ..
-              (db[bkey] or 100) .. "|" .. (db.showLabel and 1 or 0)
+              (db[bkey] or 100) .. "|" .. (db.showLabel and 1 or 0) .. "|" ..
+              (db.outline or "off") .. "|" .. (db.outlineSize or 2)
   if sig == lastDrawnSig and frame:IsShown() then return end
   lastDrawnSig = sig
   lastStyle = style

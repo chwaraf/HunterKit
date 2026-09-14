@@ -6,7 +6,7 @@
 
 local ADDON_NAME, HK = ...
 
-HK.version = "0.9.90"
+HK.version = "0.9.91"
 
 -- ---------------------------------------------------------------------------
 -- Defaults (schema). This is the source of truth for the options window and
@@ -175,6 +175,11 @@ HK.defaults = {
     brightOK     = 100,            -- per-state mark brightness, percent
     brightDead   = 100,
     brightFar    = 100,
+    -- Contrast rim under the mark, for backgrounds the additive art washes out
+    -- against (snow, sky, white sand). "off" | "dark" | "light". Off by default:
+    -- turning it on for somebody who never asked would be a silent redraw.
+    outline      = "off",
+    outlineSize  = 2,              -- rim thickness in pixels, 1..6
   },
 
   sound = {

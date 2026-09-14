@@ -816,6 +816,54 @@ if priBtn then
   HK.Options.RefreshControls()
 end
 
+-- Same for the contrast outline: the row has to reach the module that draws the
+-- mark, not just relabel itself. Found by tooltip title, because the caption on
+-- the button is only ever one of Off/Dark/Light and says nothing about which
+-- setting it belongs to.
+local OUTLINE_LABELS = { Off = true, Dark = true, Light = true }
+local outlineBtn = nil
+for _, f in ipairs(HKTest.frames) do
+  if not outlineBtn and f.kind == "Button" and f.text and OUTLINE_LABELS[f.text]
+     and f.GetScript and f:GetScript("OnEnter") then
+    GameTooltip.lines = {}
+    f:GetScript("OnEnter")(f)
+    local head = GameTooltip.lines[1] and GameTooltip.lines[1].text
+    if head == "Contrast outline" then outlineBtn = f end
+  end
+end
+GameTooltip.lines = {}
+check("the contrast-outline control is in the window", outlineBtn ~= nil)
+if outlineBtn then
+  check("...and starts on Off, so nothing changes until it is asked",
+    outlineBtn:GetText() == "Off", tostring(outlineBtn:GetText()))
+  -- The rim is only laid down while the mark is actually up, and this file never
+  -- primes a target. Give Range something to draw at, and put it back after:
+  -- every test file shares one Lua state.
+  local savedTarget = HKTest.state.target
+  local savedRange = HKTest.state.targetSpellInRange
+  HKTest.state.target = true
+  HKTest.state.targetSpellInRange = 1
+  HK.db.range.outline = "off"
+  HK.Range.RescanSettings()
+  local before = HK.db.range.outline
+  local bare = #HK.Range.OutlinePasses()
+  outlineBtn:GetScript("OnClick")(outlineBtn)
+  check("clicking it cycles the outline mode",
+    HK.db.range.outline ~= before,
+    string.format("%s -> %s", tostring(before), tostring(HK.db.range.outline)))
+  check("...and the button label follows the value",
+    outlineBtn:GetText() == HK.Range.OutlineLabel(HK.db.range.outline),
+    tostring(outlineBtn:GetText()))
+  check("...and a rim is actually drawn on the mark",
+    #HK.Range.OutlinePasses() == 8, tostring(#HK.Range.OutlinePasses()))
+  check("...where before the click there was none", bare == 0, tostring(bare))
+  HK.db.range.outline = before
+  HKTest.state.target = savedTarget
+  HKTest.state.targetSpellInRange = savedRange
+  HK.Range.RescanSettings()
+  HK.Options.RefreshControls()
+end
+
 -- Clicking one must actually move the pane. The content runs downward-negative
 -- and AddSection draws the header 4px below the y it was handed, so the offset
 -- that puts that header at the top is 4 - y.
