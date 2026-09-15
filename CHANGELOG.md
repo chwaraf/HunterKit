@@ -3,6 +3,26 @@ All notable changes to HunterKit are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/), and the project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.92]
+
+### Added
+- **Press-window bar** - Options -> Weapon timers -> Show the press-window bar.
+  The two-mob icon says "press now"; this says how long until pressing becomes
+  correct and how long it stays correct. One bar that IS the overlap of the melee
+  swing and the Auto Shot cycle: the green segment is positioned at the moment
+  the window opens and sized by its real duration, so a short window looks short.
+  It opens when the melee attack comes up and Auto Shot is out of lockout, closes
+  when the next shot enters its cast, and walks forward to a later cycle when the
+  swing misses this one instead of going blank. **Window slack** (0-400 ms,
+  default 150) is how much room it gives up before the shot would clip; 0 is the
+  true max-DPS boundary.
+
+### Fixed
+- Dragging the two-mob icon moved the SHOT BAR and left the icon where it was.
+  `HK.SaveDragged` only knows `offsetX`/`offsetY`/`moved`, which belong to the
+  bar; the icon passed its own db slice straight in. It now measures into a
+  scratch table and copies across, as the mend marker already did.
+
 ## [0.9.91]
 
 ### Added

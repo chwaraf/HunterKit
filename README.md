@@ -7,7 +7,7 @@ For **WoW Classic Era & Hardcore** (patch 1.15.x).
 A self-contained, dependency-free (no Ace3/LibDBIcon) addon built for the
 hardcore-first hunter. Every action is a deliberate click; nothing is automated.
 
-Current version: **0.9.91** — see [`CHANGELOG.md`](CHANGELOG.md).
+Current version: **0.9.92** — see [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Features
 
@@ -22,7 +22,8 @@ Current version: **0.9.91** — see [`CHANGELOG.md`](CHANGELOG.md).
 | **Ammo auto-buy** | Refills your **quiver / ammo pouch** at any vendor. It counts the ammo-specific bag slots (slots × the ammo's own stack size — 200 for every basic projectile, but read from the item, since some special shot stacks to 20), works out exactly how many arrows or bullets are missing, and buys **precisely that many** — `BuyMerchantItem` takes a count of *items*, so a 63-arrow top-up is one call for 63, not a spare stack. Large refills are chunked at the per-call stack cap (4000 arrows = 20 calls of 200). **Fill completely** or a **percentage slider** (5–100% of quiver capacity). Tier is your choice: **equipped** (more of what you shoot), **best** (highest tier your level allows), or **capped** (best, but never above a level cap — stay on cheap arrows while levelling). **Only buy highest usable ammo** (on by default) refuses to *downgrade*: low-level vendors often stock nothing but Rough Arrow / Light Shot, and rather than quietly filling a level-60 quiver with junk it declines and says why. Restocking the same tier or upgrading is always fine, and an explicit tier cap overrides it. **Gold reserve** and **max spend per visit** sliders are always respected, and a short budget simply buys fewer rounds. Three modes: **confirm** popup (default), **auto** at the vendor, or **manual** only. A **Refill ammo** button appears **only at vendors that actually sell arrows/bullets**, tucked **under the money display** in the merchant window's bottom-left and width-matched to it so it never overhangs the frame; its tooltip shows the exact amount, or the reason it can't buy. |
 | **Aggro % readout** | A live threat percentage **above and to the right of your player frame** while you are in combat with a pet, led by **how much more damage would pull the mob** — e.g. `1.2k 74%`. Green while safe, amber as it climbs, red at the pull point (100% = the mob turns on you). Once it reaches your **Warn at** threshold it **swells to 1.18× and pulses** (the font, not the frame — scaling the frame dragged its anchor offsets with it and made the number jump across the screen), so it catches the eye without you having to read it. Quiet and passive: no sound, no popup, **on by default**. Draggable via `/htk unlock`. Reads the game's own threat numbers (see below), so it is exact rather than estimated. |
 | **Contrast outline** | An optional dark (or light) silhouette drawn *under* the sniper mark so it keeps an edge on backgrounds the glow washes out against - snow, open sky, white sand. Off / Dark / Light plus a 1-6 px width. See [Contrast outline](#contrast-outline). |
-| **Display priority** | One place to re-layer all nine HunterKit HUD frames: a master preset (`Current` / `Below the UI` / `Normal` / `Above the UI` / `Always on top`), an extra-frame-level offset of 0-200, and a row per widget that follows the master or overrides it. See [Display priority](#display-priority). |
+| **Press window** | One bar showing *when* to press the two-mob macro and *how long* you have: the green segment is the overlap of your melee swing and Auto Shot cycles, positioned at the moment pressing becomes correct and sized by how long it stays correct. See [Press window](#press-window). |
+| **Display priority** | One place to re-layer all ten HunterKit HUD frames: a master preset (`Current` / `Below the UI` / `Normal` / `Above the UI` / `Always on top`), an extra-frame-level offset of 0-200, and a row per widget that follows the master or overrides it. See [Display priority](#display-priority). |
 | **Pet aggro warning** | **Off by default** (opt-in, since it interrupts). A plain **THREAT** flash and a sound when your threat is **climbing** and reaches your threshold on a mob the **pet is tanking** — the cue to stop shooting, Feign Death, or let Growl catch up — and **AGGRO** if the mob does switch to you. It is **direction-aware**: the warning fires on the way *up* only, so easing off and watching the number fall back through the threshold is silent instead of nagging. The alert itself is deliberately just the one word — the exact percentage and the damage-to-pull are already on the readout by your player frame. It reads the **game's own threat numbers** (the threat API Blizzard *reinstated* in patch 1.13.5 and which is live in Classic Era 1.15.x and TBC Anniversary), so unlike the classic combat-log threat meters it needs **no per-spell coefficient tables, no talent/buff modelling and no addon comms** — and it can't drift. The percentage it warns on is Blizzard's own *scaled* figure, which already folds in the melee-110% / ranged-130% pull rule and re-scales itself when you move, so stepping forward mid-fight is handled for free. Costs **nothing at all while you're out of combat**: it polls only while you're in combat with a living pet, checks just two units (your pet's target and your own, deduplicated by GUID), and registers **zero combat-log events**. Threshold (40–100%), sound and repeat interval configurable. The percentage readout above works with or without it. |
 | **Macros** | Six hunter macros in their own window (Options → **Macros** → *Open macro library*), each with a short explanation of what it is for and what to watch out for. Click to select, Ctrl+C to copy — an addon cannot write to your clipboard, so the text sits in a read-only box that repairs itself if you type in it. |
 | **Weapon timers (auto shot + melee weave bar)** | **Off by default.** A bar showing your Auto Shot cycle while you are firing. In Classic, Auto Shot is a fixed **0.5s cast** followed by a weapon-speed cooldown — so the bar has a long **green** stretch where you are free to move and weave in a shot, and a **red** zone at the end where doing anything **clips** the shot and simply loses that damage. The red zone is drawn **to scale**, so you can see at a glance why a slow ranged weapon is easier to play: a 3.0s bow leaves 2.5s of free time, a 1.8s one leaves 1.3s. Crucially it does not only predict — after every shot it compares when the shot was *expected* against when it *actually* fired and reports the difference (`+0.34s`), which is ground truth including your own latency and the server's re-shot timer. A steady `+0.00` means you are clean. Follows haste procs (re-reads the weapon speed every shot) and restarts with Aimed Shot, which resets the cycle. **Leaving combat clears both bars** — the melee swing clock and the clip measurement are part of the fight, so neither survives it. Appears only while auto-shooting; the animation is detached the moment you stop. |
@@ -227,11 +228,43 @@ paths found the pet, how many plates are visible, and what `UnitPosition("pet")`
 and `GetPlayerFacing` give back. If something anchors differently on your client
 than described here, that output says exactly why.
 
+## Press window
+
+The two-mob press icon answers one question -- *press now?* -- and the strip
+spells out what you are waiting for. Neither tells you how long you have, which
+is the part you actually plan a weave around, because the window is the overlap
+of two independent cycles:
+
+- it **opens** when your melee auto-attack comes up *and* Auto Shot is out of its
+  0.5 s cast lockout, plus whatever slack you allow yourself;
+- it **closes** when the next Auto Shot enters that lockout.
+
+A melee swing does not expire -- it waits for you -- so it is always the *ranged*
+cycle that bounds the window. When the swing is not up in time for this shot, the
+window simply lands in a later one, and the bar walks forward to find it rather
+than going blank.
+
+**Options -> Weapon timers -> Show the press-window bar.** It parks under the
+shot bar and follows it; `/htk unlock` lets you drag it. The white playhead on
+the left is *now*. The green segment sits at the moment the window opens and its
+**width is the window's real duration to scale**, so a 0.4 s window is visibly
+shorter than a 1.2 s one. It slides into the playhead as it approaches, then
+drains once you are inside it, and reads `PRESS` while it is open.
+
+**Window slack** (0-400 ms, default 150) is how much room the window gives up at
+the end before Auto Shot would clip. `0ms` is the true max-DPS boundary -- the
+window closes the instant the shot starts casting; raise it if pressing on green
+still clips.
+
+The bar shares the shot bar's own visibility rules (combat, auto-repeat, "keep on
+screen") rather than inventing a second set: it is part of the weapon timer, not
+a widget with its own lifecycle.
+
 ## Display priority
 
-Nine HunterKit frames float over the world: the shot bar, the sniper mark, the
-mend marker, the feed button, the range readout, the two-mob icon, the ammo and
-threat warnings and the passive-pet alert. Each is built with the layer it needs,
+Ten HunterKit frames float over the world: the shot bar, the press-window bar,
+the sniper mark, the mend marker, the feed button, the range readout, the two-mob
+icon, the ammo and threat warnings and the passive-pet alert. Each is built with the layer it needs,
 but Options -> **Display priority** can re-layer all of them at once:
 
 - **Master preset** cycles `Current` -> `Below the UI` -> `Normal` -> `Above the UI` ->
@@ -240,7 +273,7 @@ but Options -> **Display priority** can re-layer all of them at once:
   frame precisely where it was - nothing is silently moved.
 - **Extra frame level** (0-200) is *added* to each frame's own level, so the
   frames keep their relative order with each other and move as a group.
-- **Per widget** - each of the nine gets a row of its own that either *follows
+- **Per widget** - each of the ten gets a row of its own that either *follows
   the master* or overrides it. That is how you get "everything under the world
   map except my shot bar".
 
@@ -374,7 +407,7 @@ against a stub client (`tests/wow_stub.lua`) — no logic is re-implemented — 
 needs a Lua interpreter on `PATH` (`lua`/`lua5.1`/`luajit`) or `pip install lupa`
 (in an externally-managed Python, `python3 -m venv .venv && .venv/bin/pip install
 lupa`, then run `.venv/bin/python tests/run_tests.py`).
-Add `--verbose` to also echo the addon's chat output. **1219 checks**, in **9** files:
+Add `--verbose` to also echo the addon's chat output. **1245 checks**, in **9** files:
 
 | File | Covers |
 |---|---|
@@ -383,7 +416,7 @@ Add `--verbose` to also echo the addon's chat output. **1219 checks**, in **9** 
 | `test_settings.lua` (165) | sniper-mark shapes: six distinct shapes per state, the shape on screen follows the cycle button, unknown saved values fall back — plus **Reset ALL settings** (defaults restored, the db slices the modules hold survive, the open window re-displays), the reset button's two-click confirm, and the low-ammo warning's thresholds, tiers and voice cooldowns |
 | `test_ammobuy.lua` (125) | the ammo auto-buy planner and queue: quiver capacity (slots × the ammo's stack size, partial stacks, foreign stacks, pouch-vs-quiver family), the three tier modes, level gating, the never-downgrade guard (low-tier vendor refused, same-tier restock and upgrades allowed, tier cap and empty ammo slot exempt), the fill percentage, gold reserve / spend cap / too-poor, limited stock, token-cost ammo, non-200 vendor bundles, no quiver, no vendor ammo — plus the purchase queue (exact amounts, full 200-unit calls, single-call top-ups, the `GetMerchantItemMaxStack`-returns-1 fallback, stall abort, cancel on vendor close), all three vendor modes, and the merchant button (anchored under the money frame, shown only at ammo vendors) |
 | `test_threatwatch.lua` (147) | the pet aggro warning's verdict logic against declarative threat tables: the pull-point maths and the damage-to-pull readout, direction-awareness (falling back through the threshold stays silent), alarm rate-limiting, the colour ramp and hot-state emphasis, the guarantee that the warning icon never overlaps the passive-pet alert — and, for the "as light as possible" brief, that it does **no** work when it cannot matter |
-| `test_shottimer.lua` (278) | the Auto Shot *model*: the fixed 0.5s cast plus weapon-speed cooldown, how much free time is left and when the lockout starts, the measured `+0.34s` clip readout, haste re-reads, the melee swing strip built from observed swings, static vs travel weaving, the specials gate, and the redraw-skip optimisation; plus the **two-mob weave** -- every leg of the press condition (melee mob in melee, a *different* live pet target, the swing up, Auto Shot out of its lockout), the state strip's five states, the press icon's brightness, the 18 to 27 height migration, the clip slice's geometry, the two equal bar heights, that specials no longer gate the two-mob cue, that **every layer** of the bar is the height of the bar, and that **leaving combat clears both bars** -- the melee bar is not left painted ready at a swing from the last pull, the clip slice is not left welded to the shot bar, the animation loop parks itself, and the slice expires together with the `+0.34s` number it illustrates, and that **the state strip obeys its checkbox on a fresh login** -- a profile saved with the strip off boots a bar with no stray strip on it, while one saved with it on gets a truthful caption even before the first shot |
+| `test_shottimer.lua` (304) | the Auto Shot *model*: the fixed 0.5s cast plus weapon-speed cooldown, how much free time is left and when the lockout starts, the measured `+0.34s` clip readout, haste re-reads, the melee swing strip built from observed swings, static vs travel weaving, the specials gate, and the redraw-skip optimisation; plus the **two-mob weave** -- every leg of the press condition (melee mob in melee, a *different* live pet target, the swing up, Auto Shot out of its lockout), the state strip's five states, the press icon's brightness, the 18 to 27 height migration, the clip slice's geometry, the two equal bar heights, that specials no longer gate the two-mob cue, that **every layer** of the bar is the height of the bar, and that **leaving combat clears both bars** -- the melee bar is not left painted ready at a swing from the last pull, the clip slice is not left welded to the shot bar, the animation loop parks itself, and the slice expires together with the `+0.34s` number it illustrates, and that **the state strip obeys its checkbox on a fresh login** -- a profile saved with the strip off boots a bar with no stray strip on it, while one saved with it on gets a truthful caption even before the first shot |
 | `test_macros.lua` (40) | the macro library as text: no macro targets or attacks without accounting for dead units, none pretends to aim Auto Shot with `[@unit]` (it cannot), each fits the client's 255-character limit, and every copy box holds its macro verbatim and repairs itself if edited |
 | `test_feedpet.lua` (96) | what the feed button arms itself with, and the number on it: the count is the **inventory** total for the picked food (every stack, not the one the click feeds) across one, two and three stacks and back to 0 on empty bags; different foods of the same happiness tier are **counted together** while food the pet cannot eat and grey-level food a tier down are left out; a pin survives an unresolved diet but is refused once the diet contradicts it; food **dropped on the button** is learned, pinned, counted, refused if it is a quest item, left alone when the option is off, read from both the id and the item-link cursor shape, and honoured even when the pet's diet had not resolved at the moment of the drop; **shift-hover** opens an icon column of every food in the bags, opening and closing on the modifier whichever way round you press it; and an unlisted food matches the diet on its **name** alone; and while the pet eats, the button shows **happiness per bite** and **seconds left** from the *Feed Pet Effect* buff — counting down, reverting when damage cancels the feed, ignoring other pet buffs, and keeping a count update from clobbering the readout; a **quest item is never picked**, by item type or by its tooltip line, not even when it is the best tier and not even when it was pinned; an item the curated DB does not list is never offered while the pet's diet is unknown (every login, briefly); and the count survives a container API that answers with no stack count -- reconciled against `GetItemCount` rather than trusting a per-slot sum; and the hover tooltip never tells a Happy pet it cannot be fed, names combat as the real blocker, and keeps its separate advice for unhappy and content pets |
 | `test_docs.lua` (119) | every file parses, the `.toc` matches disk, `.toc` version == `HK.version` == newest `CHANGELOG` entry, every `/htk` subcommand documented here, the shipped mark art exists as PNG with no `.tga`/`.blp` strays — and this very section: the README's stated version, a row and a **current** check count for every test file, and a correct total |

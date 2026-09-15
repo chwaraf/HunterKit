@@ -132,6 +132,7 @@ local COL_TWOGO    = { 0.30, 1.00, 0.45, 1.00 }   -- press the two-mob macro NOW
 local COL_TWO      = { 0.40, 0.75, 1.00, 0.95 }   -- set up, waiting on a cycle
 local COL_INMELEE  = { 0.90, 0.70, 0.20, 0.90 }   -- melee mob, no second target
 local COL_SHOOTING = { 0.45, 0.45, 0.50, 0.85 }   -- nothing in melee
+local COL_WINWAIT  = { 0.30, 0.42, 0.55, 0.95 }   -- window bar: not open yet
 local COL_OOR      = { 1.00, 0.30, 0.10, 0.95 }   -- target out of Auto Shot range
 -- The clip slice: how late your last shot actually landed, drawn on the bar.
 -- NOT a latency reading -- nothing here reads the network. See Redraw.
@@ -214,6 +215,7 @@ local weaveMark, meleeFill, meleeTrack
 -- peripheral vision, which is rarely next to a combat bar.
 local rangeStrip, rangeStripText, reco, clipSlice
 local iconFrame, iconTex, iconText, iconCd
+local windowFrame, windowBed, windowGreen, windowPlay, windowText
 
 local DELAY_HOLD  = 2.5      -- seconds the "+0.34s" readout lingers
 -- Below this the number is not the player's.
@@ -585,6 +587,66 @@ function ShotTimer.TwoMob(now)
   return s
 end
 
+-- ---------------------------------------------------------------------------
+-- THE PRESS WINDOW
+--
+-- The icon answers "press now?". This answers the two questions either side of
+-- it: how long until pressing becomes correct, and how long it stays correct.
+-- Both fall out of the two cycles the macro straddles:
+--
+--   opens   when the melee auto-attack comes up AND Auto Shot is out of its
+--           cast lockout, plus whatever slack the player allows themselves
+--   closes  when the next Auto Shot enters that lockout
+--
+-- A melee swing does not expire -- it waits for you -- so it is always the
+-- RANGED cycle that bounds the window. When the swing is not up in time for
+-- this shot the window simply lands in a later one, and the arithmetic walks
+-- forward to find it rather than the bar going blank and leaving you guessing.
+--
+-- Returns openIn, duration, isOpen -- or nil when there is no honest answer
+-- (no two-mob setup, no swing observed yet, no shot cycle running).
+-- ---------------------------------------------------------------------------
+function ShotTimer.PressWindow(now)
+  now = tonumber(now) or (tonumber(Call(GetTime)) or 0)
+  local s = ShotTimer.TwoMob(now)
+  if not s.setup then return nil end
+  if not s.swingIn then return nil end
+  local remaining, total = ShotTimer.Progress(now)
+  if not remaining then return nil end
+
+  -- Milliseconds (see HK.defaults.shottimer.windowMargin).
+  local margin = (tonumber(db and db.windowMargin) or 150) / 1000
+  if margin < 0 then margin = 0 elseif margin > 0.4 then margin = 0.4 end
+  local cycle = tonumber(total)
+  if not cycle or cycle <= 0 then cycle = DEFAULT_SPEED end
+
+  -- The instants at which the ranged cycle stops being safe to overlap.
+  local closeAt = remaining - CAST_TIME - margin
+  local openIn = math.max(0, s.swingIn)
+  -- Walk forward to the first close that is actually after the swing is up.
+  -- One comparison covers every case: swing already up and safe, swing due
+  -- inside this shot's safe time, and swing due only after this shot has gone.
+  local guard = 0
+  while closeAt <= openIn and guard < 8 do
+    closeAt = closeAt + cycle
+    guard = guard + 1
+  end
+  local dur = closeAt - openIn
+  if dur < 0 then dur = 0 end
+  return openIn, dur, (openIn <= 0 and dur > 0)
+end
+
+-- The bar's time scale: wide enough for whichever cycle is longer, so the
+-- window is always drawn to scale and never runs off the end.
+function ShotTimer.WindowSpan()
+  local _, total = ShotTimer.Progress()
+  local cycle = tonumber(total)
+  if not cycle or cycle <= 0 then cycle = DEFAULT_SPEED end
+  local m = tonumber(ShotTimer.MeleeSpeed())
+  if m and m > cycle then cycle = m end
+  return cycle
+end
+
 -- One word for the strip: the state you are in, so it reads at a glance
 -- instead of you having to work it out from two bars and a marker.
 --   twogo - two mobs set up AND the press is correct right now
@@ -666,6 +728,21 @@ local function ApplyIconPosition()
     iconFrame:SetPoint("LEFT", frame, "RIGHT", 6, 0)
   else
     iconFrame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+  end
+end
+
+local function ApplyWindowPosition()
+  if not windowFrame then return end
+  windowFrame:ClearAllPoints()
+  if db and db.windowMoved == true then
+    windowFrame:SetPoint("CENTER", UIParent, "CENTER",
+      tonumber(db.windowOffsetX) or 0, tonumber(db.windowOffsetY) or 0)
+  elseif frame then
+    -- Hangs under the shot bar by default, so it travels with it.
+    windowFrame:SetPoint("TOP", frame, "BOTTOM",
+      tonumber(db.windowOffsetX) or 0, tonumber(db.windowOffsetY) or -34)
+  else
+    windowFrame:SetPoint("CENTER", UIParent, "CENTER", 0, -244)
   end
 end
 
@@ -849,7 +926,140 @@ local function BuildTwoMobIcon()
     { -- Only take part in lock/unlock while the option is on, so an invisible
       -- frame never shows a drag handle.
       draggableIf = function() return db and db.twoMobIcon == true end,
-      saveFromScreen = function() HK.SaveDragged(iconFrame, db) end })
+      saveFromScreen = function()
+        -- Same trap: SaveDragged targets offsetX/offsetY/moved, which belong to
+        -- the shot bar. Dragging the icon used to move the bar and leave the
+        -- icon where it was.
+        local tmp = {}
+        HK.SaveDragged(iconFrame, tmp)
+        db.iconOffsetX, db.iconOffsetY, db.iconMoved = tmp.offsetX, tmp.offsetY, true
+      end })
+end
+
+-- ---------------------------------------------------------------------------
+-- The press-window bar.
+--
+-- One bar that IS the overlap of the two cycles, rather than two bars you have
+-- to compare in your head. The bed is the span of the longer cycle; the green
+-- segment is the window itself, positioned at the moment it opens and sized by
+-- how long it lasts, so a 0.4 s window is visibly shorter than a 1.2 s one --
+-- which is the part you actually plan a weave around. The playhead sits at the
+-- left edge (that is "now"), so the green segment slides into it as the window
+-- approaches, and then drains away once you are inside it.
+-- ---------------------------------------------------------------------------
+local function BuildWindowBar()
+  windowFrame = CreateFrame("Frame", "HunterKitWindowBar", UIParent)
+  windowFrame:SetFrameStrata("MEDIUM")
+  HK.RegisterWidget("windowbar", windowFrame)
+  windowFrame:EnableMouse(false)
+  windowFrame:Hide()
+
+  windowBed = windowFrame:CreateTexture(nil, "BACKGROUND")
+  windowBed:SetAllPoints(windowFrame)
+  windowBed:SetTexture(LINE_TEX)
+  windowBed:SetVertexColor(COL_TRACK[1], COL_TRACK[2], COL_TRACK[3], COL_TRACK[4])
+
+  windowGreen = windowFrame:CreateTexture(nil, "ARTWORK")
+  windowGreen:SetTexture(LINE_TEX)
+  windowGreen:SetPoint("TOPLEFT", windowFrame, "TOPLEFT", 0, 0)
+  windowGreen:SetSize(1, 1)
+
+  windowPlay = windowFrame:CreateTexture(nil, "OVERLAY")
+  windowPlay:SetTexture(LINE_TEX)
+  windowPlay:SetPoint("TOPLEFT", windowFrame, "TOPLEFT", 0, 0)
+  windowPlay:SetPoint("BOTTOMLEFT", windowFrame, "BOTTOMLEFT", 0, 0)
+  windowPlay:SetWidth(2)
+  windowPlay:SetVertexColor(1, 1, 1, 0.95)
+
+  windowText = windowFrame:CreateFontString(nil, "OVERLAY")
+  windowText:SetFont(STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF", 9, "OUTLINE")
+  windowText:SetPoint("CENTER", windowFrame, "CENTER", 0, 0)
+  windowText:SetText("")
+
+  HK.CreateBorder(windowFrame)
+  ApplyWindowPosition()
+
+  HK.RegisterDraggable("windowbar", windowFrame,
+    function() ApplyWindowPosition() end,
+    function(x, y)
+      db.windowOffsetX, db.windowOffsetY, db.windowMoved = x, y, true
+    end,
+    { -- Only takes part in lock/unlock while the option is on.
+      draggableIf = function() return db and db.windowBar == true end,
+      saveFromScreen = function()
+        -- SaveDragged writes offsetX/offsetY/moved -- the SHOT BAR's keys. Measured
+        -- into a scratch table and copied across, or dragging this bar would move
+        -- the shot bar instead of itself.
+        local tmp = {}
+        HK.SaveDragged(windowFrame, tmp)
+        db.windowOffsetX, db.windowOffsetY, db.windowMoved =
+          tmp.offsetX, tmp.offsetY, true
+      end })
+end
+
+local lastWinTxt, lastWinCol = nil, nil
+local lastWinGeo = {}
+-- What the bar last drew, for the options window and the tests. A bar whose
+-- geometry nothing can read is a bar nobody can prove is to scale.
+local lastWinX0, lastWinX1, lastWinW, lastWinOpen = 0, 0, 0, false
+local lastWinSize = {}
+
+local function PaintWindowBar(now)
+  if not windowFrame then return end
+  if not db or db.windowBar ~= true then
+    ShownIf(windowFrame, false)
+    return
+  end
+  local openIn, dur, open = ShotTimer.PressWindow(now)
+  if not openIn then
+    ShownIf(windowFrame, false)
+    return
+  end
+
+  -- Size it from the db, not from GetWidth(): the frame is created without a
+  -- size and a region that was never sized reports 0, which would draw a bar of
+  -- zero width -- invisible, and silently so.
+  local w = tonumber(db.windowWidth) or 220
+  local h = tonumber(db.windowHeight) or 12
+  if lastWinSize.w ~= w or lastWinSize.h ~= h then
+    lastWinSize.w, lastWinSize.h = w, h
+    windowFrame:SetSize(w, h)
+  end
+  local span = ShotTimer.WindowSpan()
+  if span <= 0 then span = DEFAULT_SPEED end
+
+  local x0 = w * openIn / span
+  if x0 < 0 then x0 = 0 elseif x0 > w then x0 = w end
+  local x1 = w * math.min(openIn + dur, span) / span
+  if x1 < x0 then x1 = x0 end
+
+  local geo = string.format("%.2f,%.2f,%.2f", x0, x1, h)
+  if lastWinGeo.s ~= geo then
+    lastWinGeo.s = geo
+    windowGreen:ClearAllPoints()
+    windowGreen:SetPoint("TOPLEFT", windowFrame, "TOPLEFT", x0, 0)
+    windowGreen:SetSize(math.max(1, x1 - x0), h)
+  end
+  local col = open and COL_TWOGO or COL_WINWAIT
+  lastWinCol = PaintIf(windowGreen, col, lastWinCol)
+
+  lastWinX0, lastWinX1, lastWinW, lastWinOpen = x0, x1, w, (open and true or false)
+
+  local txt = open and "PRESS" or string.format("%.1f", openIn)
+  if txt ~= lastWinTxt then windowText:SetText(txt); lastWinTxt = txt end
+  windowFrame:SetAlpha(open and 1.0 or 0.8)
+  ShownIf(windowFrame, true)
+end
+
+-- The bar itself. A test seam, and a necessary one: the suite reloads the addon
+-- partway through this file, so _G["HunterKitWindowBar"] can be a DIFFERENT
+-- instance from the module under test.
+function ShotTimer.WindowFrame() return windowFrame end
+
+-- Left edge of the window, right edge, bar width, and whether it is open now.
+-- x is measured from the playhead, so x0 == 0 means "press".
+function ShotTimer.WindowGeom()
+  return lastWinX0, lastWinX1, lastWinW, lastWinOpen, lastWinTxt
 end
 
 local function BuildBar()
@@ -987,6 +1197,7 @@ function ShotTimer.ApplyPosition()
   frame:SetPoint("CENTER", UIParent, "CENTER", x, y)
   -- The icon follows the bar until the player drags it somewhere of their own.
   ApplyIconPosition()
+  ApplyWindowPosition()
 end
 
 -- ---------------------------------------------------------------------------
@@ -1378,6 +1589,12 @@ local function Redraw(now)
     end
   end
 
+  -- Painted from here, deliberately: Redraw returns early unless the shot bar
+  -- itself is up, so the window bar shares the bar's own visibility rules
+  -- (combat, auto-repeat, "keep on screen") instead of inventing a second set.
+  -- It is part of the weapon timer, not a widget with its own lifecycle.
+  PaintWindowBar(now)
+
   DrawSpecialPips(now)
 
   -- The measured clip from the previous shot, held briefly then faded out.
@@ -1724,6 +1941,7 @@ function ShotTimer.Init()
   BuildBar()
   BuildSpecialPips()
   BuildTwoMobIcon()
+  BuildWindowBar()
 
   HK.On("UNIT_SPELLCAST_SUCCEEDED", OnSpellSucceeded)
   HK.On("UNIT_SPELLCAST_START", OnSpellStarted)

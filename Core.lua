@@ -6,7 +6,7 @@
 
 local ADDON_NAME, HK = ...
 
-HK.version = "0.9.91"
+HK.version = "0.9.92"
 
 -- ---------------------------------------------------------------------------
 -- Defaults (schema). This is the source of truth for the options window and
@@ -145,6 +145,20 @@ HK.defaults = {
     -- a new frame. The icon is opt-in because it IS a new frame on screen.
     rangeStrip  = true,   -- 4-state strip: 2-MOB GO / 2-MOB / MELEE / RANGE / OOR
     twoMobIcon  = false,  -- separate draggable icon: lights when to press it
+    -- The press WINDOW as a bar. The icon answers "press now?"; this answers
+    -- the two questions either side of it -- how long until pressing becomes
+    -- correct, and how long it stays correct. Opt-in, like the icon.
+    windowBar   = false,
+    -- Slack folded into the CLOSE of the window, so a slightly late press still
+    -- does not clip the shot. Milliseconds, which is the unit latency is quoted
+    -- in anyway, and an integer -- the hand-built options window never formats a
+    -- float. 0 is the true max-DPS boundary; 400 is generous.
+    windowMargin = 150,
+    windowWidth  = 220,
+    windowHeight = 12,
+    windowOffsetX = 0,
+    windowOffsetY = -34,
+    windowMoved  = false,
     recoRow     = false,  -- "what to press next" row (Fluffy Hunter Bars style)
     iconOffsetX = 0,
     iconOffsetY = 0,

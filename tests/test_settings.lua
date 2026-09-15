@@ -1027,7 +1027,7 @@ HKTest.state.ammoEquipped = 1438
 -- with -- not a plausible-looking approximation of it.
 -- ---------------------------------------------------------------------------
 local NAMES = HK.WidgetNames()
-check("every HUD frame is registered for priority", #NAMES == 9, tostring(#NAMES))
+check("every HUD frame is registered for priority", #NAMES == 10, tostring(#NAMES))
 
 local function LayerOf(name)
   local w = HK.widgets[name]

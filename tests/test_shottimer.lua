@@ -2031,6 +2031,172 @@ check("the reco row obeys its own checkbox while parked too",
   recoOff.ShotTimer.RecoShown() == false,
   tostring(recoOff.ShotTimer.RecoShown()))
 
+-- ---------------------------------------------------------------------------
+-- THE PRESS WINDOW
+--
+-- The icon says "press now". This says how long until pressing becomes correct
+-- and how long it stays correct -- the two numbers you actually weave around.
+-- What most needs pinning is that the window is derived from BOTH cycles and
+-- walks forward when the swing misses this shot, rather than going blank and
+-- leaving the player guessing.
+-- ---------------------------------------------------------------------------
+HK.db.shottimer.windowBar = true
+HK.db.shottimer.windowMargin = 150          -- 0.15s
+HKTest.state.meleeSpeed = 2.4
+TwoMobWorld()
+
+-- (a) swing already up, shot still free: the window is open, right now
+Shooting(3.4, 20000)
+ST._OnMeleeSwing(20000 - 3.0)               -- 2.4s weapon, swung 3.0s ago: due
+At(20000.1)
+local winIn, winDur, winOpen = ST.PressWindow(20000.1)
+check("swing up and shot free: the window is open now",
+  winOpen == true and winIn == 0,
+  string.format("openIn=%s open=%s", tostring(winIn), tostring(winOpen)))
+check("...and it lasts the free time minus the slack",
+  winDur ~= nil and math.abs(winDur - (ST.SafeWindow(20000.1) - 0.15)) < 0.001,
+  string.format("dur=%s free=%s", tostring(winDur), tostring(ST.SafeWindow(20000.1))))
+
+-- (b) swing still coming, but in time for this shot
+ST._OnMeleeSwing(19999.0)                   -- next swing at 20001.4
+winIn, winDur, winOpen = ST.PressWindow(20000.1)
+check("waiting on the swing: the window opens when it comes up",
+  winIn ~= nil and math.abs(winIn - 1.3) < 0.02 and winOpen == false,
+  string.format("openIn=%s open=%s", tostring(winIn), tostring(winOpen)))
+check("...and still closes with this shot",
+  winDur ~= nil and math.abs(winDur - 1.35) < 0.02, tostring(winDur))
+
+-- (c) the swing misses this shot entirely. Late in the cycle the safe time is
+-- already gone, so the window has to be found in the NEXT one -- the case where
+-- a naive bar just goes blank and tells you nothing.
+At(20002.9)
+ST._OnMeleeSwing(20002.9 - 1.0)             -- next swing at 20004.3
+winIn, winDur, winOpen = ST.PressWindow(20002.9)
+check("swing too late for this shot: it walks forward to the next cycle",
+  winIn ~= nil and winDur ~= nil and winDur > 0,
+  string.format("openIn=%s dur=%s", tostring(winIn), tostring(winDur)))
+check("...and that window is a whole cycle further out",
+  winIn ~= nil and (winIn + (winDur or 0)) > (ST.SafeWindow(20002.9) or 0),
+  string.format("close=%s thisFree=%s",
+    tostring(winIn and (winIn + (winDur or 0))), tostring(ST.SafeWindow(20002.9))))
+
+-- (d) the slack shortens the window, by exactly the slack
+At(20000.1)
+ST._OnMeleeSwing(20000 - 3.0)
+HK.db.shottimer.windowMargin = 0
+local durTight = select(2, ST.PressWindow(20000.1))
+HK.db.shottimer.windowMargin = 400
+local durLoose = select(2, ST.PressWindow(20000.1))
+check("no slack: the window runs right up to the shot's cast",
+  durTight ~= nil and math.abs(durTight - ST.SafeWindow(20000.1)) < 0.001,
+  string.format("dur=%s free=%s", tostring(durTight), tostring(ST.SafeWindow(20000.1))))
+check("more slack shortens the window by exactly the slack",
+  durTight ~= nil and durLoose ~= nil and math.abs((durTight - durLoose) - 0.4) < 0.001,
+  string.format("tight=%s loose=%s", tostring(durTight), tostring(durLoose)))
+
+-- (e) a nonsense saved value is clamped, not trusted
+HK.db.shottimer.windowMargin = 99999
+local durClamped = select(2, ST.PressWindow(20000.1))
+check("a runaway margin is clamped to the slider's own maximum",
+  durClamped ~= nil and math.abs(durClamped - (durLoose or 0)) < 0.001,
+  string.format("clamped=%s max=%s", tostring(durClamped), tostring(durLoose)))
+HK.db.shottimer.windowMargin = 150
+
+-- (f) no second mob, no window -- not a window that is always open
+TwoMobWorld({ noPetTarget = true })
+check("no second mob: no window at all", ST.PressWindow(20000.1) == nil,
+  tostring(ST.PressWindow(20000.1)))
+
+-- ---------------------------------------------------------------------------
+-- The bar itself
+-- ---------------------------------------------------------------------------
+TwoMobWorld()
+HK.db.shottimer.windowMargin = 150
+
+-- Painted from inside Redraw, so the sequence that reaches it is the one the
+-- client runs: option set -> RescanSettings -> a shot primed (Shooting arms
+-- auto-repeat and THEN fires, in that order) -> a swing -> tick. Calling
+-- _SetRepeating again after priming throws the cycle away.
+local function WindowScene(on)
+  HK.db.shottimer.windowBar = on
+  ST.RescanSettings()
+  Shooting(3.4, 21000)
+  ST._OnMeleeSwing(21000 - 3.0)          -- 2.4s weapon, swung 3.0s ago: due now
+  At(21000.1); ST.OnUpdate()
+end
+
+WindowScene(false)
+-- From the module, NOT from _G: this file reloads the addon partway through, so
+-- the global name can point at a different instance than the one ST drives.
+local wf = ST.WindowFrame()
+check("the press-window bar was built", wf ~= nil)
+if wf then
+  check("...and hidden while the option is off", wf:IsShown() == false,
+    tostring(wf:IsShown()))
+  WindowScene(true)
+  check("...and shown once it is on and the setup is live", wf:IsShown() == true,
+    tostring(wf:IsShown()))
+
+  local x0, x1, w, openNow, txt = ST.WindowGeom()
+  check("the bar has a real width to draw into", w > 0, tostring(w))
+  check("open window: the green starts at the playhead", x0 == 0, tostring(x0))
+  check("...and it says PRESS", txt == "PRESS", tostring(txt))
+  check("...open flag agrees with the arithmetic", openNow == true, tostring(openNow))
+  local span = ST.WindowSpan()
+  local wantW = w * (ST.SafeWindow(21000.1) - 0.15) / span
+  check("the green segment's width IS the window, to scale",
+    wantW > 1 and math.abs((x1 - x0) - wantW) < 0.6,
+    string.format("got %.1f want %.1f (span %.2f)", x1 - x0, wantW, span))
+
+  -- A bigger slack must visibly narrow the green, or the bar is decoration.
+  HK.db.shottimer.windowMargin = 400
+  At(21000.1); ST.OnUpdate()
+  local _, x1b = ST.WindowGeom()
+  check("more slack draws a visibly narrower window", x1b < x1 - 1,
+    string.format("%.1f -> %.1f", x1, x1b))
+
+  -- Closed window: the segment sits ahead of the playhead and counts down.
+  HK.db.shottimer.windowMargin = 150
+  ST._OnMeleeSwing(20999.0)              -- next swing at 21001.4: still coming
+  At(21000.1); ST.OnUpdate()
+  local cx0, _, _, cOpen, cTxt = ST.WindowGeom()
+  check("closed window: the green sits ahead of the playhead", cx0 > 1, tostring(cx0))
+  check("...and it counts down instead of saying PRESS",
+    cOpen == false and cTxt ~= "PRESS" and tonumber(cTxt) ~= nil, tostring(cTxt))
+end
+
+-- ---------------------------------------------------------------------------
+-- Dragging either widget must move THAT widget. Both used to write the shot
+-- bar's offsetX/offsetY, because HK.SaveDragged only knows those keys.
+-- ---------------------------------------------------------------------------
+local barOX, barOY = HK.db.shottimer.offsetX, HK.db.shottimer.offsetY
+local dWin = HK.draggables and HK.draggables["windowbar"]
+check("the window bar is registered as draggable", dWin ~= nil)
+if dWin and dWin.opts and dWin.opts.saveFromScreen then
+  HK.db.shottimer.windowMoved = false
+  dWin.opts.saveFromScreen()
+  check("dragging the window bar saves the window bar's own keys",
+    HK.db.shottimer.windowMoved == true, tostring(HK.db.shottimer.windowMoved))
+  check("...and does not move the shot bar",
+    HK.db.shottimer.offsetX == barOX and HK.db.shottimer.offsetY == barOY,
+    string.format("%s,%s -> %s,%s", tostring(barOX), tostring(barOY),
+      tostring(HK.db.shottimer.offsetX), tostring(HK.db.shottimer.offsetY)))
+end
+local dIcon = HK.draggables and HK.draggables["twomobicon"]
+if dIcon and dIcon.opts and dIcon.opts.saveFromScreen then
+  HK.db.shottimer.iconMoved = false
+  dIcon.opts.saveFromScreen()
+  check("dragging the two-mob icon saves the icon's own keys",
+    HK.db.shottimer.iconMoved == true, tostring(HK.db.shottimer.iconMoved))
+  check("...and does not move the shot bar either",
+    HK.db.shottimer.offsetX == barOX and HK.db.shottimer.offsetY == barOY,
+    string.format("%s,%s -> %s,%s", tostring(barOX), tostring(barOY),
+      tostring(HK.db.shottimer.offsetX), tostring(HK.db.shottimer.offsetY)))
+end
+
+HK.db.shottimer.windowBar = false
+HK.db.shottimer.windowMargin = 150
+
 HKTest.report("test_shottimer.lua", passes, #failures)
 
 say(string.format("\n%d passed, %d failed", passes, #failures))

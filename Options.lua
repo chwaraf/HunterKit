@@ -1010,6 +1010,18 @@ function BuildWindow()
     function(v) db.shottimer.twoMobIcon = v; RefreshShotTimer() end,
     "A separate icon that lights up bright green with NOW on it at the exact moment pressing the two-mob macro is correct: your target is in melee, your pet has a DIFFERENT live target, your melee swing is up, and Auto Shot is not in its 0.5s lockout. Dimmed with a countdown while the setup is live but the swing is still coming, and nearly invisible otherwise -- so a flash means press. Drag it into your peripheral vision with /htk unlock; it parks beside the bar until you do.")
   y = y - CHK
+  MakeCheckbox(content, y, "Show the press-window bar",
+    function() return db.shottimer.windowBar end,
+    function(v) db.shottimer.windowBar = v; RefreshShotTimer() end,
+    "One bar that IS the overlap of your two cycles, instead of two bars you have to compare in your head. The green segment is positioned at the moment pressing the two-mob macro becomes correct and sized by how long it stays correct -- so a short window looks short. It slides into the white playhead on the left (that is |cffffffffnow|r) as it approaches, then drains once you are inside it. |cff4dff73PRESS|r means press. Parks under the shot bar; drag it with /htk unlock.")
+  y = y - CHK
+  MakeSlider(content, y, "Window slack", 0, 400, 50,
+    function() return db.shottimer.windowMargin end,
+    function(v) db.shottimer.windowMargin = v; RefreshShotTimer() end,
+    "How much room the window gives up at the END, before Auto Shot would clip. 0ms is the true max-DPS boundary; 150ms (default) leaves room for a late finger and latency. Raise it if green presses still clip the shot.",
+    true, function(v) return string.format("%dms", v or 0) end)
+  y = y - CHK
+  y = y - CHK
   MakeCheckbox(content, y, "Show a 'what to press next' row",
     function() return db.shottimer.recoRow end,
     function(v) db.shottimer.recoRow = v; RefreshShotTimer() end,
@@ -1100,6 +1112,7 @@ function BuildWindow()
     threat     = "Pet aggro alert",
     threatpct  = "Threat readout",
     twomobicon = "Two-mob press icon",
+    windowbar  = "Press window bar",
   }
 
   CycleRow("All HunterKit frames", HK.PRIORITY_PRESETS,
